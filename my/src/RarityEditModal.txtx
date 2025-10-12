@@ -1,0 +1,224 @@
+// src/components/RarityEditModal.tsx
+
+import React, { useState, useEffect, useMemo } from 'react';
+import { 
+    Dialog, DialogTitle, DialogContent, DialogActions, 
+    Button, TextField, Box, Typography, IconButton, Grid, 
+    Divider, Alert
+} from '@mui/material';
+import DeleteIcon from '@mui/icons-material/Delete';
+import AddIcon from '@mui/icons-material/Add';
+import { usePackStore } from '../stores/packStore';
+import type { Pack, RarityConfig } from '../models/pack';
+import { useShallow } from 'zustand/react/shallow';
+// 💡 修正1: 確率のバリデーション関数をインポート
+import { hasProbabilityMismatch } from '../utils/validationUtils'; 
+
+// モーダルが受け取るプロパティ
+interface RarityEditModalProps {
+    open: boolean;
+    onClose: () => void;
+    packId: string;
+}
+
+const DEFAULT_RARITY_NAME = 'NewRarity';
+const DEFAULT_PROBABILITY = 0.0001; // デフォルト確率を最低限の値に設定
+
+const RarityEditModal: React.FC<RarityEditModalProps> = ({ open, onClose, packId }) => {
+    // Zustandストアから必要な状態とアクションを取得
+    const { packs, updatePack } = usePackStore(useShallow(state => ({
+        packs: state.packs,
+        updatePack: state.updatePack,
+    })));
+    
+    const existingPack = packs.find(p => p.packId === packId);
+    
+    // 編集中のレアリティ設定のローカル状態
+    const [localRarityConfig, setLocalRarityConfig] = useState<RarityConfig[]>([]);
+    
+    // existingPackが存在しない場合は、モーダルを表示しない
+    if (!existingPack) {
+        return null;
+    }
+
+    // 既存のパックデータからローカル状態を初期化
+    useEffect(() => {
+        if (open && existingPack) {
+            // ディープコピーしてローカル状態にセット
+            setLocalRarityConfig(existingPack.rarityConfig.map(config => ({ ...config })));
+        }
+    }, [open, existingPack]);
+
+    // 合計確率の計算
+    const totalProbability = useMemo(() => {
+        return localRarityConfig.reduce((sum, config) => sum + config.probability, 0); 
+    }, [localRarityConfig]);
+
+    // 💡 修正2: 確率の合計値が 1.0 と一致しないかをチェック
+    const probabilityMismatch = useMemo(() => {
+        // 確率ベースでは合計は 1.0 でなければならない
+        return hasProbabilityMismatch(localRarityConfig, 1.0); 
+    }, [localRarityConfig]); 
+
+    // レアリティ設定の変更ハンドラ
+    const handleRarityChange = (index: number, key: keyof RarityConfig, value: string) => {
+        setLocalRarityConfig(prev => {
+            const newConfig = [...prev];
+
+        // 💡 修正: keyによって処理を分離し、型エラーを解消
+        if (key === 'probability') {
+            const parsedValue = parseFloat(value);
+
+            // NaNチェックを行い、数値でない入力は無視
+            if (isNaN(parsedValue)) {
+                return prev; 
+            }
+            
+            newConfig[index] = {
+                ...newConfig[index],
+                probability: parsedValue, // numberとして設定
+            };
+        } else {
+            // rarityNameの場合
+            newConfig[index] = {
+                ...newConfig[index],
+                [key]: value, // stringとして設定
+            };
+        }
+        return newConfig;
+    });
+};
+
+    // レアリティ追加
+    const handleAddRarity = () => {
+        setLocalRarityConfig(prev => [
+            ...prev,
+            { rarityName: DEFAULT_RARITY_NAME + (prev.length + 1), probability: DEFAULT_PROBABILITY }
+        ]);
+    };
+
+    // レアリティ削除
+    const handleRemoveRarity = (index: number) => {
+        setLocalRarityConfig(prev => prev.filter((_, i) => i !== index));
+    };
+
+    // 保存処理
+    const handleSave = () => {
+        // 合計確率が 1.0 でない場合は警告
+        if (probabilityMismatch) {
+            if (!window.confirm("合計確率が 1.0 と異なっていますが、この設定で保存しますか？")) {
+                return;
+            }
+        }
+        
+        // 変更をパックストアに反映
+        const updatedPack: Pack = {
+            ...existingPack,
+            rarityConfig: localRarityConfig.map(c => ({
+                ...c,
+                // 数値に変換できなかった項目をNaNのまま保存しないための再チェック
+                probability: isNaN(c.probability) ? 0 : c.probability
+            })),
+        };
+
+        updatePack(updatedPack);
+        onClose();
+    };
+
+    return (
+        <Dialog open={open} onClose={onClose} maxWidth="sm" fullWidth>
+            <DialogTitle>
+                {existingPack.name} のレアリティ設定 ({existingPack.cardsPerPack} 枚入り)
+            </DialogTitle>
+            <DialogContent dividers>
+                <Alert severity="info" sx={{ mb: 2 }}>
+                    各レアリティの「確率」の合計が **1.0** になるように設定してください。
+                </Alert>
+                
+                <Box sx={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
+                    {localRarityConfig.map((config, index) => (
+                        <Box key={index} sx={{ p: 1, border: '1px solid #eee', borderRadius: 1 }}>
+                            <Grid container spacing={2} alignItems="center">
+                                {/* レアリティ名 */}
+                                <Grid size={{ xs: 5 }}> 
+                                    <TextField
+                                        fullWidth
+                                        label="レアリティ名"
+                                        value={config.rarityName}
+                                        onChange={(e) => handleRarityChange(index, 'rarityName', e.target.value)}
+                                        size="small"
+                                    />
+                                </Grid>
+                                
+                                {/* 確率 (期待枚数から変更) */}
+                                <Grid size={{ xs: 5 }}> 
+                                    <TextField
+                                        fullWidth
+                                        // 💡 修正3: ラベルを「期待枚数」から「確率 (0.0〜1.0)」に変更
+                                        label="確率 (0.0〜1.0)"
+                                        type="number"
+                                        inputProps={{ step: "0.0001" }} // 小数点以下の入力ステップを設定
+                                        value={config.probability}
+                                        onChange={(e) => handleRarityChange(index, 'probability', e.target.value)}
+                                        size="small"
+                                    />
+                                </Grid>
+                                
+                                {/* 削除ボタン */}
+                                <Grid size={{ xs: 2 }} sx={{ textAlign: 'right' }}>
+                                    <IconButton
+                                        onClick={() => handleRemoveRarity(index)}
+                                        color="error"
+                                        disabled={localRarityConfig.length <= 1} // 少なくとも1つは残す
+                                    >
+                                        <DeleteIcon fontSize="small" />
+                                    </IconButton>
+                                </Grid>
+                            </Grid>
+                        </Box>
+                    ))}
+                </Box>
+
+                {/* レアリティ追加ボタン */}
+                <Button 
+                    startIcon={<AddIcon />} 
+                    onClick={handleAddRarity} 
+                    variant="outlined" 
+                    sx={{ mt: 2 }}
+                    fullWidth
+                >
+                    レアリティを追加
+                </Button>
+                
+                <Divider sx={{ my: 2 }} />
+                
+                {/* 合計値の表示と警告 */}
+                <Box sx={{ display: 'flex', justifyContent: 'space-between', mt: 2 }}>
+                    {/* 💡 修正4: 表示テキストを「合計確率 / 1.0」に変更 */}
+                    <Typography variant="h6">合計確率:</Typography>
+                    <Typography variant="h6" color={probabilityMismatch ? 'error' : 'textPrimary'}>
+                        {totalProbability.toFixed(4)} / 1.0000 
+                    </Typography>
+                </Box>
+                
+                {probabilityMismatch && (
+                    <Alert severity="warning" sx={{ mt: 1 }}>
+                        {/* 💡 修正5: 警告文を変更 */}
+                        合計確率が **1.0** と異なっています。パック抽選が正常に機能しない可能性があります。
+                    </Alert>
+                )}
+
+            </DialogContent>
+            <DialogActions>
+                <Button onClick={onClose} variant="outlined">
+                    キャンセル
+                </Button>
+                <Button onClick={handleSave} variant="contained" color="primary">
+                    設定を保存
+                </Button>
+            </DialogActions>
+        </Dialog>
+    );
+};
+
+export default RarityEditModal;

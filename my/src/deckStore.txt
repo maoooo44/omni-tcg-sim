@@ -1,0 +1,273 @@
+// src/stores/deckStore.ts (修正・全文)
+
+import { create } from 'zustand';
+// import { useShallow } from 'zustand/react/shallow'; 
+import type { Deck } from '../models/deck';
+import { v4 as uuidv4 } from 'uuid'; // generateUUIDの代わりにv4を直接使用
+import { deckService } from '../services/deck-logic/deckService';
+import { useCardPoolStore } from './cardPoolStore'; 
+
+// デフォルトの空デッキを生成するユーティリティ関数（ストア内部で使用）
+const createDefaultDeck = (id?: string): Deck => ({
+    deckId: id || uuidv4(), 
+    name: '新規デッキ',
+    description: '',
+    mainDeck: new Map(), // Map<cardId, count>
+    sideDeck: new Map(),
+    extraDeck: new Map(),
+    createdAt: new Date().toISOString(),
+    updatedAt: new Date().toISOString(),
+    hasUnownedCards: false, 
+});
+
+/**
+ * デッキ全体をチェックし、必要な枚数が所有枚数を超えているかを確認するヘルパー関数。
+ * @param deck チェック対象のデッキ
+ * @returns boolean デッキに未所有カード（不足枚数）が含まれていれば true
+ */
+const checkUnownedCards = (deck: Deck): boolean => {
+    // 💡 CardPoolStore の現在の状態を一時的に取得
+    const ownedCards = useCardPoolStore.getState().ownedCards;
+
+    // 全てのカードとその必要枚数をチェック
+    const allDeckCardEntries = [
+        ...deck.mainDeck.entries(),
+        ...deck.sideDeck.entries(),
+        ...deck.extraDeck.entries(),
+    ];
+
+    for (const [cardId, requiredCount] of allDeckCardEntries) {
+        // 所持枚数が不足しているカードが1枚でもあれば true を返す
+        if (requiredCount > 0 && (ownedCards.get(cardId) || 0) < requiredCount) {
+            return true;
+        }
+    }
+    return false;
+};
+
+// 📌 修正: DeckState にデッキ一覧管理のフィールドとアクションを追加
+export interface DeckState {
+    // 💡 既存の編集中のデッキ状態
+    currentDeck: Deck; 
+    // 💡 新規追加: DBからロードされた全てのデッキのリスト
+    decks: Map<string, Deck>; 
+    isLoading: boolean;
+    
+    // --- デッキ一覧管理アクション ---
+    loadDecks: () => Promise<void>;
+    getDeckById: (deckId: string) => Deck | undefined;
+    
+    // --- 編集アクション ---
+    // 💡 newDeck (作成) の実装を、createDeck (DB連携) に一本化
+    createDeck: () => Promise<string>; 
+    // 💡 IDを指定して編集対象のデッキを読み込む
+    loadDeckForEdit: (deckId: string) => void;
+    
+    // 💡 既存アクションの修正/統合
+    updateDeckInfo: (info: Partial<Omit<Deck, 'mainDeck' | 'sideDeck' | 'extraDeck'>>) => void;
+    updateCardCount: (zone: keyof Pick<Deck, 'mainDeck' | 'sideDeck' | 'extraDeck'>, cardId: string, count: number) => void;
+    addCardToDeck: (cardId: string, zone: keyof Pick<Deck, 'mainDeck' | 'sideDeck' | 'extraDeck'>) => void;
+    removeCardFromDeck: (cardId: string, zone: keyof Pick<Deck, 'mainDeck' | 'sideDeck' | 'extraDeck'>) => void;
+    
+    // --- DB連携アクション ---
+    saveDeck: () => Promise<void>; 
+    deleteDeck: (deckId: string) => Promise<void>;
+    // 💡 インポート機能
+    importDecks: (decksToImport: Deck[]) => Promise<{ importedCount: number, renamedCount: number }>;
+}
+
+const initialState = {
+    // 💡 初期状態では空のデッキリストと空の編集デッキ
+    decks: new Map<string, Deck>(),
+    currentDeck: createDefaultDeck(),
+    isLoading: false,
+};
+
+export const useDeckStore = create<DeckState>((set, get) => ({
+    ...initialState,
+    
+    // --- デッキ一覧管理アクションの実装 ---
+    
+    /**
+     * DBから全てのデッキをロードし、ストアを初期化する
+     */
+    loadDecks: async () => {
+        set({ isLoading: true });
+        try {
+            const deckList = await deckService.getAllDecks();
+            // 配列をMapに変換
+            const decksMap = new Map(deckList.map(deck => [deck.deckId, deck]));
+            
+            set({ decks: decksMap });
+            console.log(`✅ [DeckStore] ${deckList.length} decks loaded from DB.`);
+        } catch (error) {
+            console.error("Failed to load decks:", error);
+            set({ decks: new Map() });
+        } finally {
+            set({ isLoading: false });
+        }
+    },
+    
+    /**
+     * IDからデッキ情報を取得する（リストから）
+     */
+    getDeckById: (deckId: string) => {
+        return get().decks.get(deckId);
+    },
+    
+    /**
+     * 新しいデッキを作成し、DBとストアに保存する
+     * 💡 DB連携のため、createDeckServiceを呼び出す
+     */
+    createDeck: async () => {
+        const newDeck = createDefaultDeck();
+        
+        await deckService.createDeck(newDeck);
+        
+        set(state => {
+            const newDecks = new Map(state.decks);
+            newDecks.set(newDeck.deckId, newDeck);
+            return { decks: newDecks, currentDeck: newDeck };
+        });
+        
+        return newDeck.deckId;
+    },
+    
+    /**
+     * IDを指定して編集対象のデッキを currentDeck に読み込む
+     */
+    loadDeckForEdit: (deckId) => {
+        const deck = get().decks.get(deckId);
+        if (deck) {
+            // 💡 編集用にはディープコピーを与える (Mapは参照渡しになるため)
+            const deckCopy: Deck = {
+                ...deck,
+                mainDeck: new Map(deck.mainDeck),
+                sideDeck: new Map(deck.sideDeck),
+                extraDeck: new Map(deck.extraDeck),
+            };
+            set({ currentDeck: deckCopy });
+        } else {
+            // 見つからなければ新規デッキを作成 (エラー処理は必要に応じて強化)
+            set({ currentDeck: createDefaultDeck(deckId) });
+        }
+    },
+
+    // --- 既存の編集アクション (ロジックはほぼ維持) ---
+
+    updateDeckInfo: (info) => {
+        set(state => ({
+            currentDeck: { ...state.currentDeck, ...info },
+        }));
+    },
+    
+    updateCardCount: (zone, cardId, count) => {
+        set(state => {
+            const newMap = new Map(state.currentDeck[zone]);
+            if (count > 0) {
+                newMap.set(cardId, count);
+            } else {
+                newMap.delete(cardId);
+            }
+            
+            // 💡 カードカウントが変更された後、hasUnownedCardsを更新する
+            const updatedDeck = {
+                ...state.currentDeck,
+                [zone]: newMap,
+            } as Deck; // 型推論を助ける
+
+            const hasUnownedCards = checkUnownedCards(updatedDeck);
+            
+            return {
+                currentDeck: {
+                    ...updatedDeck,
+                    hasUnownedCards: hasUnownedCards, // 💡 フラグをセット
+                }
+            };
+        });
+    },
+    
+    addCardToDeck: (cardId, zone) => {
+        const state = get();
+        const currentCount = state.currentDeck[zone].get(cardId) || 0;
+        state.updateCardCount(zone, cardId, currentCount + 1);
+    },
+
+    removeCardFromDeck: (cardId, zone) => {
+        const state = get();
+        const currentCount = state.currentDeck[zone].get(cardId) || 0;
+        if (currentCount > 0) {
+            state.updateCardCount(zone, cardId, currentCount - 1);
+        }
+    },
+
+    // --- DB連携アクションの実装 ---
+
+    /**
+     * 編集中のデッキ（currentDeck）をDBとデッキ一覧に保存する
+     */
+    saveDeck: async () => {
+        const deckToSave = get().currentDeck;
+
+        try {
+            // 最後のチェック：保存直前に再度チェック
+            const finalHasUnownedCards = checkUnownedCards(deckToSave);
+            const finalDeckToSave: Deck = { 
+                ...deckToSave, 
+                hasUnownedCards: finalHasUnownedCards,
+                updatedAt: new Date().toISOString(), // 最終更新日を更新
+            };
+            
+            // 1. DBに保存/更新
+            await deckService.saveDeck(finalDeckToSave);
+
+            // 2. Zustandストアの状態を更新
+            set(state => {
+                const newDecks = new Map(state.decks);
+                newDecks.set(finalDeckToSave.deckId, finalDeckToSave); // リストを更新
+                
+                return {
+                    decks: newDecks,
+                    currentDeck: finalDeckToSave, // 編集中のデッキも最新版に更新
+                };
+            });
+            console.log(`Deck ${finalDeckToSave.deckId} saved/updated successfully.`);
+
+        } catch (error) {
+            console.error('Failed to save deck:', error);
+            throw new Error('デッキの保存に失敗しました。');
+        }
+    },
+    
+    /**
+     * IDを指定してデッキをDBとストアから削除する
+     */
+    deleteDeck: async (deckId) => {
+        await deckService.deleteDeck(deckId);
+        
+        set(state => {
+            const newDecks = new Map(state.decks);
+            newDecks.delete(deckId);
+            
+            // 削除したのが編集中のデッキだった場合、編集状態をリセット
+            const newCurrentDeck = state.currentDeck.deckId === deckId 
+                ? createDefaultDeck() 
+                : state.currentDeck;
+
+            return { decks: newDecks, currentDeck: newCurrentDeck };
+        });
+        console.log(`Deck ${deckId} deleted.`);
+    },
+    
+    /**
+     * 外部からインポートされたデッキを処理し、DBとストアを更新する
+     */
+    importDecks: async (decksToImport) => {
+        const result = await deckService.importDecks(decksToImport);
+
+        // インポート後にDBの全件を再ロードしてストアを最新化
+        await get().loadDecks(); 
+        
+        return result;
+    },
+}));

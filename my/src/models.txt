@@ -1,0 +1,110 @@
+// src/models/card.ts
+/**
+ * 収録カードの情報に関する型定義
+ */
+export interface Card {
+  cardId: string; // カードID (パック内でユニークな連番 + パックIDで一意)
+  packId: string; // 収録されているパックID
+  name: string;
+  imageUrl: string; // カード画像の参照URL
+  rarity: string; // 収録されているレアリティ名 (Pack.rarityConfig.rarityNameに対応)
+  userCustom: Record<string, any>; // ユーザーカスタムデータ（属性、コスト、テキストなど）
+}
+
+
+
+
+
+// src/models/db-types.ts (修正・追記)
+
+/**
+ * IndexedDB (Dexie) に保存されるテーブルごとのデータ型定義
+ */
+
+export interface DBCardPool {
+  cardId: string; // 主キー。どのカードかを示す
+  count: number;  // 所有枚数
+}
+
+export interface DBSetting {
+  key: string; // 主キー (例: 'coins', 'userSettings')
+  value: any;  // 保存する値（JSONオブジェクトなど）
+}
+
+// 💡 デッキ（decksテーブル）のための型
+export interface DBDeck {
+    deckId: string; // 主キー
+    name: string;
+    description: string;
+    
+    // Map<string, number> ではなく JSON互換の Record<string, number>
+    mainDeck: Record<string, number>; 
+    sideDeck: Record<string, number>;
+    extraDeck: Record<string, number>; 
+
+    hasUnownedCards: boolean; 
+    createdAt: string; 
+    updatedAt: string; 
+}
+
+// 他のDBテーブル（例: UserSettings, DeckDataなど）の型もここに追加されます。
+
+
+
+// src/models/deck.ts
+/**
+ * デッキエンティティの型定義
+ * TCGシミュレータのデッキデータ構造を定義する
+ */
+export interface Deck {
+    deckId: string;
+    name: string;
+    description: string;
+    
+    // デッキに含まれるカードと枚数
+    // key: cardId (string), value: count (number)
+    // Mapを使用して、編集時や検索時に高速なアクセスを可能にする
+    mainDeck: Map<string, number>;
+    sideDeck: Map<string, number>;
+    extraDeck: Map<string, number>; // TCGによってはエクストラデッキの概念がある
+
+    // 💡 新規追加: デッキに未所有カードが含まれているかどうかの状態
+    hasUnownedCards: boolean; 
+    // 💡 (オプション) どのカードが未所有か具体的な情報を持っても良いが、今回はbooleanでシンプルに
+
+    // メタデータ
+    createdAt: string; // ISO 8601形式のタイムスタンプ
+    updatedAt: string; // ISO 8601形式のタイムスタンプ
+}
+
+
+
+
+// src/models/pack.ts
+/**
+ * パックの情報に関する型定義
+ */
+export type PackType = 'Booster' | 'ConstructedDeck' | 'Other';
+
+export interface RarityConfig {
+  rarityName: string; // 例: 'Common', 'Rare'
+  probability: number; // 封入確率 (0.0 から 1.0 の間)
+}
+
+export interface Pack {
+  packId: string; // パックID (ユニークID, 自動生成)
+  name: string;
+  series: string; // TCGシリーズ名
+  packType: PackType;
+  cardsPerPack: number; // 1パックあたりの封入枚数
+  rarityConfig: RarityConfig[]; // レアリティと封入確率の配列
+  totalCards: number; // 収録カード総数 (自動集計)
+  imageUrl: string; // 拡張パック画像の参照URL
+  cardBackUrl: string; // カード裏面画像の参照URL
+  price: number; // ゲーム内通貨での価格
+  description: string;
+  // 💡 新規追加: 開封済みフラグ
+  isOpened: boolean;
+  releaseDate: string; // ISO 8601形式の発売日
+  userCustom: Record<string, any>; // ユーザーカスタムデータ（レギュレーションなど）
+}

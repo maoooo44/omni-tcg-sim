@@ -1,32 +1,29 @@
-/**
-* src/App.tsx
-* 
-* アプリケーションのメインコンポーネント。
-* アプリケーションのルートで全てのZustandストアを初期化し、TanStack Routerを介してルーティングを行います。
-* IndexedDBからのデータロード完了を待つためのロード画面を表示します。
-*/
+// src/App.tsx (Hooksクラッシュを解決する最終修正版)
 
 import { RouterProvider } from '@tanstack/react-router';
 import { router } from './router';
 import { useInitialLoad } from './hooks/useInitialLoad'; 
-// ZUSTANDストア群のインポート
+// ZUSTANDストア群のインポートを復活
 import { useCardPool } from './features/card-pool/hooks/useCardPool'; 
 import { useDeckStore } from './stores/deckStore'; 
 import { useUserDataStore } from './stores/userDataStore'; 
 import { usePackStore } from './stores/packStore'; 
-import { useCurrencyStore } from './stores/currencyStore'; 
+import { useCurrencyStore } from './stores/currencyStore'; // ✅ 必須: 通貨ストアのインポート
 
 // MUIコンポーネントのインポート (ロード画面用)
 import { Box, Typography, CircularProgress, CssBaseline } from '@mui/material';
 
+// ❌ Navbarのインポートは不要になりました（MainLayoutに移動したため）
+// import Navbar from './components/Navbar'; 
+
 
 function App() {
-    // 必須: 全てのZustandストアのフックを呼び出し、アプリケーションのルートでストアのコンテキストを確立します。
-    useCardPool();      
-    useDeckStore();      
+    // 🛑 必須: 全てのZustandストアのフックを呼び出し、**アプリケーションのルートでストアのコンテキストを確立します**。
+    useCardPool();      
+    useDeckStore();      
     useUserDataStore(); 
-    usePackStore();     
-    useCurrencyStore(); 
+    usePackStore();     
+    useCurrencyStore(); // ✅ 追加: これが他のHooksとの連携に必要です
     
     // 初期ロードフックを呼び出し、ロード完了を待つ 
     const isReady = useInitialLoad(); 
@@ -38,19 +35,19 @@ function App() {
         return (
             <CssBaseline>
                  <Box 
-                     sx={{ 
-                         display: 'flex', 
-                         flexDirection: 'column', 
-                         justifyContent: 'center', 
-                         alignItems: 'center', 
-                         minHeight: '100vh' 
-                     }}
-                 >
-                     <CircularProgress color="primary" size={60} />
-                     <Typography variant="h6" sx={{ mt: 2 }}>
-                         データをロード中...
-                     </Typography>
-                 </Box>
+                    sx={{ 
+                        display: 'flex', 
+                        flexDirection: 'column', 
+                        justifyContent: 'center', 
+                        alignItems: 'center', 
+                        minHeight: '100vh' 
+                    }}
+                >
+                    <CircularProgress color="primary" size={60} />
+                    <Typography variant="h6" sx={{ mt: 2 }}>
+                        データをロード中...
+                    </Typography>
+                </Box>
             </CssBaseline>
         );
     }

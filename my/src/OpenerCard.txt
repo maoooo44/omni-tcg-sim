@@ -1,0 +1,92 @@
+// src/components/OpenerCard.tsx
+
+import React from 'react';
+import { Box, Paper } from '@mui/material';
+import type { Card as CardType } from '../models/card';
+
+interface OpenerCardProps {
+    cardData: CardType | null; // 開封後に表示するカードデータ
+    cardBackUrl: string;       // パックの裏面画像
+    isRevealed: boolean;       // カードが表になっているか (フリップ状態)
+    delay: number;             // アニメーション遅延時間 (シーケンシャル開封用)
+}
+
+const DEFAULT_BACK_URL = 'https://via.placeholder.com/300x420?text=Card+Back';
+const DEFAULT_FRONT_URL = 'https://via.placeholder.com/300x420?text=Card+Front';
+
+const OpenerCard: React.FC<OpenerCardProps> = ({ 
+    cardData, 
+    cardBackUrl, 
+    isRevealed, 
+    delay 
+}) => {
+    
+    // カードのフロント画像
+    const frontImage = cardData?.imageUrl || DEFAULT_FRONT_URL;
+    // カードのバック画像
+    const backImage = cardBackUrl || DEFAULT_BACK_URL;
+
+    // アニメーションスタイル
+    const flipStyle = {
+        // delayミリ秒後に0.5秒かけて回転
+        transition: `transform 0.5s ease-out ${delay}ms`, 
+        // isRevealed=trueで0度 (表)、falseで180度 (裏)
+        transform: isRevealed ? 'rotateY(0deg)' : 'rotateY(180deg)', 
+    };
+    
+    return (
+        <Box 
+            sx={{ 
+                perspective: '1000px', // 3D効果の基点
+                width: '100%',
+                maxWidth: 200, 
+                aspectRatio: '3 / 4.2', // 標準的なカードのアスペクト比
+            }}
+        >
+            <Paper 
+                elevation={isRevealed ? 8 : 4} // 開封後は影を濃くする
+                sx={{ 
+                    position: 'relative',
+                    width: '100%',
+                    height: '100%',
+                    transformStyle: 'preserve-3d', // 子要素の3D変換を保持
+                    ...flipStyle,
+                }}
+            >
+                {/* カード裏面 (フリップの裏側) */}
+                <Box
+                    component="img"
+                    src={backImage}
+                    alt="Card Back"
+                    sx={{
+                        position: 'absolute',
+                        width: '100%',
+                        height: '100%',
+                        borderRadius: 1,
+                        backfaceVisibility: 'hidden', // 裏面が透けないようにする
+                        transform: 'rotateY(180deg)', // 裏面は初期状態で回転させて配置
+                        objectFit: 'cover',
+                    }}
+                />
+                
+                {/* カード表面 (フリップの表側) */}
+                <Box
+                    component="img"
+                    src={frontImage}
+                    alt={cardData?.name || "Revealed Card"}
+                    sx={{
+                        position: 'absolute',
+                        width: '100%',
+                        height: '100%',
+                        borderRadius: 1,
+                        backfaceVisibility: 'hidden',
+                        objectFit: 'cover',
+                        // 表面はデフォルトで回転0度
+                    }}
+                />
+            </Paper>
+        </Box>
+    );
+};
+
+export default OpenerCard;

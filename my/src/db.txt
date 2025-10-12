@@ -1,0 +1,26 @@
+// src/service/database/db.ts (修正・全文)
+
+import Dexie, { type Table } from 'dexie';
+import { type Pack } from '../../models/pack';
+// 💡 修正: db-types.ts からDBエンティティ型をインポート
+import { type DBCardPool, type DBDeck, type DBSetting } from '../../models/db-types'; 
+
+export class OmniTCGSimDB extends Dexie {
+  packs!: Table<Pack, string>; 
+  
+  cardPool!: Table<DBCardPool, string>;
+  decks!: Table<DBDeck, string>; // 💡 DBDeck型を使用
+  userSettings!: Table<DBSetting, string>; // 💡 userSettingsテーブルの追加
+
+  constructor() {
+    super('OmniTCGSimDB');
+    this.version(1).stores({
+      packs: '&packId, name, series', 
+      cardPool: '&cardId', 
+      decks: '&deckId', // デッキテーブル
+      userSettings: '&key', // 設定テーブル
+    });
+  }
+}
+
+export const db = new OmniTCGSimDB();

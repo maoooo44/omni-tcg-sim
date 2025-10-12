@@ -1,0 +1,131 @@
+// src/features/pack-opening/PackOpener.tsx (修正後全文)
+
+import React from 'react';
+
+import { usePackOpenerData } from './hooks/usePackOpenerData'; // [8]
+
+import {
+    Box, Typography, Select, MenuItem, FormControl, InputLabel,
+    Button, Alert, Paper, Grid, Divider
+} from '@mui/material'; // [8]
+
+import type { SelectChangeEvent } from '@mui/material'; // SelectChangeEventをインポート [8]
+
+import { useCardData } from '../../hooks/useCardData'; // 💡 追記: useCardDataをインポート [8]
+
+interface PackOpenerProps {
+    preselectedPackId?: string;
+}
+
+const PackOpener: React.FC<PackOpenerProps> = ({ preselectedPackId }) => { // [9]
+
+    // Hookから状態、ロジック、通貨情報を取得
+    const { // [9]
+        packs,
+        selectedPack,
+        setSelectedPack,
+        isLoading,
+        handleOpenPack,
+        lastOpenedResults,
+        coins,
+        purchaseError,
+        simulationWarning, // 💡 追記: 警告状態を取得
+    } = usePackOpenerData(preselectedPackId);
+
+    // 💡 追記: useCardDataからカード名取得関数を取得
+    const { getCardName } = useCardData(); // [9] [10]
+
+    if (isLoading) {
+        return (
+            <Typography>パックデータをロード中...</Typography>
+        );
+    }
+
+    // 💡 修正: SelectChangeEventから packId (string) を取り出し、setSelectedPackに渡す
+    const handlePackSelect = (event: SelectChangeEvent) => { // [11]
+        // イベントから選択された値（packId）を取得
+        const packId = event.target.value; // [11]
+        // Hookから受け取ったsetSelectedPackに packId (string) を渡す
+        setSelectedPack(packId); // [11]
+    };
+
+    // --- レンダリング ---
+    return (
+        <Box sx={{ p: 2 }}>
+            <Typography variant="h6" gutterBottom>
+                💰 **所持コイン:** {coins.toLocaleString()} G
+            </Typography>
+
+            {/* エラーメッセージ */}
+            {purchaseError && ( // [11]
+                <Alert severity="error" sx={{ mt: 2 }}>
+                    {purchaseError}
+                </Alert>
+            )}
+            
+            {/* 💡 新規追加: シミュレーション警告メッセージ */}
+            {simulationWarning && (
+                <Alert severity="warning" sx={{ mt: 2 }}>
+                    {simulationWarning}
+                </Alert>
+            )}
+
+            <Grid container spacing={3} alignItems="flex-end" sx={{ mt: 1, mb: 3 }}>
+                {/* 1. パック選択ドロップダウン */}
+                <Grid size={{xs:12, sm:6, md:4}}>
+                    <FormControl fullWidth>
+                        <InputLabel id="pack-select-label">選択パック</InputLabel>
+                        <Select
+                            labelId="pack-select-label"
+                            // selectedPackがnullの場合、MUI Selectは制御モードのため空文字列を渡す
+                            value={selectedPack?.packId || ''}
+                            onChange={handlePackSelect}
+                            label="選択パック"
+                        >
+                            {packs.map(pack => ( // [12]
+                                <MenuItem key={pack.packId} value={pack.packId}>
+                                    {pack.name} ({pack.cardsPerPack}枚, {pack.price}G)
+                                </MenuItem>
+                            ))}
+                        </Select>
+                    </FormControl>
+                </Grid>
+
+                {/* 2. 開封ボタン */}
+                <Grid size={{xs:12, sm:6, md:8}}>
+                    <Button
+                        variant="contained"
+                        color="primary"
+                        size="large"
+                        onClick={handleOpenPack}
+                        // パック未選択 or コイン不足で無効化
+                        disabled={!selectedPack || coins < (selectedPack?.price || 0)}
+                        sx={{ minWidth: 200 }}
+                    >
+                        {selectedPack ? `${selectedPack.price} G で ${selectedPack.name} を開封` : 'パックを選択'}
+                    </Button>
+                </Grid>
+            </Grid>
+            
+            <Divider sx={{ mb: 3 }} />
+
+            {/* 3. 開封結果表示エリア */}
+            {lastOpenedResults && lastOpenedResults.length > 0 && ( // [13]
+                <Paper elevation={3} sx={{ p: 3, mt: 3 }}>
+                    <Typography variant="h5" gutterBottom>開封結果</Typography>
+                    <Typography variant="body2" color="success.main" sx={{ mb: 2 }}>
+                        🎉 パックを開封しました！以下のカードを獲得しました。
+                    </Typography>
+                    {/* カード結果のリスト */}
+                    {lastOpenedResults.map((result, index) => ( // [13]
+                        <Typography key={index} variant="body1">
+                            *{getCardName(result.cardId)}* x {result.count}枚 ({result.cardId})
+                        </Typography>
+                    ))}
+                </Paper>
+            )}
+        </Box>
+    );
+};
+
+export default PackOpener;

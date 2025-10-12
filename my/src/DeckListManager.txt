@@ -1,0 +1,128 @@
+// src/features/deck-management/DeckListManager.tsx
+
+import React from 'react';
+import { useDeckList } from './hooks/useDeckList';
+// import { useDeckStore } from '../../stores/deckStore'; // 💡 不要になったため削除
+import { useNavigate } from '@tanstack/react-router'; 
+import { 
+    Box, Typography, Button, 
+    TableContainer, Table, TableHead, TableRow, TableCell, TableBody, Paper, Tooltip, Alert
+} from '@mui/material';
+import AddIcon from '@mui/icons-material/Add';
+import EditIcon from '@mui/icons-material/Edit';
+import DeleteIcon from '@mui/icons-material/Delete';
+
+// 💡 AppLayoutのルートパスに合わせることを想定
+const DECK_EDIT_PATH_PREFIX = '/user/decks'; 
+
+const DeckListManager: React.FC = () => {
+    const {
+        decks,
+        isLoading,
+        handleDeleteDeck,
+        calculateTotalCards
+    } = useDeckList();
+
+    // 🚨 修正: エラーの原因となっていた useDeckStore からのアクションの取得を削除
+    // const { startNewDeck, saveDeck, updateDeckInfo } = useDeckStore(state => ({
+    //     startNewDeck: state.startNewDeck,
+    //     saveDeck: state.saveDeck,
+    //     updateDeckInfo: state.updateDeckInfo,
+    // }));
+    
+    const navigate = useNavigate();
+
+    // 新規デッキ作成とナビゲーション
+    // 🚨 修正: startNewDeckを使わず、直接 'create' IDで編集画面に遷移
+    const handleCreateNewDeck = async () => {
+        // プロンプトは不要（編集画面で名前を入力する）
+        navigate({ 
+            to: `${DECK_EDIT_PATH_PREFIX}/$deckId`, 
+            params: { deckId: 'create' } 
+        });
+    };
+
+    return (
+        <Box sx={{ p: 2 }}>
+            <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 2 }}>
+                <Typography variant="h6">登録済みデッキ ({decks.length} 件)</Typography>
+                <Button 
+                    variant="contained" 
+                    color="primary" 
+                    startIcon={<AddIcon />}
+                    onClick={handleCreateNewDeck}
+                >
+                    新規デッキ作成
+                </Button>
+            </Box>
+
+            {/* ロード中の表示 */}
+            {isLoading ? (
+                <Typography>デッキデータをロード中...</Typography>
+            ) : decks.length === 0 ? (
+                <Alert severity="info">
+                    まだデッキが登録されていません。右上のボタンから新規作成してください。
+                </Alert>
+            ) : (
+                <TableContainer component={Paper}>
+                    <Table size="small">
+                        <TableHead>
+                            <TableRow>
+                                <TableCell>デッキ名</TableCell>
+                                <TableCell>カード枚数</TableCell>
+                                <TableCell>最終更新日</TableCell>
+                                <TableCell align="right">アクション</TableCell>
+                            </TableRow>
+                        </TableHead>
+                        <TableBody>
+                            {decks.map(deck => (
+                                <TableRow key={deck.deckId}>
+                                    <TableCell>
+                                        <Tooltip title={deck.description}>
+                                            <Typography variant="body1">{deck.name}</Typography>
+                                        </Tooltip>
+                                    </TableCell>
+                                    <TableCell>
+                                        {/* 総カード枚数を計算 */}
+                                        {calculateTotalCards(deck)} 枚
+                                    </TableCell>
+                                    <TableCell>
+                                        {new Date(deck.updatedAt).toLocaleDateString()}
+                                    </TableCell>
+                                    <TableCell align="right">
+                                        {/* 編集ボタン */}
+                                        <Button
+                                            variant="contained"
+                                            color="primary"
+                                            size="small"
+                                            startIcon={<EditIcon />}
+                                            sx={{ mr: 1 }}
+                                            onClick={() => navigate({ 
+                                                to: `${DECK_EDIT_PATH_PREFIX}/$deckId`, 
+                                                params: { deckId: deck.deckId } 
+                                            })}
+                                        >
+                                            編集
+                                        </Button>
+                                        {/* 削除ボタン */}
+                                        <Button
+                                            variant="outlined"
+                                            color="error"
+                                            size="small"
+                                            startIcon={<DeleteIcon />}
+                                            onClick={() => handleDeleteDeck(deck.deckId)}
+                                        >
+                                            削除
+                                        </Button>
+                                    </TableCell>
+                                </TableRow>
+                            ))}
+                        </TableBody>
+                    </Table>
+                </TableContainer>
+            )}
+        </Box>
+    );
+};
+
+export default DeckListManager;

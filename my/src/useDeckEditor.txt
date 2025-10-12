@@ -1,0 +1,125 @@
+// src/features/deck-management/hooks/useDeckEditor.ts
+
+import { useEffect, useState } from 'react';
+import { useDeckStore } from '../../../stores/deckStore';
+import { deckService } from '../../../services/deck-logic/deckService';
+import { useCardPoolStore } from '../../../stores/cardPoolStore';
+import { useShallow } from 'zustand/react/shallow';
+import { useNavigate } from '@tanstack/react-router'; 
+// import type { Deck } from '../../../models/deck';
+
+/**
+ * デッキ編集画面のロジック、データロード、保存処理を統合する Hook
+ * @param deckId - 編集対象のデッキID (新規作成の場合は 'create' など)
+ */
+export const useDeckEditor = (deckId: string) => {
+    const [isLoading, setIsLoading] = useState(true);
+    const [saveMessage, setSaveMessage] = useState<string | null>(null);
+    const navigate = useNavigate(); 
+
+    // 💡 Zustandストアから編集中のデッキデータとアクションを取得
+    const {
+        currentDeck,
+        loadDeckForEdit,
+        // 🚨 修正1: startNewDeck を削除
+        updateDeckInfo,
+        saveDeck,
+        deleteDeck: deleteDeckFromStore 
+    } = useDeckStore(useShallow(state => ({
+        currentDeck: state.currentDeck,
+        loadDeckForEdit: state.loadDeckForEdit,
+        // 🚨 修正1: startNewDeck を削除
+        updateDeckInfo: state.updateDeckInfo,
+        saveDeck: state.saveDeck,
+        deleteDeck: state.deleteDeck,
+    })));
+    
+    // 💡 カードプールストアから所有カード資産を取得
+    const ownedCards = useCardPoolStore(state => state.ownedCards);
+
+    // 1. 初期ロード / デッキ切り替えロジック
+    useEffect(() => {
+        setIsLoading(true);
+
+        if (deckId === 'create') {
+            // 新規作成モード
+            // ストア側で初期化された空のデッキが currentDeck に入っているはず
+            console.log("Starting new deck creation mode...");
+            // startNewDeck(); // 💡 startNewDeck がなくなれば、store側で currentDeck を初期値に保つ必要がある
+            setIsLoading(false);
+            return;
+        }
+
+        if (deckId) {
+            // 既存デッキのロード
+            deckService.getDeckById(deckId).then(existingDeck => {
+                if (existingDeck) {
+                    // 🚨 修正2: loadDeckForEditはDeckId (string) を引数に取るように修正
+                    loadDeckForEdit(existingDeck.deckId); 
+                    console.log(`Deck ${existingDeck.name} loaded.`);
+                } else {
+                    alert(`ID: ${deckId} のデッキは見つかりませんでした。`);
+                    // 見つからなかった場合は、リスト画面に戻す
+                    navigate({ to: '/user/decks' });
+                }
+                setIsLoading(false);
+            });
+        }
+        
+        // 🚨 依存配列から startNewDeck を削除
+    }, [deckId, loadDeckForEdit, navigate]);
+
+    // 2. デッキ保存ロジック
+    const handleSaveDeck = async () => {
+        if (!currentDeck.name.trim()) {
+            alert('デッキ名を入力してください。');
+            return;
+        }
+
+        try {
+            await saveDeck(); // 💡 storeのアクションを呼び出し
+            setSaveMessage('デッキを保存しました！');
+            
+            // 💡 新規作成後、URLを実際のIDに変更
+            if (deckId === 'create') {
+                 // 成功時に新しいIDでURLを置き換える
+                 navigate({ to: '/user/decks/$deckId', params: { deckId: currentDeck.deckId }, replace: true });
+            }
+            setTimeout(() => setSaveMessage(null), 3000);
+        } catch (error) {
+            setSaveMessage('保存に失敗しました。');
+            console.error('Save failed:', error);
+        }
+    };
+    
+    // 3. デッキ削除ロジック
+    const handleDeleteDeck = async () => {
+        if (!window.confirm(`デッキ「${currentDeck.name}」を完全に削除しますか？`)) {
+            return;
+        }
+        try {
+            await deckService.deleteDeck(currentDeck.deckId); // 💡 サービスから削除
+            
+            // ストアのリセットとリストへのナビゲーション
+            deleteDeckFromStore(currentDeck.deckId); // 💡 ストアの編集状態をリセット
+            navigate({ to: '/user/decks' });
+        } catch (error) {
+            alert('デッキの削除に失敗しました。');
+            console.error(error);
+        }
+    };
+
+    // 4. (その他のロジック: カード数計算、所有数チェックなど)
+    // ...
+
+    return {
+        isLoading,
+        saveMessage,
+        currentDeck,
+        ownedCards, // カードプールとの比較に使用
+        handleSaveDeck,
+        handleDeleteDeck,
+        updateDeckInfo,
+        // ... (その他のアクションを返す)
+    };
+};

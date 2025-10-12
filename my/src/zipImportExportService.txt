@@ -1,0 +1,175 @@
+// src/services/data-import-export/zipImportExportService.ts
+
+import JSZip from 'jszip';
+import { packService } from '../pack-logic/packService';
+import { deckService } from '../deck-logic/deckService';
+import { useUserDataStore } from '../../stores/userDataStore';
+import { useCardPoolStore } from '../../stores/cardPoolStore';
+import type { Pack } from '../../models/pack'; // 型定義をインポート
+import type { Deck } from '../../models/deck'; // 型定義をインポート
+
+/**
+ * データのコレクションとZIPファイルの生成、およびインポート後の統合を担うサービス
+ */
+export const zipImportExportService = {
+    
+    // ... collectAllData の実装 (変更なし) ...
+    async collectAllData(): Promise<Record<string, any>> {
+        const packs = await packService.getAllPacks();
+        const decks = await deckService.getAllDecks();
+        const userDataState = useUserDataStore.getState();
+        const cardPoolState = useCardPoolStore.getState();
+
+        const jsonCompatibleDecks = decks.map(d => ({
+            ...d,
+            mainDeck: Array.from(d.mainDeck.entries()),
+            sideDeck: Array.from(d.sideDeck.entries()),
+            extraDeck: Array.from(d.extraDeck.entries()),
+        }));
+        
+        const jsonCompatibleCardPool = {
+            ...cardPoolState,
+            ownedCards: Array.from(cardPoolState.ownedCards.entries()),
+        };
+
+        return {
+            packs: packs,
+            decks: jsonCompatibleDecks,
+            user_data: {
+                userData: userDataState,
+                cardPool: jsonCompatibleCardPool,
+            },
+            metadata: { 
+                exportedAt: new Date().toISOString(),
+                version: "1.0.0" 
+            },
+        };
+    },
+
+    // ... exportDataToZip の実装 (変更なし) ...
+    async exportDataToZip(): Promise<Blob> {
+        const allData = await this.collectAllData();
+        const zip = new JSZip();
+        
+        zip.file("packs.json", JSON.stringify(allData.packs, null, 2));
+        zip.file("decks/decks.json", JSON.stringify(allData.decks, null, 2));
+        zip.file("user_data/userData.json", JSON.stringify(allData.user_data.userData, null, 2));
+        zip.file("user_data/cardPool.json", JSON.stringify(allData.user_data.cardPool, null, 2));
+        zip.file("metadata.json", JSON.stringify(allData.metadata, null, 2));
+
+        const zipBlob = await zip.generateAsync({ type: "blob" });
+        return zipBlob;
+    },
+
+    // ... importDataFromZip の実装 (変更なし) ...
+    async importDataFromZip(zipFile: File): Promise<Record<string, any>> {
+        const zip = new JSZip();
+        await zip.loadAsync(zipFile);
+
+        const loadedData: Record<string, any> = {};
+
+        const filePromises = [
+            zip.file("packs.json")?.async("string").then(content => {
+                if (content) loadedData.packs = JSON.parse(content);
+            }),
+            zip.file("decks/decks.json")?.async("string").then(content => {
+                if (content) loadedData.decks = JSON.parse(content);
+            }),
+            zip.file("user_data/userData.json")?.async("string").then(content => {
+                if (content) loadedData.userData = JSON.parse(content);
+            }),
+            zip.file("user_data/cardPool.json")?.async("string").then(content => {
+                if (content) loadedData.cardPool = JSON.parse(content);
+            }),
+        ];
+
+        await Promise.all(filePromises);
+
+        // 💡 Map構造への復元処理
+        if (loadedData.decks) {
+            loadedData.decks = loadedData.decks.map((d: any) => ({
+                ...d,
+                mainDeck: new Map(d.mainDeck),
+                sideDeck: new Map(d.sideDeck),
+                extraDeck: new Map(d.extraDeck),
+            }));
+        }
+        
+        if (loadedData.cardPool) {
+            loadedData.cardPool.ownedCards = new Map(loadedData.cardPool.ownedCards);
+        }
+
+        return loadedData;
+    },
+
+    // --------------------------------------------------
+    // 💡 データ統合 (オーケストレーション) ロジック
+    // --------------------------------------------------
+
+    /**
+     * 解析済みのインポートデータを受け取り、各サービス/ストアに書き込む。
+     * @param importedData - importDataFromZipの結果 (Map構造に復元済み)
+     * @returns 統合結果のサマリー
+     */
+    async integrateImportedData(importedData: Record<string, any>): Promise<string> {
+        let summary = "ZIPインポート結果:\n";
+        
+        // 1. ユーザーデータ (coins, mode, cheatCount) の上書き
+        if (importedData.userData) {
+            useUserDataStore.getState().importUserData(importedData.userData);
+            summary += "- ユーザーデータ: 上書き完了。\n";
+        } else {
+             summary += "- ユーザーデータ: データがZIPに存在しませんでした。\n";
+        }
+
+        // 2. パックデータの追加 (衝突回避)
+        if (importedData.packs && importedData.packs.length > 0) {
+            const result = await packService.importPacks(importedData.packs as Pack[]);
+            summary += `- パック: ${result.importedCount}件追加されました。`;
+            if (result.skippedIds.length > 0) {
+                summary += ` (${result.skippedIds.length}件のID衝突をスキップ。)\n`;
+            } else {
+                summary += "\n";
+            }
+        } else {
+            summary += "- パック: データがZIPに存在しませんでした。\n";
+        }
+
+        // 3. デッキデータの追加 (ID衝突時は自動リネーム)
+        if (importedData.decks && importedData.decks.length > 0) {
+            const result = await deckService.importDecks(importedData.decks as Deck[]);
+            summary += `- デッキ: ${result.importedCount}件追加されました。`;
+            if (result.renamedCount > 0) {
+                summary += ` (${result.renamedCount}件のID衝突を自動リネーム。)\n`;
+            } else {
+                summary += "\n";
+            }
+        } else {
+            summary += "- デッキ: データがZIPに存在しませんでした。\n";
+        }
+
+        // 4. カードプールの全体上書き
+        if (importedData.cardPool && importedData.cardPool.ownedCards instanceof Map) {
+             // CardPoolストアのimportアクションはDB上書きも含んでいる
+            await useCardPoolStore.getState().importCardPool(importedData.cardPool.ownedCards);
+            summary += `- カードプール: ${importedData.cardPool.ownedCards.size}種類のカードで完全に上書きされました。\n`;
+        } else {
+            summary += "- カードプール: データがZIPに存在しませんでした。\n";
+        }
+
+        return summary;
+    },
+    
+    /**
+     * 💡 統合されたエクスポート/インポートフローの公開関数
+     */
+    exportData: async () => {
+        return zipImportExportService.exportDataToZip();
+    },
+
+    importData: async (zipFile: File) => {
+        const loadedData = await zipImportExportService.importDataFromZip(zipFile);
+        const resultSummary = await zipImportExportService.integrateImportedData(loadedData);
+        return resultSummary;
+    }
+};

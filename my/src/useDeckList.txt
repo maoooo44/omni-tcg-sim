@@ -1,0 +1,70 @@
+// src/features/deck-management/hooks/useDeckList.ts
+
+import { useState, useEffect } from 'react';
+import type { Deck } from '../../../models/deck';
+import { deckService } from '../../../services/deck-logic/deckService'; // 💡 サービスをインポート
+
+/**
+ * デッキ一覧のロード、状態管理、削除などの操作を担うカスタム Hook
+ */
+export const useDeckList = () => {
+    // 💡 Deck[] は Map<string, number> を含むため、useStateの型として定義
+    const [decks, setDecks] = useState<Deck[]>([]);
+    const [isLoading, setIsLoading] = useState(true);
+
+    const loadDecks = async () => {
+        setIsLoading(true);
+        try {
+            // 💡 deckServiceから全デッキをロード
+            const allDecks = await deckService.getAllDecks();
+            setDecks(allDecks);
+        } catch (error) {
+            console.error('Failed to load decks:', error);
+            setDecks([]);
+        } finally {
+            setIsLoading(false);
+        }
+    };
+
+    // 初期ロード
+    useEffect(() => {
+        loadDecks();
+    }, []);
+
+    /**
+     * デッキを削除し、リストを再読み込みする
+     * @param deckId - 削除対象のデッキID
+     */
+    const handleDeleteDeck = async (deckId: string) => {
+        if (!window.confirm("このデッキを本当に削除しますか？")) {
+            return;
+        }
+        try {
+            await deckService.deleteDeck(deckId);
+            // 削除が成功したらリストを更新 (ローカルでフィルタリング)
+            setDecks(prev => prev.filter(deck => deck.deckId !== deckId));
+            console.log(`Deck ${deckId} deleted.`);
+        } catch (error) {
+            alert("デッキの削除に失敗しました。");
+            console.error(error);
+        }
+    };
+
+    // 総カード枚数を計算するヘルパー関数
+    const calculateTotalCards = (deck: Deck): number => {
+        // 💡 Mapのvaluesを合計
+        const main = Array.from(deck.mainDeck.values()).reduce((sum, count) => sum + count, 0);
+        const side = Array.from(deck.sideDeck.values()).reduce((sum, count) => sum + count, 0);
+        const extra = Array.from(deck.extraDeck.values()).reduce((sum, count) => sum + count, 0);
+        return main + side + extra;
+    };
+
+
+    return {
+        decks,
+        isLoading,
+        handleDeleteDeck,
+        calculateTotalCards,
+        loadDecks,
+    };
+};
