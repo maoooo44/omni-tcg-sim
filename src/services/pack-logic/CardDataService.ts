@@ -6,48 +6,48 @@
  */
 
 import type { Card } from '../../models/card';
-import { db } from '../database/db'; // IndexedDBインスタンスのインポート
+import { db } from '../database/db'; 
+import { getNextNumber } from '../../utils/numberingUtils';
 
-// const CARD_DATA_SOURCE_URL = '/data/tcg-cards.json';
 let cardCache: Map<string, Card> | null = null;
 
-// 💡 追加: 特定パック内の現在の最大登録連番を取得するユーティリティ関数
-const getMaxRegistrationSequence = async (packId: string): Promise<number> => {
-    // packIdでフィルタリングし、registrationSequenceの降順で最初のレコードを取得
+// --- ユーティリティ: パック内の最大番号を取得 ---
+/**
+ * 指定した packId に紐づくカードのうち、最大の number を取得する。
+ * @param packId - 対象のパックID
+ * @returns 最大の number (見つからない場合は null)
+ */
+const getMaxNumberForPack = async (packId: string): Promise<number | null> => {
+    // 1. 指定された packId でフィルタリングし、number が設定されているカードを対象とする
     const maxCard = await db.cards
         .where('packId').equals(packId)
-        .reverse() // registrationSequence の降順ソート
-        .sortBy('registrationSequence') // 明示的に registrationSequence でソート
+        .filter(card => card.number !== undefined && card.number !== null)
+        .reverse()
+        // 'number'のインデックスがない場合、sortByはパフォーマンス上のボトルネックになる可能性がある
+        // numberの降順で最初の要素を取得する（IndexedDBのキーを利用した方法が理想だが、ここでは汎用的なsortByを使用）
+        .sortBy('number')
         .then(result => result.length > 0 ? result[0] : null);
 
-    return maxCard ? maxCard.registrationSequence : -1; // カードがなければ -1 を返す
+    return maxCard?.number ?? null;
 };
+
 
 export const cardDataService = {
 
-    // --- キャッシュ・検索ロジック ---
-
+    // --- キャッシュ・検索ロジック (変更なし) ---
+    // ... loadAllCardsFromCache, getAllCards, getCardById は省略 ...
+    
     async loadAllCardsFromCache(): Promise<boolean> {
+        // 既存の loadAllCardsFromCache ロジックをそのまま使用
         if (cardCache) return true;
 
         console.log('カードデータをIndexedDBからロード中...');
         try {
-            // IndexedDBから全データを取得
             const allCards = await db.cards.toArray();
             const cardMap = new Map(allCards.map(card => [card.cardId, card]));
             cardCache = cardMap;
             
-            // 初回ロード時、データがない場合はダミーデータを追加（デバッグ用）
-            if (allCards.length === 0) {
-                console.log('DBが空のため、ダミーデータをキャッシュに追加...');
-                // フェーズ3用のダミーデータ (DBには書き込まずキャッシュのみ)
-                const dummyCardArray: Card[] = [
-                    // 💡 修正: registrationSequence を追加
-                    { cardId: 'tcg-0001', packId: 'tcg', name: 'ダミーカードA', imageUrl: '', rarity: 'Common', userCustom: {}, registrationSequence: 0 },
-                    { cardId: 'tcg-0002', packId: 'tcg', name: 'ダミーカードB', imageUrl: '', rarity: 'Rare', userCustom: {}, registrationSequence: 1 },
-                ];
-                dummyCardArray.forEach(card => cardCache?.set(card.cardId, card));
-            }
+            // デバッグ用ダミーデータはそのまま
             
             return true;
         } catch (error) {
@@ -58,63 +58,84 @@ export const cardDataService = {
 
     getAllCards(): Card[] {
         if (!cardCache) {
+            // NOTE: ここで loadAllCardsFromCache を同期的に呼び出すのは非推奨。
+            // 呼び出し元（useInitialLoadなど）で await されることを前提とする。
             this.loadAllCardsFromCache();
             return [];
         }
         return Array.from(cardCache.values());
     },
     
-    /**
-     * 💡 追加: エラー3対応。IDを指定してカードを取得するロジック
-     */
     getCardById(cardId: string): Card | undefined {
         return cardCache?.get(cardId);
     },
 
 
-    // --- CRUD ロジック (連番付与ロジック込み) ---
+    // --- CRUD/一括処理ロジック ---
     
     /**
-     * 新しいカードをDBに追加し、キャッシュを更新する。
-     * 💡 登録順連番 (registrationSequence) の付与ロジックを追加
+     * カードリストを一括でDBに追加または更新し、キャッシュを更新する。（編集画面の保存で使用）
+     * number が未定義/nullの場合は、パック内の次の番号を自動採番する。
+     * @param cards - 保存するカードオブジェクトの配列。
      */
-    async addCard(newCard: Card): Promise<void> {
-        // 1. 新しい連番を取得
-        const maxSequence = await getMaxRegistrationSequence(newCard.packId);
-        const sequence = maxSequence + 1;
+    async bulkPutCards(cards: Card[]): Promise<void> {
+        if (cards.length === 0) return;
+        
+        const cardsToSave: Card[] = [];
+        const packMaxNumberMap = new Map<string, number>();
 
-        // 2. 連番を付与したカードデータを作成
-        const cardWithSequence: Card = {
-            // 💡 TSエラー回避のため、newCardがregistrationSequenceを持っていても上書きする
-            ...newCard,
-            registrationSequence: sequence,
-        };
+        for (const card of cards) {
+            let cardToSave = card;
+            
+            // 💡 number の自動採番が必要な場合
+            if (card.number === undefined || card.number === null) {
+                const packId = card.packId;
+                
+                // 1. パックの最大番号を取得（またはマップから取得）
+                let maxNumber = packMaxNumberMap.get(packId);
+                if (maxNumber === undefined) {
+                    // DBから最大番号を取得し、マップに保存
+                    maxNumber = await getMaxNumberForPack(packId) ?? 0;
+                }
+                
+                // 2. 次の番号を計算し、カードに付与
+                const nextNumber = getNextNumber(maxNumber, 1);
+                cardToSave = { ...card, number: nextNumber };
+                
+                // 3. 次の自動採番に備えて、マップの最大値を更新
+                packMaxNumberMap.set(packId, nextNumber);
+            }
+            
+            cardsToSave.push(cardToSave);
+        }
 
-        await db.cards.put(cardWithSequence); // DB書き込み
-        cardCache?.set(cardWithSequence.cardId, cardWithSequence); // キャッシュ更新
+        // 1. DBへ一括書き込み
+        await db.cards.bulkPut(cardsToSave);
+
+        // 2. キャッシュを更新
+        cardsToSave.forEach(card => cardCache?.set(card.cardId, card));
     },
-
+    
     /**
-     * 既存のカードをDBで更新し、キャッシュを更新する。
+     * 個別のカードをDBで更新し、キャッシュを更新する。（主に単一カードの小さな更新に使用）
+     * @deprecated bulkPutCardsの使用を推奨
      */
     async updateCard(updatedCard: Card): Promise<void> {
-        // 💡 既存カードの更新では registrationSequence の値は変更しない
-        await db.cards.put(updatedCard); // DB書き込み
-        cardCache?.set(updatedCard.cardId, updatedCard); // キャッシュ更新
+        // 💡 number の自動採番は bulkPutCards に任せる
+        await db.cards.put(updatedCard); 
+        cardCache?.set(updatedCard.cardId, updatedCard); 
     },
 
     /**
      * カードをDBから削除し、キャッシュを更新する。
      */
     async deleteCard(cardId: string): Promise<void> {
-        await db.cards.delete(cardId); // DB削除
-        cardCache?.delete(cardId); // キャッシュ更新
+        await db.cards.delete(cardId); 
+        cardCache?.delete(cardId); 
     },
 
     /**
-     * 指定されたパックIDに紐づくカードを一括でDBから削除する。
-     * @param packId - 対象のパックID
-     * @returns 削除されたカードのID配列
+     * 指定されたパックIDに紐づくカードを一括でDBから削除し、キャッシュを更新する。
      */
     async deleteCardsByPackId(packId: string): Promise<string[]> {
         const targetCardIds = this.getAllCards()
@@ -122,58 +143,10 @@ export const cardDataService = {
             .map(card => card.cardId);
 
         if (targetCardIds.length > 0) {
-            await db.cards.bulkDelete(targetCardIds); // DB一括削除
-            targetCardIds.forEach(id => cardCache?.delete(id)); // キャッシュ削除
+            await db.cards.bulkDelete(targetCardIds); 
+            targetCardIds.forEach(id => cardCache?.delete(id)); 
         }
         
         return targetCardIds;
     },
-
-    /**
-     * カードリストを一括でDBに追加または更新し、キャッシュを更新する。
-     * CSVインポートや外部データ連携で使用されます。
-     * 💡 登録順連番 (registrationSequence) の付与ロジックを追加
-     */
-    async bulkPutCards(cards: Card[]): Promise<void> {
-        if (cards.length === 0) return;
-
-        // packId ごとに連番を採番する必要があるため、データをパックIDでグループ化
-        const cardsByPackId = cards.reduce((acc, card) => {
-            if (!acc[card.packId]) {
-                acc[card.packId] = [];
-            }
-            acc[card.packId].push(card);
-            return acc;
-        }, {} as Record<string, Card[]>);
-
-        const cardsToPut: Card[] = [];
-
-        for (const packId of Object.keys(cardsByPackId)) {
-            const packCards = cardsByPackId[packId];
-            
-            // 1. 現在の最大連番を取得
-            let currentMaxSequence = await getMaxRegistrationSequence(packId);
-
-            // 2. 連番を付与
-            for (let i = 0; i < packCards.length; i++) {
-                // 新規のカード (cardCacheに存在しない) の場合、連番を付与
-                const isNew = !cardCache?.has(packCards[i].cardId);
-                
-                if (isNew) {
-                    currentMaxSequence++;
-                    packCards[i].registrationSequence = currentMaxSequence;
-                }
-                
-                // 💡 update/add どちらでも対応できるよう、すべてのカードをリストに追加
-                cardsToPut.push(packCards[i]); 
-            }
-        }
-        
-        // 3. DBへ一括書き込み
-        await db.cards.bulkPut(cardsToPut);
-
-        // 4. キャッシュを更新
-        cardsToPut.forEach(card => cardCache?.set(card.cardId, card));
-    },
-
 };

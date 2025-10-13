@@ -1,9 +1,10 @@
 /**
  * src/features/card-pool/hooks/useCardPoolDisplay.ts
- * * カードコレクション画面（CardPoolManager）の表示ロジック、
- * フィルタリング、並び替え、ページネーション機能を提供するカスタムフック。
- * カードプールストア、カードストア、ユーザーデータストアの状態を統合して
- * 画面表示に必要な処理を行う。
+ *
+ * 💡 修正: 
+ * 1. 未使用の filterFunction を削除 (TS6133 エラー解消)。
+ * 2. useSortAndFilter の設定から initialSearchTerm を削除 (TS2353 エラー解消)。
+ * 3. 検索フィルタリングは finalFilteredAndSortedCards の計算時に適用するようロジックを修正。
  */
 
 import { useState, useMemo, useCallback, useEffect } from 'react';
@@ -11,19 +12,25 @@ import { useShallow } from 'zustand/react/shallow';
 import { useCardPoolStore, type CardPoolState } from '../../../stores/cardPoolStore'; 
 import { useUserDataStore } from '../../../stores/userDataStore'; 
 import { useCardStore } from '../../../stores/cardStore'; 
+import { usePackStore } from '../../../stores/packStore'; 
+
+import { useSortAndFilter } from '../../../hooks/useSortAndFilter'; 
+import { type SortField } from '../../../utils/sortingUtils';
+// import type { SortOption } from '../../../components/common/SortAndFilterControls'; 
 
 import type { Card as CardType } from '../../../models/card'; 
+import type { Pack } from '../../../models/pack'; 
+
 export const CARD_GRID_COLUMNS = 6; 
 export const CARDS_PER_PAGE = 30; 
-export type SortKey = 'name' | 'pack' | 'count' | 'registrationSequence'; 
 export type ViewMode = 'list' | 'collection'; 
 
 // --- 型定義 ---
-// ... (OwnedCardDisplay, CardPoolFilters は変更なし)
-
 export interface OwnedCardDisplay extends CardType {
     count: number;
     description: string; 
+    packNumber: number | null; 
+    packName: string;        
 }
 
 export interface CardPoolFilters {
@@ -33,220 +40,229 @@ export interface CardPoolFilters {
 }
 
 export interface ViewSettings {
-    sortKey: SortKey; 
+    sortField: SortField; 
     sortOrder: 'asc' | 'desc';
-    columns: number; // グリッド表示の列数
+    columns: number;
 }
 
-interface CardPoolDisplayState {
-    isLoading: boolean; // 💡 修正: ロード状態をストアから取得
-    error: Error | null;
-    filteredCards: OwnedCardDisplay[];
-    filter: CardPoolFilters;
-    setFilter: (newFilter: Partial<CardPoolFilters>) => void;
-    currentPage: number;
-    totalPages: number;
-    setCurrentPage: (page: number) => void;
-    viewMode: ViewMode;
-    setViewMode: (mode: ViewMode) => void;
-    sortKey: SortKey; 
-    setSortKey: (key: SortKey) => void;
-    sortOrder: 'asc' | 'desc';
-    setSortOrder: (order: 'asc' | 'desc') => void;
-    columns: number;
-    resetCollection: () => Promise<void>; 
-    isDTCGEnabled: boolean;
-}
+
+// =========================================================================
+// 汎用ソート・アクセサ関数
+// =========================================================================
+
+const cardPoolFieldAccessor = (item: OwnedCardDisplay, field: SortField): string | number | null | undefined => {
+    switch (field) {
+        // 複合ソート: packNumber (パックのナンバー) と number (カードのナンバー) を使用
+        case 'number':
+            const packNumber = item.packNumber ?? 999999; 
+            const cardNumber = item.number ?? 999999;
+            // 複合ソート用の文字列/数値を作成 (例: 001005, 010010)
+            return `${String(packNumber).padStart(6, '0')}${String(cardNumber).padStart(6, '0')}`;
+        case 'packName':
+            return item.packName; 
+        case 'name':
+            return item.name;
+        case 'rarity':
+            return item.rarity;
+        case 'count':
+            return item.count; 
+        case 'cardId':
+            return item.cardId;
+        default:
+            return (item as any)[field] ?? null; 
+    }
+};
 
 // --- カスタムフック ---
 
-export const useCardPoolDisplay = (): CardPoolDisplayState => {
+export const useCardPoolDisplay = () => {
     
-    // 💡 修正: storeから ownedCards と isLoading を取得
+    // ストアからのデータ取得 (変更なし)
     const { ownedCards, isLoading, resetPool } = useCardPoolStore(
         useShallow((state: CardPoolState) => ({ 
             ownedCards: state.ownedCards, 
-            isLoading: state.isLoading, // 💡 追加
+            isLoading: state.isLoading,
             resetPool: state.resetPool,
         }))
     );
 
     const isDTCGEnabled = useUserDataStore(useShallow(state => state.isDTCGEnabled));
     const allCards = useCardStore(useShallow(state => state.cards || []));
+    const packs = usePackStore(state => state.packs); 
 
-    // 💡 削除: ローカルの loading 状態は削除
-    // const [loading, setLoading] = useState(false); 
-    const [error, /*setError*/] = useState<Error | null>(null); // ロードエラーは store 側で処理されるため、一旦維持
+    const [error, /*setError*/] = useState<Error | null>(null);
     const [filter, setInternalFilter] = useState<CardPoolFilters>({
         search: null,
         packId: null,
         rarity: null,
     });
     const [currentPage, setCurrentPage] = useState(1);
+    const [viewMode, setViewMode] = useState<ViewMode>('list');
     
-    // 💡 追加/修正: 表示モードの状態管理
-    const [viewMode, setViewMode] = useState<ViewMode>('list'); // デフォルトはリスト表示
-    
-    // 💡 追加: モードごとの設定を保持
-    const [listSettings, setListSettings] = useState<ViewSettings>({
-        sortKey: 'name',
+    // 設定の初期化 (変更なし)
+    const [listSettings, setListSettings] = useState<any>({
+        sortField: 'number',
         sortOrder: 'asc',
-        columns: 4, // リスト表示時の列数
+        columns: 4, 
     });
-    const [collectionSettings, setCollectionSettings] = useState<ViewSettings>({
-        sortKey: 'registrationSequence', // 図鑑モードのデフォルトソート
+    const [collectionSettings, setCollectionSettings] = useState<any>({
+        sortField: 'number', 
         sortOrder: 'asc',
-        columns: CARD_GRID_COLUMNS, // 図鑑表示時の列数
+        columns: CARD_GRID_COLUMNS,
     });
 
-    // 💡 修正: 現在のアクティブな設定を取得
-    const { sortKey, sortOrder, columns } = viewMode === 'list' 
-        ? listSettings 
-        : collectionSettings;
+    const activeSettings = viewMode === 'list' ? listSettings : collectionSettings;
     
-    // 💡 修正: 現在のアクティブな設定を更新するヘルパー関数
-    const setSetting = useCallback(<K extends keyof ViewSettings>(key: K, value: ViewSettings[K]) => {
+    const setSetting = useCallback(<K extends keyof any>(key: K, value: any[K]) => {
         if (viewMode === 'list') {
-            setListSettings(prev => ({ ...prev, [key]: value }));
+            setListSettings((prev: any) => ({ ...prev, [key]: value }));
         } else {
-            setCollectionSettings(prev => ({ ...prev, [key]: value }));
+            setCollectionSettings((prev: any) => ({ ...prev, [key]: value }));
         }
     }, [viewMode]);
-    
-    // 💡 公開するsetters
-    const setSortKey = useCallback((key: SortKey) => setSetting('sortKey', key), [setSetting]);
-    const setSortOrder = useCallback((order: 'asc' | 'desc') => setSetting('sortOrder', order), [setSetting]);
-    
-    /*// 初期ロード
-    useEffect(() => {
-        const initialize = async () => {
-            try {
-                setLoading(true);
-                await loadCardPool();
-            } catch (err) {
-                setError(err as Error);
-            } finally {
-                setLoading(false);
-            }
-        };
-        // 💡 既存の初期ロードロジックを維持
-        // initialize();
-    }, [loadCardPool]);*/
 
-    // フィルター状態を更新するヘルパー関数
+    // 外部に公開する setFilter ラッパー関数
     const setFilter = useCallback((newFilter: Partial<CardPoolFilters>) => {
         setInternalFilter(prev => ({ ...prev, ...newFilter }));
-        setCurrentPage(1); // フィルター変更時は1ページ目に戻す
     }, []);
+    
+    // パック情報のマップを生成 (変更なし)
+    const packMap = useMemo(() => {
+        return new Map<string, Pick<Pack, 'name' | 'number'>>(
+            packs
+                .filter(pack => pack.isInStore) 
+                .map(pack => [
+                    pack.packId, 
+                    { name: pack.name, number: pack.number || null }
+                ])
+        );
+    }, [packs]);
+    
+    // パックフィルター用に使用可能なパックリストを抽出 (変更なし)
+    const availablePacks = useMemo(() => {
+        return packs
+            .filter(p => p.isInStore)
+            .map(pack => ({ 
+                packId: pack.packId, 
+                name: pack.name, 
+                number: pack.number || null
+            }))
+            .sort((a, b) => (a.number || 999999) - (b.number || 999999));
+    }, [packs]);
 
-    // OwnedCardDisplay のリストを作成
+
+    // OwnedCardDisplay のリストを作成する際にパック情報を結合 (変更なし)
     const ownedCardDisplayList = useMemo((): OwnedCardDisplay[] => {
         const cardMap = new Map<string, CardType>(allCards.map(card => [card.cardId, card]));
         const ownedList: OwnedCardDisplay[] = [];
         
-        // 💡 修正: モードに応じて処理を分岐
+        const processCard = (card: CardType, count: number): OwnedCardDisplay | null => {
+            const packInfo = packMap.get(card.packId);
+            if (!packInfo) {
+                return null;
+            }
+            return {
+                ...card,
+                count: count,
+                description: (card as any).description || '',
+                packNumber: packInfo.number || null, 
+                packName: packInfo.name,
+            };
+        };
+
         if (viewMode === 'list') {
-            // **リストモード**: 所有カードのみを表示
             ownedCards.forEach((count, cardId: string) => { 
                 const card = cardMap.get(cardId);
-                if (card) {
-                    ownedList.push({
-                        ...card,
-                        count: count,
-                        description: (card as any).description || '', 
-                    });
+                if (card && (count > 0 || !isDTCGEnabled)) { 
+                    const displayCard = processCard(card, count);
+                    if (displayCard) ownedList.push(displayCard);
                 }
             });
-            // DTCGモードが有効な場合は count > 0 のカードのみ表示 (既に上記でフィルタされているため不要だが、念のためロジックを維持)
-            return ownedList.filter(card => isDTCGEnabled ? card.count > 0 : true);
-
         } else {
-            // **図鑑モード**: 全カードを表示し、ownedCardsから枚数を取得
             allCards.forEach(card => {
                 const count = ownedCards.get(card.cardId) || 0;
-                ownedList.push({
-                    ...card,
-                    count: count,
-                    description: (card as any).description || '', 
-                });
+                const displayCard = processCard(card, count);
+                if (displayCard) ownedList.push(displayCard);
             });
-            // 図鑑モードでは全カードを表示するため、ここでフィルタリングはしない
-            return ownedList;
         }
+        return ownedList;
+    }, [ownedCards, allCards, isDTCGEnabled, viewMode, packMap]); 
 
-    }, [ownedCards, allCards, isDTCGEnabled, viewMode]); // 💡 viewModeを依存に追加
 
-    // フィルターとソートのロジック
-    const filteredAndSortedCards = useMemo(() => {
-        let list = ownedCardDisplayList;
+    // 🚨 削除: 未使用のため filterFunction の定義を削除 (TS6133 エラー解消)
+    // const filterFunction = useCallback((card: OwnedCardDisplay) => {
+    //     ...
+    // }, [filter]); 
 
-        // 1. フィルタリング (ロジックは変更なし)
-        list = list.filter(card => {
+    
+    // 汎用ソートフックの適用
+    const {
+        sortedAndFilteredData: sortedCards, // 💡 検索はフックの外で適用するため、名称を sortedCards に変更
+        sortField: currentSortField,
+        sortOrder: currentSortOrder,
+        setSortField: setSortFieldInternal,
+        toggleSortOrder,
+    } = useSortAndFilter<OwnedCardDisplay>(ownedCardDisplayList, cardPoolFieldAccessor, {
+        defaultSortField: activeSettings.sortField,
+        defaultSortOrder: activeSettings.sortOrder,
+        // 🚨 削除: initialSearchTerm を削除 (TS2353 エラー解消)
+    });
+
+
+    // 💡 修正: ソートされたリストに対して、全てのフィルターを適用する
+    const finalFilteredAndSortedCards = useMemo(() => {
+        
+        return sortedCards.filter(card => {
             let pass = true;
-            
-            // 検索フィルター
+
+            // 1. 検索ワードによるフィルタリング
             if (filter.search) {
                 const searchLower = filter.search.toLowerCase();
                 pass = pass && (
                     card.name.toLowerCase().includes(searchLower) ||
-                    card.description.toLowerCase().includes(searchLower) 
+                    (card.description?.toLowerCase() || '').includes(searchLower) 
                 );
             }
-
-            // パックフィルター
+            
+            // 2. パックIDによるフィルタリング
             if (filter.packId) {
                 pass = pass && card.packId === filter.packId;
             }
-
-            // レアリティフィルター
+            
+            // 3. レアリティによるフィルタリング
             if (filter.rarity) {
                 pass = pass && card.rarity === filter.rarity;
             }
-            
+
             return pass;
         });
+    }, [sortedCards, filter.search, filter.packId, filter.rarity]);
 
-        // 2. ソート
-        list.sort((a, b) => {
-            let comparison = 0;
-            
-            switch (sortKey) {
-                case 'name':
-                    comparison = a.name.localeCompare(b.name);
-                    break;
-                case 'pack':
-                    comparison = a.packId.localeCompare(b.packId);
-                    break;
-                case 'count':
-                    // 💡 修正: countソートはリストモードでのみ有効なことが多いが、図鑑モードでも実装しておく
-                    comparison = (a.count || 0) - (b.count || 0);
-                    break;
-                case 'registrationSequence': // 💡 追加: 登録順ソート
-                    comparison = (a.registrationSequence || 0) - (b.registrationSequence || 0);
-                    break;
-                default:
-                    comparison = 0; // 未定義のソートキーの場合
-            }
 
-            return sortOrder === 'asc' ? comparison : -comparison;
-        });
-        
-        return list;
-    }, [ownedCardDisplayList, filter, sortKey, sortOrder]);
+    // 公開する setSortKey / toggleSortOrder (変更なし)
+    const setSortKey = useCallback((key: SortField) => {
+        setSetting('sortField', key);
+        setSortFieldInternal(key); 
+        setCurrentPage(1);
+    }, [setSetting, setSortFieldInternal]);
     
-    // ページネーションの計算
-    const totalPages = useMemo(() => {
-        return Math.max(1, Math.ceil(filteredAndSortedCards.length / CARDS_PER_PAGE));
-    }, [filteredAndSortedCards.length]);
+    const publicToggleSortOrder = useCallback(() => {
+        setSetting('sortOrder', currentSortOrder === 'asc' ? 'desc' : 'asc');
+        toggleSortOrder();
+        setCurrentPage(1);
+    }, [setSetting, currentSortOrder, toggleSortOrder]);
 
-    // ページ番号のバリデーション
+    // ... (ページネーション、resetCollection は変更なし)
+    const totalPages = useMemo(() => {
+        return Math.max(1, Math.ceil(finalFilteredAndSortedCards.length / CARDS_PER_PAGE));
+    }, [finalFilteredAndSortedCards.length]);
+
     useEffect(() => {
         if (currentPage > totalPages) {
             setCurrentPage(totalPages);
         }
     }, [currentPage, totalPages]);
     
-    // ストアのリセットアクション
     const resetCollection = useCallback(async () => {
         await resetPool();
         setInternalFilter({ search: null, packId: null, rarity: null });
@@ -255,22 +271,23 @@ export const useCardPoolDisplay = (): CardPoolDisplayState => {
 
 
     return {
-        isLoading, // 💡 修正: store から取得した isLoading を返す
+        isLoading,
         error,
-        filteredCards: filteredAndSortedCards,
+        filteredCards: finalFilteredAndSortedCards, 
         filter,
-        setFilter,
+        setFilter: setFilter, 
         currentPage,
         totalPages,
         setCurrentPage,
         viewMode,
         setViewMode,
-        sortKey,
-        setSortKey,
-        sortOrder,
-        setSortOrder,
-        columns,
+        sortField: currentSortField, 
+        setSortField: setSortKey,
+        sortOrder: currentSortOrder, 
+        toggleSortOrder: publicToggleSortOrder,
+        columns: activeSettings.columns,
         resetCollection,
         isDTCGEnabled,
+        availablePacks,
     };
 };

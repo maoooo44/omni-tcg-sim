@@ -1,6 +1,6 @@
 # ファイル構造
 ```
-OmniTCGSim/
+omni-tcg-sim/
 ├── src/
 │   ├── assets/          //
 │   ├── components/      // 再利用可能なUIコンポーネント

@@ -34,18 +34,18 @@ export const getDisplayImageUrl = (
 ): string => {
   
   // デバッグ用: 入力値の確認
-  console.log(`[ImageUtils Debug] Input imageUrl: '${imageUrl}' (Type: ${typeof imageUrl})`);
+  //console.log(`[ImageUtils Debug] Input imageUrl: '${imageUrl}' (Type: ${typeof imageUrl})`);
 
   // 1. imageUrlが有効であればそれを返す
   // null/undefinedのチェック後、trim()して空文字列かチェック
   const isValidUrl = imageUrl && imageUrl.trim() !== '';
   
   // デバッグ用: 有効性の判定結果
-  console.log(`[ImageUtils Debug] Is URL valid? ${isValidUrl}`);
+  //console.log(`[ImageUtils Debug] Is URL valid? ${isValidUrl}`);
 
   if (isValidUrl) {
     // デバッグ用: 有効なURLを返却
-    console.log(`[ImageUtils Debug] Output: Original URL`);
+    //console.log(`[ImageUtils Debug] Output: Original URL`);
     return imageUrl.trim(); // 念のためトリムして返す
   }
 
@@ -58,7 +58,7 @@ export const getDisplayImageUrl = (
   );
   
   // デバッグ用: プレースホルダーURLを返却
-  console.log(`[ImageUtils Debug] Output: Placeholder URL -> ${placeholderUrl}`);
+  //console.log(`[ImageUtils Debug] Output: Placeholder URL -> ${placeholderUrl}`);
   
   return placeholderUrl;
 };

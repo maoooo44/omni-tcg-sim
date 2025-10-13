@@ -57,11 +57,9 @@ const CardViewModal: React.FC = () => {
     })));
 
     // 2. カードストアから全カードデータを取得
-    // 型はCardを使用
     const allCards: Card[] = useCardStore(state => state.cards);
     
     // 3. パックストアからパック情報を取得
-    // 型はPack[]を使用
     const packs: Pack[] = usePackStore(state => state.packs);
 
     // 4. 表示対象のカードを計算
@@ -71,7 +69,7 @@ const CardViewModal: React.FC = () => {
     const pack: Pack | undefined = card ? packs.find(p => p.packId === card.packId) : undefined;
     const packName = pack ? pack.name : '不明なパック';
 
-    const cardDataReady = !!card;
+    // 💡 削除: cardDataReady = !!card; は不要
 
     // プレースホルダーオプションの調整
     const displayOptions: ImageDisplayOptions = {
@@ -101,23 +99,25 @@ const CardViewModal: React.FC = () => {
                     </IconButton>
                 </Box>
                 
-                {!cardDataReady && selectedCardId ? (
+                {/* 💡 修正: 条件分岐をシンプル化 */}
+                {!card && selectedCardId ? (
                     <Alert severity="warning">
-                        カードID: {selectedCardId} の詳細データをロードできませんでした。データストアを確認してください。
+                        カードID: {selectedCardId} の詳細データをストアから**ロードできませんでした**。データストアの状態を確認してください。
                     </Alert>
-                ) : !card ? (
+                ) : !card && !selectedCardId ? (
                      <Alert severity="info">
-                         カードが選択されていません。
+                         表示するカードが選択されていません。
                      </Alert>
                 ) : (
+                    // card が存在する場合にのみ、詳細コンテンツを表示
                     <Grid container spacing={isMobile ? 2 : 4}>
                         {/* 左側: カード画像 */}
                         <Grid size={{xs:12, sm:5}}> 
                             <MuiCard elevation={4} sx={{ borderRadius: 2, overflow: 'hidden' }}>
                                 <CardMedia
                                     component="img"
-                                    image={getDisplayImageUrl(card.imageUrl, displayOptions)}
-                                    alt={card.name}
+                                    image={getDisplayImageUrl(card!.imageUrl, displayOptions)} // card! は cardが存在することを確認済みのため使用
+                                    alt={card!.name}
                                     sx={{ 
                                         width: '100%', 
                                         height: isMobile ? 420 : 560, 
@@ -136,12 +136,24 @@ const CardViewModal: React.FC = () => {
                                     fontWeight="bold"
                                     gutterBottom
                                 >
-                                    {card.name}
+                                    {card!.name}
                                 </Typography>
                                 
                                 <Box sx={{ mb: 3, display: 'flex', flexWrap: 'wrap', gap: 1 }}>
+                                    
+                                    {/* 💡 追記: 図鑑 No. (number) が存在する場合にチップを表示 */}
+                                    {card!.number !== null && card!.number !== undefined && (
+                                        <Chip 
+                                            label={`図鑑 No.: ${card!.number}`} 
+                                            color="info" 
+                                            size="medium" 
+                                            variant="filled"
+                                            sx={{ fontWeight: 'bold' }} 
+                                        />
+                                    )}
+
                                     <Chip 
-                                        label={`レアリティ: ${card.rarity}`} 
+                                        label={`レアリティ: ${card!.rarity}`} 
                                         color="secondary" 
                                         size="medium" 
                                         sx={{ fontWeight: 'bold' }} 
@@ -153,19 +165,19 @@ const CardViewModal: React.FC = () => {
                                         size="medium"
                                     />
                                     <Chip 
-                                        label={`カードID: ${card.cardId.substring(0, 8)}...`} 
+                                        label={`カードID: ${card!.cardId.substring(0, 8)}...`} 
                                         size="small" 
                                     />
                                 </Box>
 
                                 {/* カスタムデータ表示 (userCustom) */}
-                                {Object.keys(card.userCustom).length > 0 && (
+                                {Object.keys(card!.userCustom).length > 0 && (
                                     <Box sx={{ mt: 3, p: 2, bgcolor: 'grey.50', borderRadius: 2 }}>
                                         <Typography variant="h6" gutterBottom>
                                             カスタム情報
                                         </Typography>
                                         <Grid container spacing={1}>
-                                            {Object.entries(card.userCustom).map(([key, value]) => (
+                                            {Object.entries(card!.userCustom).map(([key, value]) => (
                                                 <Grid size={{xs:12, sm:6}} key={key}> 
                                                     <Typography variant="body2" sx={{ fontWeight: 'bold' }}>
                                                         {key}:

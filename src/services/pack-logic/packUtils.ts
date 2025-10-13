@@ -1,19 +1,11 @@
-/**
- * src/services/pack-logic/packUtils.ts
- *
- * パックデータに関連するユーティリティ関数（ID生成、デフォルトパック作成、
- * カード総数計算（スタブ））を提供する。
- */
-import { generateUUID } from '../../utils/uuidUtils'; 
-import type { Pack } from "../../models/pack"; 
+// src/services/pack-logic/packUtils.ts
 
 /**
- * ユニークなパックIDを生成する。
- * @returns {string} 生成されたユニークなパックID (UUID)
+ * パックデータに関連するロジックを提供するユーティリティ関数群。
+ * 主にパック固有のビジネスロジック（計算など）を扱う。
  */
-export const generatePackId = (): string => {
-    return generateUUID();
-};
+import type { Pack } from "../../models/pack"; 
+// 🚨 generatePackId は削除 (データ生成は汎用的な dataUtils の責務に含める)
 
 
 /**
@@ -25,29 +17,8 @@ export const calculateTotalCards = (_pack: Pack): number => {
     // フェーズ1後半またはフェーズ2で、DBから紐づくカードをカウントするロジックを実装します。
     return 0;
 };
+// 🚨 createDefaultPack は削除 (dataUtils.tsに移行済み)
 
-// パックの初期値を生成する関数（新規作成時用）
-export const createDefaultPack = (): Pack => {
-    const defaultPack: Pack = {
-        packId: generatePackId(),
-        name: '新規パック',
-        series: '未定',
-        packType: 'Booster', 
-        cardsPerPack: 12, 
-        rarityConfig: [ 
-            { rarityName: 'Common', probability: 0.75 },
-            { rarityName: 'Uncommon', probability: 0.20 },
-            { rarityName: 'Rare', probability: 0.05 },
-        ],
-        totalCards: 0, // 総収録カード数は初期値0
-        imageUrl: '',
-        cardBackUrl: '',
-        price: 300, 
-        description: 'ブースターパックの説明をここに入力してください。', 
-        releaseDate: new Date().toISOString().split('T')[0], 
-        userCustom: {},
-        isOpened: false, 
-    };
-    
-    return defaultPack;
-};
+// 💡 備考: このファイルから generatePackId と createDefaultPack が削除されたことで、
+// packUtils.ts がこの段階では calculateTotalCards のスタブのみを持つファイルになります。
+// これは関心の分離ができた証拠です。

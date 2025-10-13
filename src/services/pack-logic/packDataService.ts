@@ -3,14 +3,16 @@
  *
  * IndexedDB (Dexie) の 'packs' テーブルおよび 'cards' テーブルと連携し、
  * パックデータおよび特定の条件（パックIDとレアリティ）に合致する
- * カードデータを非同期で取得するデータサービス。
+ * カードデータを非同期で取得・更新するデータサービス。
  */
 
 import type { Pack } from '../../models/pack';
 import type { Card } from '../../models/card';
 import { db } from '../database/db'; // データベースインスタンスをインポート
-
-// 修正: DUMMY_PACKS および DUMMY_CARDS の定義をすべて削除しました。
+// ★ 追加: データベースの最大値を取得する汎用関数
+import { getMaxNumberByCollection } from '../database/dbUtils';
+// ★ 追加: 次の番号を計算する汎用関数
+import { getNextNumber } from '../../utils/numberingUtils';
 
 /**
  * [DB連携] パックIDとレアリティに基づいてカードデータを取得する
@@ -65,5 +67,30 @@ export const getPackById = async (packId: string): Promise<Pack | undefined> => 
     } catch (error) {
         console.error("Failed to fetch pack by ID:", error);
         return undefined;
+    }
+};
+
+/**
+ * [DB連携] パックデータをDBに追加/更新し、自動採番を処理する。
+ */
+export const putPack = async (pack: Pack): Promise<void> => {
+    // number が undefined または null の場合に自動採番を実行
+    if (pack.number === undefined || pack.number === null) {
+        // 1. numberフィールドの現在の最大値を取得 (全パックから取得)
+        // パックの番号はパック全体でユニークな「図鑑番号」として扱う
+        const maxNumber = await getMaxNumberByCollection('packs', 'number');
+        
+        // 2. 次の番号を計算 (デフォルト開始値 1)
+        const nextNumber = getNextNumber(maxNumber, 1); 
+
+        // 3. number を付与
+        pack.number = nextNumber;
+    }
+    
+    try {
+        await db.packs.put(pack); // DB書き込み（追加/更新）
+    } catch (error) {
+        console.error("Failed to put pack:", error);
+        throw error; // エラーを上位にスロー
     }
 };

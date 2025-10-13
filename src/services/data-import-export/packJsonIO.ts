@@ -3,7 +3,7 @@
 import { packService } from '../pack-logic/packService';
 import { getCardsByPackId } from '../pack-logic/packDataService';
 import { cardDataService } from '../pack-logic/CardDataService';
-import { generatePackId, createDefaultPack } from '../pack-logic/packUtils';
+import { generateId, createDefaultPackData } from '../../utils/dataUtils';
 import { generateUUID } from '../../utils/uuidUtils';
 import type { Pack } from '../../models/pack';
 import type { Card } from '../../models/card';
@@ -56,11 +56,11 @@ export const importPackFromJson = async (jsonText: string): Promise<{ newPackId:
     }
 
     // 1. 新しいPack IDを生成
-    const newPackId = generatePackId();
+    const newPackId = generateId();
     
     // 2. Packデータを準備 (IDと関連情報を更新)
     const newPack: Pack = {
-        ...createDefaultPack(), // デフォルト値をベースに
+        ...createDefaultPackData(), // デフォルト値をベースに
         ...parsedData.pack,
         packId: newPackId, // 新しいIDを強制適用
         isOpened: false, // 外部からのインポートなので、強制的に未開封状態にする

@@ -21,6 +21,8 @@ export interface CurrencyState {
     spendCoins: (amount: number) => Promise<boolean>; // 成功/失敗を返す
     /** デバッグ用リセット */
     resetCurrency: () => Promise<void>; 
+    /** ★追加: コインを直接設定（ゴッドモード用） */
+    setCoins: (amount: number) => Promise<void>; 
 }
 
 const INITIAL_COINS = 5000; // 初期所持金（デバッグ用）
@@ -70,6 +72,19 @@ export const useCurrencyStore = create<CurrencyState>((set, get) => ({
 
         console.log(`-${amount} coins spent. New balance: ${get().coins}`);
         return true; // 成功
+    },
+    
+    // ★追加: コインを直接設定するアクション
+    setCoins: async (amount) => {
+        // マイナスを許可しない
+        const validatedAmount = Math.max(0, amount); 
+        
+        // 1. ストアを更新
+        set({ coins: validatedAmount });
+        
+        // 2. DBに保存
+        await currencyService.saveCoins(validatedAmount);
+        console.log(`💡 Coins set directly to ${validatedAmount}.`);
     },
 
     // リセットとDB保存

@@ -15,6 +15,9 @@ export interface Deck {
     // 💡 追加: プレースホルダー画像の色プリセットキー
     imgColor?: string; // 例: 'red', 'blue'
 
+    // ★追加: ソート用/コレクション管理用ナンバー
+    number?: number | null; 
+    
     // デッキに含まれるカードと枚数
     // key: cardId (string), value: count (number)
     // Mapを使用して、編集時や検索時に高速なアクセスを可能にする

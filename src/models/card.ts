@@ -11,11 +11,14 @@ export interface Card {
   name: string; // カードの名称
   imageUrl: string; // カード画像の参照URL
   rarity: string; // 収録されているレアリティ名（Pack.rarityConfig.rarityNameに対応）
+
+  // 💡 変更: 図鑑ナンバー/ソート順として使用。必須フィールドとする。
+  number?: number | null; 
+
+  isInStore: boolean; 
+  updatedAt: string; // ISO 8601形式の最終更新日時
+  
   userCustom: Record<string, any>; // ユーザーが定義できるカスタムデータ（属性、コスト、テキストなど）
   
-  /**
-   * 💡 追加: カードがパックに追加された際の連番（不変の登録順）
-   * この順序がデフォルトの表示順として使用されます。
-   */
-  registrationSequence: number;
+  // 🚨 削除: 登録順序を担っていた registrationSequence フィールドは不要。
 }

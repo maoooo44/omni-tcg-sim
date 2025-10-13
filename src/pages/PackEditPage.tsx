@@ -1,23 +1,25 @@
 /**
-* src/pages/PackEditPage.tsx
-*
-* パック情報（基本情報、封入設定、レアリティ設定）の編集と、
-* 収録カードリストの管理、CSVによるカードのインポート/エクスポートを行うページ。
-* 状態管理とロジックはusePackEditカスタムフックに集約されている。
-*/
-import React from 'react';
+ * src/pages/PackEditPage.tsx
+ *
+ * 【適用した修正】
+ * 1. useBlocker の shouldBlockFn を修正: 
+ * - isDirty が true の場合に window.confirm で確認ダイアログを表示し、
+ * ユーザーが「キャンセル」を押した場合にナビゲーションをブロックする。
+ * - enableBeforeUnload を isDirty に基づいて有効化。
+ * 2. MaterialUIのGridのitemプロパティをsizeに修正 (ユーザーの記憶情報に基づく)。
+ */
+import React, { useEffect } from 'react'; 
 import { 
-    Button, TextField, Box, Typography, Select, MenuItem, InputLabel, FormControl, 
+    Button, Box, Typography, MenuItem,
     Alert, Paper, Divider, Grid, Dialog, DialogTitle, DialogContent, DialogActions,
     CircularProgress,
     Menu, IconButton, Tooltip, 
 } from '@mui/material'; 
-// import MoreVertIcon from '@mui/icons-material/MoreVert'; 
 import SaveIcon from '@mui/icons-material/Save'; 
-// import BackupIcon from '@mui/icons-material/Backup'; 
 import EditIcon from '@mui/icons-material/Edit'; 
 import VisibilityIcon from '@mui/icons-material/Visibility'; 
-import { useParams } from '@tanstack/react-router'; 
+// useBlockerをインポート
+import { useParams, useBlocker, /*type NavigateOptions*/ } from '@tanstack/react-router'; 
 
 // 💡 追加されたアイコンのインポート
 import UploadFileIcon from '@mui/icons-material/UploadFile';
@@ -28,12 +30,14 @@ import InsertDriveFileIcon from '@mui/icons-material/InsertDriveFile';
 import PackCardList from '../components/PackCardList';
 import CardEditModal from '../components/CardEditModal';
 import RarityEditModal from '../components/RarityEditModal';
-import PackPreviewCard from '../components/PackPreviewCard'; 
 
 import { usePackEdit } from '../features/pack-management/hooks/usePackEdit'; 
 import type { Card as CardType } from '../models/card'; 
 
 import { useUIStore, type UIStore } from '../stores/uiStore'; 
+
+// ★ 追記: 新しいフォームコンポーネントのインポート
+import PackInfoForm from '../features/pack-management/PackInfoForm';
 
 const PackEditPage: React.FC = () => {
     
@@ -46,6 +50,8 @@ const PackEditPage: React.FC = () => {
         isNewPack, 
         isExistingPack,
         isEditMode, 
+        isDirty, // 💡 isDirty を取得
+        removePackFromStore, // 💡 追記: 遷移許可時に状態をクリーンアップするための関数を取得
         toggleEditMode, 
         csvIO,
         isDisabled,
@@ -54,12 +60,11 @@ const PackEditPage: React.FC = () => {
         handleInputChange,
         handleSelectChange,
         handleSave,
-        handleDelete,
+        handleRemovePack,
         
-        // ★ 修正: usePackEditからcards, handleCardSave, handleDeleteCardを取得
-        cards, // PackCardListに渡すローカルのカードリスト
-        handleCardSave, // CardEditModalのonSaveに渡す
-        handleDeleteCard, // CardEditModalのonDeleteに渡す
+        cards,
+        handleCardSave,
+        handleRemoveCard,
 
         // カード編集モーダル
         isCardModalOpen,
@@ -97,6 +102,41 @@ const PackEditPage: React.FC = () => {
         
     } = usePackEdit(packId);
 
+    // ★ 修正 1 & 2: useBlocker の実装を shouldBlockFn に修正
+    useBlocker({
+        shouldBlockFn: ({ next: _next }) => {
+            
+            if (!isDirty) {
+                // 変更がない場合は、ナビゲーションを許可 (ブロックしない)
+                return false;
+            }
+
+            // isDirty が true の場合、確認ダイアログを表示
+            const confirmed = window.confirm(
+                '変更が保存されていません。このまま移動すると、未保存の変更は破棄されます。続行しますか？'
+            );
+            
+            // ユーザーが「キャンセル」を押すと confirmed が false -> !confirmed が true (ブロック)
+            // ユーザーが「OK」を押すと confirmed が true -> !confirmed が false (続行)
+            return !confirmed;
+        },
+        
+        // F5/タブを閉じるなどのブラウザ離脱警告を isDirty に基づいて有効化
+        enableBeforeUnload: isDirty, 
+
+    });
+    
+    // useBlockerとは別に、新規パックのアンマウント時のクリーンアップ処理を維持
+    useEffect(() => {
+        return () => {
+            // 新規パックの場合、アンマウント時にメモリ上の状態をクリーンアップ
+            if (isNewPack && isDirty) {
+                // cleanPack を依存配列に追加したので、警告を回避しつつ使用可能
+                removePackFromStore(packId); 
+            }
+        };
+    }, [isDirty, isNewPack, packId, removePackFromStore]); 
+    
     // 💡 修正: グローバルストアからモーダルを開く関数を取得。型を UIStore に修正
     const openGlobalCardViewModal = useUIStore((state: UIStore) => state.openCardViewModal);
 
@@ -147,7 +187,7 @@ const PackEditPage: React.FC = () => {
                         variant="contained" 
                         startIcon={<SaveIcon />} 
                         onClick={handleSave} 
-                        disabled={isDisabled}
+                        disabled={isDisabled || !isDirty} 
                     >
                         保存
                     </Button>
@@ -210,7 +250,7 @@ const PackEditPage: React.FC = () => {
                         <Button 
                             variant="outlined" 
                             color="error" 
-                            onClick={handleDelete} 
+                            onClick={handleRemovePack} 
                             disabled={!isEditable} 
                         >
                             削除
@@ -230,125 +270,26 @@ const PackEditPage: React.FC = () => {
                 </Alert>
             )}
 
-            {/* メイングリッドコンテナ */}
+            {/* メイングッリドコンテナ */}
             <Grid container spacing={4}>
-                {/* A. 左側: パック情報編集エリア */}
-                <Grid size={{ xs: 12, md: 4 }}>
+                {/* A. 左側: パック情報編集エリア (PackInfoFormに置き換え) */}
+                <Grid size={{ xs: 12, md: 4 }}> {/* 💡 itemをsizeに修正 */}
                     <Paper elevation={3} sx={{ p: 4, height: '100%' }}>
-                        <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 2 }}>
-                            <Typography variant="h6">基本情報</Typography>
-                            {/* 💡 修正: CSVエクスポートボタンを削除（メニューに移動） */}
-                        </Box>
-                        
-                        <PackPreviewCard pack={packData} />
-
-                        <form onSubmit={handleSave}>
-                            {/* パック名 */}
-                            <TextField
-                                label="パック名"
-                                name="name"
-                                value={packData.name}
-                                onChange={handleInputChange}
-                                fullWidth
-                                margin="normal"
-                                required
-                                disabled={!isEditable} 
-                            />
-                            
-                            {/* シリーズ名 */}
-                            <TextField
-                                label="シリーズ/バージョン"
-                                name="series"
-                                value={packData.series}
-                                onChange={handleInputChange}
-                                fullWidth
-                                margin="normal"
-                                disabled={!isEditable} 
-                            />
-                            
-                            {/* 封入枚数 */}
-                            <TextField
-                                label="1パックの封入枚数"
-                                name="cardsPerPack"
-                                type="number"
-                                value={packData.cardsPerPack}
-                                onChange={handleInputChange}
-                                fullWidth
-                                margin="normal"
-                                required
-                                inputProps={{ min: 1 }}
-                                disabled={!isEditable} 
-                            />
-                            
-                            {/* パック種別 (Select) */}
-                            <FormControl fullWidth margin="normal" required disabled={!isEditable}>
-                                <InputLabel>パック種別</InputLabel>
-                                <Select
-                                    label="パック種別"
-                                    name="packType"
-                                    value={packData.packType}
-                                    onChange={handleSelectChange}
-                                >
-                                    {/* packTypesはusePackEditまたはグローバル定数から取得すると想定 */}
-                                    {['Booster', 'ConstructedDeck', 'Other'].map(type => (
-                                        <MenuItem key={type} value={type}>{type}</MenuItem>
-                                    ))}
-                                </Select>
-                            </FormControl>
-
-                            {/* パック表面画像URL */}
-                            <TextField
-                                label="パック表面画像URL"
-                                name="imageUrl"
-                                value={packData.imageUrl}
-                                onChange={handleInputChange}
-                                fullWidth
-                                margin="normal"
-                                disabled={!isEditable} 
-                            />
-                            
-                            {/* 🚨 カード裏面画像URL */}
-                            <TextField
-                                label="カード裏面画像URL"
-                                name="cardBackUrl"
-                                value={packData.cardBackUrl || ''} 
-                                onChange={handleInputChange}
-                                fullWidth
-                                margin="normal"
-                                helperText="開封時のカードの裏面に表示する画像URLを指定します。"
-                                disabled={!isEditable} 
-                            />
-                            
-                            {/* 説明文 */}
-                            <TextField
-                                label="説明"
-                                name="description"
-                                value={packData.description}
-                                onChange={handleInputChange}
-                                fullWidth
-                                margin="normal"
-                                multiline
-                                rows={3}
-                                disabled={!isEditable} 
-                            />
-                            
-                            {/* アクションボタン */}
-                            <Box sx={{ mt: 3, display: 'flex', justifyContent: 'space-between' }}>
-                                <Button 
-                                    variant="outlined" 
-                                    onClick={handleOpenRarityEditModal}
-                                    disabled={!isEditable} 
-                                >
-                                    レアリティ設定を編集
-                                </Button>
-                                {/* 💡 削除: 削除ボタンをヘッダーに移動 */}
-                            </Box>
-                        </form>
+                        {/* ★ 修正: PackInfoFormコンポーネントをレンダリング */}
+                        <PackInfoForm 
+                            packData={packData}
+                            isEditable={isEditable}
+                            isDisabled={isDisabled}
+                            handleInputChange={handleInputChange}
+                            handleSelectChange={handleSelectChange}
+                            handleOpenRarityEditModal={handleOpenRarityEditModal}
+                            handleSave={handleSave}
+                        />
                     </Paper>
                 </Grid>
 
                 {/* B. 右側: カード登録枠エリア (メイン) */}
-                <Grid size={{ xs: 12, md: 8 }}>
+                <Grid size={{ xs: 12, md: 8 }}> {/* 💡 itemをsizeに修正 */}
                     <Paper elevation={3} sx={{ p: 4, height: '100%' }}>
                         {/* 収録カードリストコンポーネントを配置 */}
                         <PackCardList 
@@ -356,11 +297,9 @@ const PackEditPage: React.FC = () => {
                             isEditable={isEditable} 
                             onOpenEditModal={handleOpenCardEditModal} 
                             onOpenViewModal={handleOpenCardViewModal} 
-                            // ★ 修正: 必須プロパティ 'cards' を追加
                             cards={cards} 
                         />
                         <Divider sx={{ my: 3 }} />
-                        {/* 💡 削除: CSVインポートボタンを削除（メニューに移動） */}
                         <Typography variant="body2" color="text.secondary" sx={{ mt: 1 }}>
                             {csvIO.statusMessage}
                         </Typography>
@@ -374,11 +313,9 @@ const PackEditPage: React.FC = () => {
                 onClose={handleCloseCardEditModal}
                 card={editingCard}
                 packRaritySettings={packData.rarityConfig} 
-                // ★ 修正: 必須プロパティ 'onSave' と 'onDelete' を追加
                 onSave={handleCardSave}
-                onDelete={handleDeleteCard}
+                onDelete={handleRemoveCard}
                 currentPackName={packData.name}
-                // ★ 修正: 欠けていた必須プロパティ 'currentPackId' を追加
                 currentPackId={packId}
             />
 
@@ -402,14 +339,14 @@ const PackEditPage: React.FC = () => {
                     <Alert severity="info" sx={{ mb: 2 }}>
                         CSVファイルの1行目はヘッダー行として扱われます。<br />
                         以下の**予約済みフィールド**以外の列は、すべて**カスタムプロパティ**として自動登録されます。<br />
-                        **予約済みフィールド (任意)**: `name`, `rarity`, `imageUrl`<br />
+                        **予約済みフィールド (任意)**: `name`, `rarity`, `imageUrl`, `number`<br />
                         **ロジック**: `name`が空欄の場合「新しいカード」と連番が自動付与されます。`rarity`が空欄の場合、パックの最初のレアリティが割り当てられます。**すべての行は新規カードとして追加されます**。
                     </Alert>
                     <input 
                         type="file" 
                         accept=".csv" 
                         onChange={handleFileChange}
-                        disabled={!isEditable} // 💡 編集モードでのみ有効
+                        disabled={!isEditMode || csvIO.isLoading} 
                     />
                     {fileToImport && (
                         <Typography variant="body2" sx={{ mt: 1 }}>
@@ -418,14 +355,14 @@ const PackEditPage: React.FC = () => {
                     )}
                 </DialogContent>
                 <DialogActions>
-                    <Button onClick={() => setIsImportModalOpen(false)} disabled={!isEditable}>キャンセル</Button>
+                    <Button onClick={() => setIsImportModalOpen(false)} disabled={!isEditMode}>キャンセル</Button>
                     <Button 
                         onClick={handleConfirmImport} 
                         variant="contained" 
-                        disabled={!fileToImport || !isEditable} // 💡 編集モードでのみ有効
+                        disabled={!fileToImport || !isEditMode || csvIO.isLoading} 
                     >
                         インポート実行
-                        {(!isEditable || isDisabled) && <CircularProgress size={16} sx={{ ml: 1 }} />}
+                        {csvIO.isLoading && <CircularProgress size={16} sx={{ ml: 1 }} />} 
                     </Button>
                 </DialogActions>
             </Dialog>

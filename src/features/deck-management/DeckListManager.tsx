@@ -1,46 +1,137 @@
-/**
- * src/features/deck-management/DeckListManager.tsx
- * * ユーザーが作成したデッキの一覧を表示し、新規作成、編集、削除の操作を提供するコンポーネント。
- * useDeckListカスタムフックを使用してデッキデータをロードし、テーブル形式で表示する。
- * 各デッキにはサムネイル画像（プレースホルダー含む）と総カード枚数を表示する。
- */
+// src/features/deck-management/DeckListManager.tsx
 
+/**
+ * ユーザーが作成したデッキの一覧を表示し、新規作成、編集、削除の操作を提供するコンポーネント。
+ * useDeckListカスタムフック、useSortAndFilterフックを使用してデッキデータをロード、ソート、フィルタリングし、テーブル形式で表示する。
+ */
 import React, { useCallback } from 'react';
 import { useDeckList } from './hooks/useDeckList';
-// 💡 useNavigate のインポートは既にある
 import { useNavigate } from '@tanstack/react-router'; 
 import { 
     Box, Typography, Button, CardMedia, 
-    TableContainer, Table, TableHead, TableRow, TableCell, TableBody, Paper, Tooltip, Alert
+    TableContainer, Table, TableHead, TableRow, TableCell, TableBody, Paper, Tooltip, Alert,
+    IconButton,
 } from '@mui/material';
 import AddIcon from '@mui/icons-material/Add';
 import EditIcon from '@mui/icons-material/Edit';
 import DeleteIcon from '@mui/icons-material/Delete';
+import ArrowUpwardIcon from '@mui/icons-material/ArrowUpward';
+import ArrowDownwardIcon from '@mui/icons-material/ArrowDownward';
 import { useShallow } from 'zustand/react/shallow'; 
 import { useDeckStore } from '../../stores/deckStore'; 
+
+// 💡 ソート・フィルタリング機能のインポート
+import type { Deck } from '../../models/deck'; // Deckモデルをインポート
+import { useSortAndFilter, type UseSortAndFilterResult } from '../../hooks/useSortAndFilter';
+import { type SortField, /*type SortOrder*/ } from '../../utils/sortingUtils'; // SortField, SortOrderは定義元からインポート
+import SortAndFilterControls from '../../components/SortAndFilterControls'; // UIコンポーネント
 
 import { 
     getDisplayImageUrl, 
     type ImageDisplayOptions, // 型もインポートしておくと安全
 } from '../../utils/imageUtils'; 
 
-// AppLayoutのルートパスに合わせることを想定
 const DECK_EDIT_PATH_PREFIX = '/user/decks'; 
-
-// 定義: デッキリストのサムネイル表示設定
 const THUMBNAIL_WIDTH = 64; 
 const THUMBNAIL_HEIGHT = 64; 
 
-// 🚨 修正: bgColorを削除し、imgColorPresetKeyを追加
 const DECK_PLACEHOLDER_OPTIONS: Omit<ImageDisplayOptions, 'text'> = {
     width: THUMBNAIL_WIDTH,
     height: THUMBNAIL_HEIGHT, 
-    imgColorPresetKey: 'blue', // 青系のプリセットを使用
+    imgColorPresetKey: 'blue',
 };
 
 
+// =========================================================================
+// 1. ソート・フィルタリング用設定
+// =========================================================================
+
+/**
+ * Deckオブジェクトから指定されたフィールドの値を取得するアクセサ関数
+ */
+const deckFieldAccessor = (item: Deck, field: SortField): string | number | null | undefined => {
+    switch (field) {
+        case 'number':
+            return item.number;
+        case 'name':
+            return item.name;
+        case 'deckId':
+            return item.deckId;
+        // 💡 カード枚数をソート対象に追加（文字列として扱うため、ここでは数値を返す）
+        case 'cardCount': 
+            // useDeckListの calculateTotalCards 関数が利用可能であることを前提とする
+            return Array.from(item.mainDeck.values()).reduce((s, c) => s + c, 0) +
+                   Array.from(item.sideDeck.values()).reduce((s, c) => s + c, 0) +
+                   Array.from(item.extraDeck.values()).reduce((s, c) => s + c, 0);
+        default:
+            return (item as any)[field] ?? null;
+    }
+};
+
+/**
+ * ソートオプションの定義
+ */
+const DECK_SORT_OPTIONS: { label: string, value: SortField, align: 'left' | 'right' | 'center' }[] = [
+    { label: 'No.', value: 'number', align: 'left' },
+    { label: 'デッキ名', value: 'name', align: 'left' },
+    { label: 'カード枚数', value: 'cardCount', align: 'right' },
+    { label: 'ID', value: 'deckId', align: 'left' },
+];
+
+/**
+ * TableCellのソートヘッダー用コンポーネント
+ */
+interface SortableTableCellProps {
+    field: SortField;
+    label: string;
+    align: 'left' | 'right' | 'center';
+    sortState: Pick<UseSortAndFilterResult<Deck>, 'sortField' | 'sortOrder' | 'setSortField' | 'toggleSortOrder'>;
+}
+
+const SortableTableCell: React.FC<SortableTableCellProps> = ({ field, label, align, sortState }) => {
+    const isSorted = sortState.sortField === field;
+    const isAsc = sortState.sortOrder === 'asc';
+
+    const handleClick = () => {
+        if (isSorted) {
+            sortState.toggleSortOrder();
+        } else {
+            // 新しいフィールドを選択した場合、デフォルトで昇順にする
+            sortState.setSortField(field);
+        }
+    };
+
+    return (
+        <TableCell 
+            align={align} 
+            onClick={handleClick}
+            sx={{ 
+                cursor: 'pointer', 
+                whiteSpace: 'nowrap',
+                fontWeight: isSorted ? 'bold' : 'normal',
+                '&:hover': { bgcolor: 'action.hover' }
+            }}
+        >
+            <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: align === 'right' ? 'flex-end' : align === 'center' ? 'center' : 'flex-start' }}>
+                {label}
+                {isSorted && (
+                    <IconButton size="small" sx={{ p: 0.5, ml: 0.5 }} color="primary">
+                        {isAsc ? <ArrowUpwardIcon fontSize="inherit" /> : <ArrowDownwardIcon fontSize="inherit" />}
+                    </IconButton>
+                )}
+            </Box>
+        </TableCell>
+    );
+};
+
+
+// =========================================================================
+// 2. コンポーネント本体
+// =========================================================================
+
 const DeckListManager: React.FC = () => {
     
+    // 1. データ取得とアクション
     const {
         decks,
         isLoading,
@@ -48,36 +139,37 @@ const DeckListManager: React.FC = () => {
         calculateTotalCards,
     } = useDeckList();
     
-    // 🚨 修正1: useNavigate() フックをコンポーネント内で呼び出し、navigate を取得する
     const navigate = useNavigate(); 
-
-    // 💡 deckStoreから新しいアクション startNewDeckEditing を取得
+    
     const { startNewDeckEditing } = useDeckStore(useShallow(state => ({
         startNewDeckEditing: state.startNewDeckEditing,
     })));
 
+    // 💡 2. ソート＆フィルタリングフックの適用
+    const {
+        sortedAndFilteredData: displayedDecks,
+        sortField,
+        sortOrder,
+        searchTerm,
+        setSortField,
+        setSearchTerm,
+        toggleSortOrder,
+    } = useSortAndFilter<Deck>(decks, deckFieldAccessor, {
+        defaultSortField: 'number', // numberによるデフォルトソートを適用
+        defaultSortOrder: 'asc'
+    });
+    
+    const sortStateProps = { sortField, sortOrder, setSortField, toggleSortOrder };
+
+
     // 💡 新規デッキ作成とナビゲーション
     const handleCreateNewDeck = useCallback(() => {
-        // 🚨 ログ追加（診断用）
-        console.log(`[DeckListManager] A. handleCreateNewDeck execution start.`);
-
-        // 1. ストアに新規デッキを準備し、UUIDを取得
         const newDeckId = startNewDeckEditing();
-
-        // 🚨 ログ追加（診断用）
-        console.log(`[DeckListManager] B. New Deck ID obtained: ${newDeckId}. Navigating...`);
-
-        // 2. 新しいUUIDで編集画面に遷移
-        // 修正2: navigate 関数が正しく定義されたため、クラッシュせずに実行される
         navigate({ 
             to: `${DECK_EDIT_PATH_PREFIX}/$deckId`, 
             params: { deckId: newDeckId } 
         }); 
-        
-        // 🚨 ログ追加（診断用）
-        console.log(`[DeckListManager] C. Navigation command issued.`);
-        
-    }, [navigate, startNewDeckEditing]); // 依存配列に startNewDeckEditing を追加
+    }, [navigate, startNewDeckEditing]);
 
     if (isLoading) {
         return (
@@ -87,7 +179,6 @@ const DeckListManager: React.FC = () => {
         );
     }
     
-    // ロード後のエラーチェック (デッキがない場合)
     if (!decks || decks.length === 0) {
         return (
             <Box sx={{ p: 3 }}>
@@ -101,36 +192,74 @@ const DeckListManager: React.FC = () => {
             </Box>
         );
     }
+    
+    const hasFilteredResults = displayedDecks.length > 0;
 
     return (
         <Box sx={{ p: 3 }}>
+            
+            {/* 💡 ソート・フィルタリングUIの配置 */}
+            <SortAndFilterControls
+                labelPrefix="デッキ"
+                sortOptions={DECK_SORT_OPTIONS}
+                sortField={sortField}
+                sortOrder={sortOrder}
+                searchTerm={searchTerm}
+                setSortField={setSortField}
+                toggleSortOrder={toggleSortOrder}
+                setSearchTerm={setSearchTerm}
+            />
+
             <Box sx={{ mb: 3, display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                <Typography variant="h5">デッキ一覧</Typography>
+                <Typography variant="h5">デッキ一覧 ({decks.length}件)</Typography>
                 <Button
                     variant="contained"
                     color="primary"
                     startIcon={<AddIcon />}
-                    onClick={handleCreateNewDeck} // ✅ 正しくバインドされている
+                    onClick={handleCreateNewDeck}
                 >
                     新規デッキを作成
                 </Button>
             </Box>
 
-            {decks.length > 0 && (
+            {!hasFilteredResults && searchTerm ? (
+                 <Alert severity="info" sx={{ mt: 2 }}>
+                    "{searchTerm}" に一致するデッキが見つかりませんでした。
+                </Alert>
+            ) : (
                 <TableContainer component={Paper}>
                     <Table size="small">
                         <TableHead>
                             <TableRow>
-                                {/* サムネイル列 */}
+                                {/* サムネイル列 (ソート不可) */}
                                 <TableCell sx={{ width: THUMBNAIL_WIDTH + 16 }}>サムネイル</TableCell> 
-                                <TableCell>デッキ名</TableCell>
-                                <TableCell align="right">カード枚数</TableCell>
+                                
+                                {/* 💡 ソート可能なヘッダー */}
+                                <SortableTableCell 
+                                    field="number"
+                                    label="No."
+                                    align="left"
+                                    sortState={sortStateProps}
+                                />
+                                <SortableTableCell 
+                                    field="name"
+                                    label="デッキ名"
+                                    align="left"
+                                    sortState={sortStateProps}
+                                />
+                                <SortableTableCell 
+                                    field="cardCount"
+                                    label="カード枚数"
+                                    align="right"
+                                    sortState={sortStateProps}
+                                />
+                                {/* 操作列 (ソート不可) */}
                                 <TableCell align="center" sx={{ width: 150 }}>操作</TableCell>
                             </TableRow>
                         </TableHead>
                         <TableBody>
-                            {decks.map((deck) => {
-                                // ヘルパー関数を使って合計枚数を取得
+                            {/* 💡 ソート・フィルタ後のデータを使用 */}
+                            {displayedDecks.map((deck) => {
                                 const totalCards = calculateTotalCards(deck);
                                 
                                 return (
@@ -141,7 +270,6 @@ const DeckListManager: React.FC = () => {
                                                 component="img"
                                                 image={getDisplayImageUrl(deck.imageUrl, {
                                                     ...DECK_PLACEHOLDER_OPTIONS,
-                                                    // デッキ名が長い場合を考慮し、短縮したものを表示
                                                     text: deck.name.substring(0, 3) || 'DECK', 
                                                 })}
                                                 alt={deck.name || 'デッキ'}
@@ -152,6 +280,14 @@ const DeckListManager: React.FC = () => {
                                                     borderRadius: 1,
                                                 }}
                                             />
+                                        </TableCell>
+                                        {/* No. の表示 */}
+                                        <TableCell>
+                                            {deck.number !== null && (
+                                                <Typography variant="overline" color="text.primary" sx={{ display: 'block', lineHeight: 1.2 }}>
+                                                    {deck.number}
+                                                </Typography>
+                                            )}
                                         </TableCell>
                                         <TableCell component="th" scope="row">
                                             <Typography variant="subtitle1" fontWeight="bold">{deck.name}</Typography>

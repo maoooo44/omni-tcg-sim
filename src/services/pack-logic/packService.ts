@@ -1,27 +1,29 @@
 /**
- * src/services/pack-logic/packService.ts
- * * * IndexedDB (Dexie) の 'packs' テーブルに対する CRUD 操作、
- * および関連するテーブル（cards, cardPool）のデータ削除操作を扱うサービス。
- * パックの作成、取得、更新、トランザクションによる削除、一括インポート機能を提供する。
- */
+* src/services/pack-logic/packService.ts
+* * * IndexedDB (Dexie) の 'packs' テーブルに対する CRUD 操作、
+* および関連するテーブル（cards, cardPool）のデータ削除操作を扱うサービス。
+* パックの作成、取得、更新、トランザクションによる削除、一括インポート機能を提供する。
+*
+* 【適用した修正】
+* deletePack内のカードID取得ロジックを修正。
+* pluck() の型エラーを回避するため、toArray() で全オブジェクト取得後、map() で cardId を抽出するように変更。
+*/
 import { db } from "../database/db";
 import type { Pack } from "../../models/pack";
 // import { createDefaultPack } from "./packUtils"; // 💡 未使用だがインポートは維持
 
 /**
- * IndexedDB (Dexie) の 'packs' テーブルに対する CRUD 操作を扱うサービス
- */
+* IndexedDB (Dexie) の 'packs' テーブルに対する CRUD 操作を扱うサービス
+*/
 export const packService = {
 
     /**
      * パックを新規作成/更新し、IndexedDBに保存する (Upsert)。
-     * Dexieの put() を使用し、IDの存在に応じて挿入/更新を自動で切り替える。
      * @param packData - 保存する Pack データ (UUIDを含む)
      * @returns 保存されたパックのID
      */
-    async savePack(packData: Pack): Promise<string> { // ★ 追加: createPack の代わりに savePack を定義
+    async savePack(packData: Pack): Promise<string> {
         try {
-            // Dexieの put() は、主キー(packId)が既存なら更新、なければ新規作成します。
             const id = await db.packs.put(packData); 
             console.log(`Pack saved/updated with ID: ${id}`);
             return id as string;
@@ -31,8 +33,6 @@ export const packService = {
         }
     },
     
-    // 💡 修正: createPack を削除 (savePack に統合するため)
-
     /**
      * IDを指定して特定のパックを取得する。
      * @param packId - 取得したいパックのID
@@ -50,15 +50,11 @@ export const packService = {
 
     /**
      * 特定のパックを更新する。
-     * 💡 この updatePack は savePack で代替可能ですが、既存の呼び出し元がある場合は残します。
      * @param packId - 更新対象のパックID
      * @param updateData - 更新データ
      */
     async updatePack(packId: string, updateData: Partial<Pack>): Promise<void> {
         try {
-            // update を使うと packId の指定が重複して不要な場合があるため、
-            // store側で完全なPackを渡し、上記 savePack(put) を呼ぶ方がシンプルになりますが、
-            // ここでは既存の定義を維持します。
             await db.packs.update(packId, updateData);
         } catch (error) {
             console.error("Failed to update pack:", error);
@@ -67,13 +63,12 @@ export const packService = {
     },
 
     /**
-     * パックとその関連データ (カード定義, カードプール内の資産) を全て削除する。
+     * 💡 [新規] 複数のパックを関連データごと一括削除するメソッド
      * トランザクションを利用して原子性を保証する。
-     * @param packId - 削除したいパックのID
+     * @param packIds - 削除したいパックのIDの配列
      */
-    async deletePack(packId: string): Promise<void> {
-        if (!packId) {
-            console.error("Cannot delete pack: packId is undefined.");
+    async bulkDeletePacks(packIds: string[]): Promise<void> {
+        if (!packIds || packIds.length === 0) {
             return;
         }
 
@@ -81,20 +76,39 @@ export const packService = {
             // トランザクションを開始し、packs, cards, cardPool の操作の原子性を保証
             await db.transaction('rw', db.packs, db.cards, db.cardPool, async () => {
                 
-                // 1. パック本体の削除
-                await db.packs.delete(packId);
+                // 1. 削除対象となるすべてのカードIDを事前に取得
+                const allCardsToDelete = await db.cards
+                    .where('packId').anyOf(packIds)
+                    .toArray(); 
+                const cardIdsToDelete = allCardsToDelete.map(card => card.cardId);
 
-                // 2. そのパックに収録されているすべてのカード定義を削除 (cardsテーブル)
-                await db.cards.where('packId').equals(packId).delete();
+                // 2. パック本体の一括削除
+                await db.packs.bulkDelete(packIds);
+                console.log(`[PackService] Bulk deleted ${packIds.length} packs.`);
 
-                // 3. そのパックから入手されたカードプール内の資産データを削除 (cardPoolテーブル)
-                await db.cardPool.where('packId').equals(packId).delete(); 
+                // 3. そのパックに収録されていたすべてのカード定義を削除 (cardsテーブル)
+                await db.cards.where('packId').anyOf(packIds).delete();
+                
+                // 4. cardPool のアイテムを一括削除
+                if (cardIdsToDelete.length > 0) {
+                    await db.cardPool.bulkDelete(cardIdsToDelete);
+                    console.log(`[PackService] Bulk deleted ${cardIdsToDelete.length} items from cardPool.`);
+                }
             });
-            console.log(`Pack (ID: ${packId}) and related data deleted successfully in transaction.`);
+            console.log(`Packs (${packIds.length} items) and related data deleted successfully in transaction.`);
         } catch (error) {
-            console.error("Failed to delete pack and related data in transaction:", error);
-            throw new Error("パックとその関連データの削除に失敗しました。");
+            console.error("Failed to bulk delete packs and related data in transaction:", error);
+            throw new Error("パックとその関連データの一括削除に失敗しました。");
         }
+    },
+
+     /**
+     * 💡 [修正] 単一のパックを削除する。bulkDeletePacksを再利用して実装をシンプルにする。
+     * @param packId - 削除したいパックのID
+     */
+    async deletePack(packId: string): Promise<void> {
+        // bulkDeletePacks を単一IDで呼び出すことで、ロジックを共通化
+        return this.bulkDeletePacks([packId]); 
     },
 
     /**

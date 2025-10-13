@@ -44,13 +44,15 @@ const PackManager: React.FC = () => {
     };
     
     // 💡 修正 2: 新規パック作成は即時ID生成＆即時遷移に変更
-    const handleNewPack = () => {
-        // 1. Storeで新規パックを初期化し、UUIDを取得
-        const newPackId = initializeNewPackEditing(); 
-        
-        // 2. 取得したUUIDで編集ページに即時遷移
-        navigate({ to: '/data/packs/$packId', params: { packId: newPackId } });
-    };
+    // 💡 修正 1: 関数を async に変更
+    const handleNewPack = async () => {
+        // 1. Storeで新規パックを初期化し、UUIDを取得
+        // 💡 修正 2: await を追加
+        const newPackId = await initializeNewPackEditing(); 
+        
+        // 2. 取得したUUIDで編集ページに即時遷移
+        navigate({ to: '/data/packs/$packId', params: { packId: newPackId } });
+    };
 
     // 💡 修正 3: 編集ボタンは既存パックIDを持つ編集ページへのナビゲーションに統一
     const handleEditPack = (packId: string) => {

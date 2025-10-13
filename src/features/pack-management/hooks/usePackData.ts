@@ -8,11 +8,11 @@
 import { useState, useEffect } from 'react';
 import type { Pack } from '../../../models/pack';
 import { packService } from '../../../services/pack-logic/packService';
-import { createDefaultPack } from '../../../services/pack-logic/packUtils';
+import { createDefaultPackData } from '../../../utils/dataUtils';
 
 export const usePackData = (initialPackId?: string) => {
     const [packs, setPacks] = useState<Pack[]>([]);
-    const [currentPack, setCurrentPack] = useState<Pack>(createDefaultPack());
+    const [currentPack, setCurrentPack] = useState<Pack>(createDefaultPackData());
     const [isLoading, setIsLoading] = useState(true);
 
     // 全パックのリストをDBから取得する
@@ -34,11 +34,11 @@ export const usePackData = (initialPackId?: string) => {
                     setCurrentPack(pack);
                 } else {
                     // IDが無効な場合は新規作成モードへ
-                    setCurrentPack(createDefaultPack());
+                    setCurrentPack(createDefaultPackData());
                 }
             } else {
                 // IDがない場合は新規作成モードへ
-                setCurrentPack(createDefaultPack());
+                setCurrentPack(createDefaultPackData());
             }
         };
 
@@ -73,7 +73,7 @@ export const usePackData = (initialPackId?: string) => {
             await fetchPacks();
             // 削除したパックを編集していた場合は、新規モードに戻す
             if (currentPack.packId === packId) {
-                setCurrentPack(createDefaultPack());
+                setCurrentPack(createDefaultPackData());
             }
         }
     };
@@ -85,7 +85,7 @@ export const usePackData = (initialPackId?: string) => {
         isLoading,
         handleSave,
         handleDelete,
-        handleNewPack: () => setCurrentPack(createDefaultPack()), // 新規作成モードへの切り替え
+        handleNewPack: () => setCurrentPack(createDefaultPackData()), // 新規作成モードへの切り替え
         fetchPacks, // ★ 修正: リスト再取得関数を外部に公開
     };
 };

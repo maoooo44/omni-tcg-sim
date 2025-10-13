@@ -3,6 +3,9 @@
 import type { Deck } from '../../models/deck';
 import { v4 as uuidv4 } from 'uuid';
 
+// ★ 追加: 自動採番に必要なユーティリティをインポート
+import { getNextNumber } from '../../utils/numberingUtils';
+
 // 永続化キー
 const STORAGE_KEY = 'tcg_deck_data';
 const DELAY = 300; 
@@ -67,6 +70,7 @@ if (currentDecks.length === 0) {
             imageUrl: undefined,
             imgColor: 'red', 
             hasUnownedCards: false, 
+            number: 1, // MOCKデータにも採番
         },
     ];
     currentDecks = [...MOCK_DECKS];
@@ -120,10 +124,29 @@ export const deckService = {
                 const existingIndex = currentDecks.findIndex(d => d.deckId === deck.deckId);
                 
                 if (existingIndex !== -1) {
-                    currentDecks[existingIndex] = deck; // 更新
+                    // 既存のデッキの更新
+                    currentDecks[existingIndex] = deck; 
                     console.log(`[DeckService] Deck ${deck.deckId} updated.`);
                 } else {
-                    currentDecks.push({ ...deck, deckId: deck.deckId || uuidv4() }); // 新規追加
+                    // --- ★ デッキの自動採番ロジック ★ ---
+                    if (deck.number === undefined || deck.number === null) {
+                        
+                        // 1. currentDecks から number の最大値を取得
+                        const maxNumber = currentDecks
+                            .map(d => d.number)
+                            .filter((n): n is number => n !== undefined && n !== null) // undefined/nullを除外
+                            .reduce((max, current) => Math.max(max, current), 0); // 0を初期値として最大値を求める
+
+                        // 2. 次の番号を計算
+                        const nextNumber = getNextNumber(maxNumber, 1); 
+
+                        // 3. number を付与
+                        deck.number = nextNumber;
+                    }
+                    // --- ★ 採番ロジックここまで ★ ---
+
+                    // 新規追加
+                    currentDecks.push({ ...deck, deckId: deck.deckId || uuidv4() }); 
                     console.log(`[DeckService] Deck ${deck.deckId} saved (new).`);
                 }
                 
@@ -149,10 +172,10 @@ export const deckService = {
     async importDecks(decksToImport: Deck[]): Promise<{ importedCount: number, renamedCount: number }> {
         return new Promise(resolve => {
              setTimeout(() => {
-                 let importedCount = 0;
-                 let renamedCount = 0;
+                let importedCount = 0;
+                let renamedCount = 0;
 
-                 decksToImport.forEach(newDeck => {
+                decksToImport.forEach(newDeck => {
                     const existing = currentDecks.find(d => d.deckId === newDeck.deckId);
                     if (existing) {
                         newDeck.name = `${newDeck.name} (Imported)`;
