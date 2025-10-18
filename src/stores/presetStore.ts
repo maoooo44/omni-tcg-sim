@@ -1,15 +1,14 @@
 /**
-* src/stores/presetStore.ts
-*
-* Zustandを使用してパックおよびカードのカスタムプロパティのプリセットを管理するストア。
-* DBサービスを呼び出し、IndexedDBへの永続化と、メモリ状態の管理を行う。
-*/
+ * src/stores/presetStore.ts
+ *
+ * Zustandを使用してパックおよびカードのカスタムプロパティのプリセットを管理するストア。
+ * 責務は、プリセットリストの保持、DBサービスを介したIndexedDBへの永続化、およびメモリ状態の同期を行う。
+ */
 
 import { create } from 'zustand';
 import type { PackPreset, CardCustomPreset, Preset } from '../models/preset';
-import { generateUUID } from '../utils/uuidUtils';
-// DBサービスへの依存を明確にする
-import { presetService } from '../services/user-logic/presetService'; 
+import { generateId } from '../utils/dataUtils';
+import { presetService } from '../services/user-data/presetService'; 
 
 
 export interface PresetStore {
@@ -17,12 +16,16 @@ export interface PresetStore {
     cardCustomPresets: CardCustomPreset[];
 
     // アクション
-    loadPresets: () => Promise<void>; // 👈 追加: DBからのロード
+    /** DBからプリセットをロードし、ストアを初期化する */
+    fetchPresets: () => Promise<void>;
+    /** 新しいPackプリセットを作成し、DBとストアに保存する */
     savePackPreset: (
         data: Omit<PackPreset, 'id' | 'createdAt' | 'updatedAt' | 'name'>, 
         name: string
     ) => Promise<void>
+    /** 新しいCardカスタムプリセットを作成し、DBとストアに保存する */
     saveCardCustomPreset: (data: Record<string, string>, name: string) => Promise<void>;
+    /** プリセットをDBとストアから削除する */
     deletePreset: (id: string, type: 'pack' | 'card') => Promise<void>;
 }
 
@@ -58,22 +61,23 @@ const INITIAL_CARD_PRESETS: CardCustomPreset[] = [{
     }
 }];
 
-const INITIAL_PRESETS: Preset[] = [...INITIAL_PACK_PRESETS, ...INITIAL_CARD_PRESETS];
+// 初期化時にDBに投入するためのプリセットリスト
+const INITIAL_PRESETS: Preset[] = [...INITIAL_PACK_PRESETS, ...INITIAL_CARD_PRESETS] as Preset[];
 
 
 export const usePresetStore = create<PresetStore>((set, _get) => ({
-    packPresets: [], // DBからロードするため初期値を空に変更
-    cardCustomPresets: [], // DBからロードするため初期値を空に変更
+    packPresets: [], 
+    cardCustomPresets: [], 
 
     /**
      * IndexedDBからプリセットをロードし、ストアを初期化する
      */
-    loadPresets: async () => {
+    fetchPresets: async () => {
         try {
             // DBが空の場合に初期データを投入 (サービスの責務)
-            await presetService.initializePresets(INITIAL_PRESETS as Preset[]); 
+            await presetService.initializePresets(INITIAL_PRESETS); 
             
-            // DBからデータをロード (サービスの責務)
+            // DBからデータをロード
             const loadedPresets = await presetService.loadAllPresets();
             
             // ロードしたデータを Pack/Card にフィルタリングして状態にセット
@@ -91,11 +95,14 @@ export const usePresetStore = create<PresetStore>((set, _get) => ({
         }
     },
 
+    /**
+     * Packプリセットを生成し、DBとストアに保存する
+     */
     savePackPreset: async (data, name) => {
         const now = new Date().toISOString();
         const newPreset: PackPreset = {
             ...data,
-            id: generateUUID(),
+            id: generateId(),
             name: name,
             createdAt: now,
             updatedAt: now,
@@ -108,10 +115,13 @@ export const usePresetStore = create<PresetStore>((set, _get) => ({
         set(state => ({ packPresets: [...state.packPresets, newPreset] }));
     },
 
+    /**
+     * Cardカスタムプリセットを生成し、DBとストアに保存する
+     */
     saveCardCustomPreset: async (customFields, name) => {
         const now = new Date().toISOString();
         const newPreset: CardCustomPreset = {
-            id: generateUUID(),
+            id: generateId(),
             name: name,
             createdAt: now,
             updatedAt: now,
@@ -125,6 +135,9 @@ export const usePresetStore = create<PresetStore>((set, _get) => ({
         set(state => ({ cardCustomPresets: [...state.cardCustomPresets, newPreset] }));
     },
     
+    /**
+     * プリセットをDBとストアから削除する
+     */
     deletePreset: async (id, type) => {
         
         // 永続化ロジック (DBサービスを呼び出し)

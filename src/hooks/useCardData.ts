@@ -8,7 +8,7 @@
  */
 
 import { useEffect, useState } from 'react';
-import { cardDataService } from '../services/pack-logic/CardDataService'; 
+import { cardDataService } from '../services/cards/cardDataService'; 
 import type { Card } from '../models/card';
 
 /**
@@ -19,24 +19,33 @@ export const useCardData = () => {
     const [isLoaded, setIsLoaded] = useState(false);
     
     useEffect(() => {
-        // コンポーネントマウント時にカードデータをロード
+        // コンポーネントマウント時にカードデータをロードし、キャッシュに格納
         cardDataService.loadAllCardsFromCache() 
             .then((success: boolean) => {
                 if (success) {
                     setIsLoaded(true);
                 } else {
+                    // ロード失敗時でも、アプリの動作を止めず、ログを出力
                     console.error('カードデータの初期ロードに失敗しました。');
+                    // ロードが完了したと見なして isLoaded を true にするか、
+                    // エラー状態を別途保持するかは、アプリケーションの要件によるが、ここでは一旦 true にする選択肢もある
+                    // 例: setIsLoaded(true); // ロード試行は完了
                 }
+            })
+            // エラーをキャッチして、フック外に影響を与えないようにする
+            .catch(error => {
+                console.error('カードデータロード中に予期せぬエラーが発生しました:', error);
+                // setIsLoaded(true); // エラーでも試行は完了
             });
     }, []);
 
     /**
-     * IDからカード情報を取得するヘルパー関数
+     * IDからカード情報を取得するヘルパー関数 (キャッシュから同期的に取得)
      * @param cardId カードID
      * @returns Cardオブジェクト、または見つからなかった場合は undefined
      */
     const getCardInfo = (cardId: string): Card | undefined => {
-        return cardDataService.getCardById(cardId);
+        return cardDataService.getCardByIdFromCache(cardId);
     };
 
     /**
@@ -53,7 +62,6 @@ export const useCardData = () => {
         isLoaded,
         getCardInfo,
         getCardName,
-        // 必要に応じて、全カードリストなどを提供することも可能
-        // getAllCards: () => cardDataService.getAllCards(), 
+        // getAllCards: () => cardDataService.getAllCards(), // 必要に応じてキャッシュにある全データも公開可能
     };
 };

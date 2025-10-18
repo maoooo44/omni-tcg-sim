@@ -10,7 +10,7 @@ import { useParams } from '@tanstack/react-router';
 import { 
     Box, Typography, Divider
 } from '@mui/material';
-import PackOpener from '../features/pack-opening/PackOpener'; // これに全てのロジックを委譲
+import PackOpener from '../features/pack-opener/PackOpener'; // これに全てのロジックを委譲
 
 interface PackOpenerParams { 
     packId: string; 
@@ -26,6 +26,7 @@ const PackOpenerPage: React.FC = () => {
             </Typography>
             <Divider sx={{ mb: 2 }} />
 
+            {/* パックIDを渡し、実際のロジックはFeatureコンポーネントに委譲 */}
             <PackOpener preselectedPackId={packId} />
         </Box>
     );

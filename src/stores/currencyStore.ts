@@ -1,10 +1,10 @@
 /**
-* src/stores/currencyStore.ts
-*
-* Zustandを使用してユーザーの仮想通貨（コイン）を管理するストア。
-* IndexedDB（currencyService）と連携し、通貨のロード、加算、減算、リセット、
-* およびDBへの永続化を処理する。
-*/
+ * src/stores/currencyStore.ts
+ *
+ * Zustandを使用してユーザーの仮想通貨（コイン）を管理するストア。
+ * IndexedDB（currencyService）と連携し、通貨のロード、加算、減算、リセット、
+ * およびDBへの永続化を処理する。
+ */
 
 import { create } from 'zustand';
 import { currencyService } from '../services/currency/currencyService'; 
@@ -13,26 +13,26 @@ export interface CurrencyState {
     coins: number;
     
     // --- アクション ---
-    /** 初期ロード */
-    loadCurrency: () => Promise<void>;
+    /** DBから通貨をロードし、ストアを初期化する */
+    fetchCurrency: () => Promise<void>;
     /** 通貨の加算 */
     addCoins: (amount: number) => Promise<void>;
-    /** 通貨の減算（購入処理） */
-    spendCoins: (amount: number) => Promise<boolean>; // 成功/失敗を返す
+    /** 通貨の減算（購入処理）。成功/失敗を返す */
+    spendCoins: (amount: number) => Promise<boolean>; 
     /** デバッグ用リセット */
     resetCurrency: () => Promise<void>; 
-    /** ★追加: コインを直接設定（ゴッドモード用） */
+    /** コインを直接設定する（デバッグ/ゴッドモード用） */
     setCoins: (amount: number) => Promise<void>; 
 }
 
-const INITIAL_COINS = 5000; // 初期所持金（デバッグ用）
+const INITIAL_COINS = 5000; // 初期所持金
 const DEFAULT_CURRENCY_STATE = { coins: INITIAL_COINS };
 
 export const useCurrencyStore = create<CurrencyState>((set, get) => ({
     coins: INITIAL_COINS,
     
     // DBから通貨をロードし、ストアを初期化
-    loadCurrency: async () => {
+    fetchCurrency: async () => {
         try {
             // currencyService.loadCoins() からデータを取得
             const coins = await currencyService.loadCoins();
@@ -74,7 +74,7 @@ export const useCurrencyStore = create<CurrencyState>((set, get) => ({
         return true; // 成功
     },
     
-    // ★追加: コインを直接設定するアクション
+    // コインを直接設定するアクション
     setCoins: async (amount) => {
         // マイナスを許可しない
         const validatedAmount = Math.max(0, amount); 
@@ -84,7 +84,7 @@ export const useCurrencyStore = create<CurrencyState>((set, get) => ({
         
         // 2. DBに保存
         await currencyService.saveCoins(validatedAmount);
-        console.log(`💡 Coins set directly to ${validatedAmount}.`);
+        console.log(`Coins set directly to ${validatedAmount}.`);
     },
 
     // リセットとDB保存

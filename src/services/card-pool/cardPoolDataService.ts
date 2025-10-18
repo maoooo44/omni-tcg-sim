@@ -1,0 +1,133 @@
+/**
+ * src/services/card-pools/CardPoolDataService.ts
+ *
+ * CardPool（所有カード資産）データに関する**ドメインロジック**と**データ永続化（IndexedDB）**を担うサービス層。
+ * 責務は以下の通り：
+ * 1. DBからのデータロードと**グローバルキャッシュ（cardPoolCache）**の構築・提供。
+ * 2. 所有枚数の**更新/削除（CRUD）**ロジックの実行。
+ * 3. 一括更新（バルク処理）の提供。
+ * 4. カードプール全体のクリア。
+ */
+
+import { db } from "../database/db";
+import type { DBCardPool } from '../../models/db-types'; 
+import { cardPoolSearchService } from './cardPoolSearchService'; 
+
+// 💡 キャッシュ層を導入
+let cardPoolCache: Map<string, number> | null = null; // Map<cardId, count>
+
+// ----------------------------------------------------
+// 責務: DB/キャッシュ操作と更新ロジック
+// ----------------------------------------------------
+export const cardPoolDataService = {
+
+    /**
+     * [Service Logic] DBから全カードプールをロードし、キャッシュを構築する。
+     */
+    async loadAllCardPoolFromCache(): Promise<boolean> {
+        console.log(`[CardPoolDataService] 🚀 START loading all card pool data.`);
+        try {
+            // SearchService経由でDBから取得
+            // (SearchServiceがDBから取得し、Map形式に変換する責務を持つと想定)
+            cardPoolCache = await cardPoolSearchService.getOwnedCardsMap();
+            console.log(`[CardPoolDataService] ✅ Loaded ${cardPoolCache.size} unique cards.`);
+            return true;
+        } catch (error) {
+            console.error("[CardPoolDataService] ❌ Failed to load card pool:", error);
+            cardPoolCache = new Map();
+            return false;
+        }
+    },
+
+    /**
+     * キャッシュから全カードプールを取得する
+     */
+    getAllCardPoolFromCache(): Map<string, number> { 
+        return cardPoolCache || new Map();
+    },
+
+    /**
+     * カードの所有枚数を更新/新規作成/削除する (単一エントリ)
+     */
+    async saveCardPoolEntry(cardId: string, newCount: number): Promise<void> {
+        try {
+            if (newCount > 0) {
+                const data: DBCardPool = { cardId: cardId, count: newCount };
+                // 1. DB更新 (put)
+                await db.cardPool.put(data);
+                // 2. キャッシュ更新
+                cardPoolCache?.set(cardId, newCount);
+            } else {
+                // 1. DB削除 (delete)
+                await db.cardPool.delete(cardId);
+                // 2. キャッシュ削除
+                cardPoolCache?.delete(cardId);
+            }
+        } catch (error) {
+            console.error(`Failed to save card pool entry for Card ID ${cardId}:`, error);
+            throw new Error("カード資産のDB更新に失敗しました。");
+        }
+    },
+
+    /**
+     * 複数のカードの所有枚数をトランザクション内で一括更新する (バルク処理)
+     */
+    async bulkSaveCardPoolEntries(updates: Map<string, number>): Promise<void> {
+        if (updates.size === 0) return;
+        
+        const dataToPut: DBCardPool[] = [];
+        const idsToDelete: string[] = [];
+
+        // 1. 更新内容を分類
+        for (const [cardId, newCount] of updates.entries()) {
+            if (newCount > 0) {
+                dataToPut.push({ cardId: cardId, count: newCount } as DBCardPool);
+            } else {
+                idsToDelete.push(cardId);
+            }
+        }
+
+        try {
+            // 2. トランザクション内で一括実行 (bulkPut/bulkDelete)
+            await db.transaction('rw', db.cardPool, async () => {
+                if (dataToPut.length > 0) {
+                    await db.cardPool.bulkPut(dataToPut);
+                }
+                if (idsToDelete.length > 0) {
+                    await db.cardPool.bulkDelete(idsToDelete);
+                }
+            });
+
+            // 3. キャッシュ更新
+            dataToPut.forEach(data => cardPoolCache?.set(data.cardId, data.count));
+            idsToDelete.forEach(id => cardPoolCache?.delete(id));
+
+        } catch (error) {
+            console.error("Failed to bulk update card pool:", error);
+            throw new Error("カード資産の一括DB更新に失敗しました。");
+        }
+    },
+    
+    /**
+     * カードプール全体をDBから物理的にクリアする
+     */
+    async deleteCardPool(): Promise<void> {
+        try {
+            await db.cardPool.clear(); 
+            cardPoolCache = new Map(); // キャッシュもクリア
+            console.log("[CardPoolDataService] IndexedDB cardPool cleared.");
+        } catch (error) {
+            console.error("Failed to clear card pool in DB:", error);
+            throw new Error("カードプールのDBクリアに失敗しました。");
+        }
+    },
+
+    /**
+     * Deck削除時のCardPoolエントリ削除ロジック（現時点では実装保留）
+     * 💡 Deckに紐づくカードがCardPoolから完全に削除されるわけではないため、このアクションは保留または再検討が必要。
+     */
+    async bulkDeleteCardPoolEntriesByDeckId(_deckId: string): Promise<void> {
+        // DeckServiceからの呼び出しに備え、アクション名は定義。
+        console.warn(`[CardPoolDataService] bulkDeleteCardPoolEntriesByDeckId: The logic for deleting/adjusting owned cards based on deck removal is complex and currently unimplemented.`);
+    }
+};

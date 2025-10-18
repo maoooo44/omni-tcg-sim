@@ -1,5 +1,10 @@
-// src/hooks/useSortAndFilter.ts
-
+/**
+ * src/hooks/useSortAndFilter.ts
+ *
+ * 汎用的なソートとフィルタリングのロジックをカプセル化するカスタムフック。
+ * 外部のデータとアクセサー関数を利用し、UIの状態（ソート、検索）に基づいて
+ * パフォーマンスに配慮したデータ加工結果を提供する。
+ */
 import { useState, useMemo, useCallback } from 'react';
 import { sortData, type SortField, type SortOrder } from '../utils/sortingUtils';
 
@@ -30,7 +35,7 @@ export interface UseSortAndFilterResult<T> extends SortFilterState {
  * 汎用的なソートとフィルタリングのロジックを提供するカスタムフック
  * @param data - ソートとフィルタリングの対象となる元のデータ配列
  * @param fieldAccessor - データアイテムから指定されたフィールドの値を取得する関数
- * @param config - デフォルトのソート設定
+ * @param config - デフォルトのソート設定 (デフォルトは number/asc)
  * @returns ソートとフィルタリングの状態、データ、および操作関数
  */
 export const useSortAndFilter = <T>(
@@ -39,18 +44,18 @@ export const useSortAndFilter = <T>(
     config: DefaultSortConfig = { defaultSortField: 'number', defaultSortOrder: 'asc' }
 ): UseSortAndFilterResult<T> => {
     
-    // 💡 状態管理
+    // 状態管理
     const [sortField, setSortField] = useState<SortField>(config.defaultSortField);
     const [sortOrder, setSortOrder] = useState<SortOrder>(config.defaultSortOrder);
     const [searchTerm, setSearchTerm] = useState<string>('');
     
     
-    // 💡 ソート順のトグル関数
+    // ソート順のトグル関数 (useCallbackで安定化)
     const toggleSortOrder = useCallback(() => {
         setSortOrder(prev => (prev === 'asc' ? 'desc' : 'asc'));
     }, []);
 
-    // 💡 メインロジック: フィルタリングとソートの適用
+    // メインロジック: フィルタリングとソートの適用 (useMemoでパフォーマンス最適化)
     const sortedAndFilteredData = useMemo(() => {
         
         if (!data) return [];
@@ -61,30 +66,26 @@ export const useSortAndFilter = <T>(
         if (searchTerm.trim() !== '') {
             const lowerCaseSearchTerm = searchTerm.trim().toLowerCase();
             
-            // フィルタリングロジック:
-            // fieldAccessorで取得できる任意のフィールドの値に検索語が含まれるかチェック
+            // フィルタリング対象フィールドを定義
+            // fieldAccessor が各モデルの ID (cardId, packId, deckId) を解決することを期待
+            const filterFields: SortField[] = [
+                'name', 
+                'number', 
+                'cardId', 'packId', 'deckId', 'rarity' 
+            ];
+            
             processedData = processedData.filter(item => {
-                // 💡 Pack, Deck, Cardの共通フィールド（name, number, cardId/packId/deckId）で検索
-                // フィルタリング対象フィールドを決定
-                const filterFields: SortField[] = [
-                    'name', 
-                    // numberも文字列として検索対象に含める (例: "001"で検索したい場合)
-                    'number', 
-                    // IDは Pack/Deck/Card でキーが異なるが、fieldAccessorが吸収することを期待
-                    'cardId', 'packId', 'deckId', 'rarity' 
-                ];
-                
                 return filterFields.some(field => {
                     const value = fieldAccessor(item, field);
                     if (value === null || value === undefined) return false;
                     
-                    // 値を文字列に変換して検索
+                    // 値を文字列に変換して、検索語が含まれているかチェック
                     return String(value).toLowerCase().includes(lowerCaseSearchTerm);
                 });
             });
         }
         
-        // 2. ソート処理
+        // 2. ソート処理 (sortingUtils.ts に委譲)
         return sortData(processedData, sortField, sortOrder, fieldAccessor);
         
     }, [data, searchTerm, sortField, sortOrder, fieldAccessor]);
@@ -94,8 +95,9 @@ export const useSortAndFilter = <T>(
         sortOrder,
         searchTerm,
         sortedAndFilteredData,
-        setSortField,
-        setSortOrder,
+        // Setter関数
+        setSortField: setSortField,
+        setSortOrder: setSortOrder,
         toggleSortOrder,
         setSearchTerm,
     };

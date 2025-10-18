@@ -2,11 +2,11 @@
  * src/pages/CardPoolPage.tsx
  *
  * ユーザーが所有するカード資産（カードプール）の一覧と管理機能を提供するページコンポーネントです。
- * 実際のロジック（フィルタリング、ソート、表示）は `CardPoolManager` コンポーネントに委譲しています。
+ * 実際のロジック（フィルタリング、ソート、表示）は CardPoolManager コンポーネントに委譲しています。
  */
 import React from 'react';
 import { Box, Typography } from '@mui/material';
-import CardPoolManager from '../features/card-pool/CardPoolManager'; 
+import CardPoolManager from '../features/card-pool/CardPool'; 
 
 const CardPoolPage: React.FC = () => {
     return (
@@ -20,7 +20,7 @@ const CardPoolPage: React.FC = () => {
                 このページでは、あなたがパック開封などで獲得した全てのカードを確認できます。
             </Typography>
             
-            {/* 2. カードプール管理コンポーネントの埋め込み */}
+            {/* 2. カードプール管理コンポーネントの埋め込み (ロジックはfeaturesに分離) */}
             <CardPoolManager />
             
         </Box>

@@ -1,12 +1,17 @@
-// src/pages/HomePage.tsx
+/**
+ * src/pages/HomePage.tsx
+ *
+ * アプリケーションのランディングページ。主要機能への導線と、
+ * アプリケーションの重要なステータス（パック数、資産、通貨など）の概要を提供する。
+ */
 
 import React from 'react';
 import { Box, Grid, Typography, Paper, Button, Alert, Divider } from '@mui/material';
 import CardGiftcardIcon from '@mui/icons-material/CardGiftcard'; // パック管理
-import OpenInNewIcon from '@mui/icons-material/OpenInNew';      // パック開封
-import InventoryIcon from '@mui/icons-material/Inventory';      // カードプール
-import StyleIcon from '@mui/icons-material/Style';              // デッキ管理
-import SettingsIcon from '@mui/icons-material/Settings';        // 設定・データ管理
+import OpenInNewIcon from '@mui/icons-material/OpenInNew';      // パック開封
+import InventoryIcon from '@mui/icons-material/Inventory';      // カードプール
+import StyleIcon from '@mui/icons-material/Style';              // デッキ管理
+import SettingsIcon from '@mui/icons-material/Settings';        // 設定・データ管理
 
 import { Link } from '@tanstack/react-router'; 
 import { useShallow } from 'zustand/react/shallow';
@@ -15,18 +20,18 @@ import { useCardPoolStore } from '../stores/cardPoolStore';
 import { useCurrencyStore } from '../stores/currencyStore';
 import { useDeckStore } from '../stores/deckStore';
 import { useUserDataStore } from '../stores/userDataStore';
-import { usePackStore } from '../stores/packStore'; // ★ 修正 1: usePackStoreのインポートを追加
+import { usePackStore } from '../stores/packStore'; 
 
 const HomePage: React.FC = () => {
     // 状態の取得
-    const { packs } = usePackStore(useShallow(state => ({ packs: state.packs }))); // ★ usePackStoreを使用
+    const { packs } = usePackStore(useShallow(state => ({ packs: state.packs }))); 
     const { totalOwnedCards, ownedCardsSize } = useCardPoolStore(useShallow(state => ({
         totalOwnedCards: state.totalOwnedCards,
         ownedCardsSize: state.ownedCards.size,
     })));
     const { decksCount } = useDeckStore(useShallow(state => ({ decksCount: state.decks.length })));
     const { coins } = useCurrencyStore(useShallow(state => ({ coins: state.coins })));
-    const { isGodMode, /*isDTCGEnabled*/ } = useUserDataStore(useShallow(state => ({ // ★ エラー箇所 1 の原因はインポート漏れ
+    const { isGodMode, /*isDTCGEnabled*/ } = useUserDataStore(useShallow(state => ({ 
         isGodMode: state.isGodMode,
         isDTCGEnabled: state.isDTCGEnabled,
     })));
@@ -67,7 +72,7 @@ const HomePage: React.FC = () => {
     );
 
     return (
-        <Box sx={{ mt: 2 }}>
+        <Box sx={{ mt: 2, p: 2 }}>
             <Typography variant="h3" component="h1" gutterBottom>
                 🃏 OmniTCGSim
             </Typography>

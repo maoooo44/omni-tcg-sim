@@ -1,10 +1,9 @@
 /**
  * src/features/card-pool/hooks/useCardPoolDisplay.ts
  *
- * 💡 修正: 
- * 1. 未使用の filterFunction を削除 (TS6133 エラー解消)。
- * 2. useSortAndFilter の設定から initialSearchTerm を削除 (TS2353 エラー解消)。
- * 3. 検索フィルタリングは finalFilteredAndSortedCards の計算時に適用するようロジックを修正。
+ * ユーザーのカードコレクション画面（CardPoolManager）に必要なデータを統合し、
+ * フィルタリング、ソート、ページネーションの状態とロジックを提供するカスタムHookです。
+ * 複数のZustandストアから情報を取得し、表示用のリストに変換する責務を担います。
  */
 
 import { useState, useMemo, useCallback, useEffect } from 'react';
@@ -16,10 +15,12 @@ import { usePackStore } from '../../../stores/packStore';
 
 import { useSortAndFilter } from '../../../hooks/useSortAndFilter'; 
 import { type SortField } from '../../../utils/sortingUtils';
-// import type { SortOption } from '../../../components/common/SortAndFilterControls'; 
 
 import type { Card as CardType } from '../../../models/card'; 
 import type { Pack } from '../../../models/pack'; 
+
+// 💡 修正: cardPoolFieldAccessor を切り出したファイルからインポート
+import { cardPoolFieldAccessor } from '../cardPoolUtils'; 
 
 export const CARD_GRID_COLUMNS = 6; 
 export const CARDS_PER_PAGE = 30; 
@@ -30,7 +31,7 @@ export interface OwnedCardDisplay extends CardType {
     count: number;
     description: string; 
     packNumber: number | null; 
-    packName: string;        
+    packName: string;        
 }
 
 export interface CardPoolFilters {
@@ -46,43 +47,16 @@ export interface ViewSettings {
 }
 
 
-// =========================================================================
-// 汎用ソート・アクセサ関数
-// =========================================================================
-
-const cardPoolFieldAccessor = (item: OwnedCardDisplay, field: SortField): string | number | null | undefined => {
-    switch (field) {
-        // 複合ソート: packNumber (パックのナンバー) と number (カードのナンバー) を使用
-        case 'number':
-            const packNumber = item.packNumber ?? 999999; 
-            const cardNumber = item.number ?? 999999;
-            // 複合ソート用の文字列/数値を作成 (例: 001005, 010010)
-            return `${String(packNumber).padStart(6, '0')}${String(cardNumber).padStart(6, '0')}`;
-        case 'packName':
-            return item.packName; 
-        case 'name':
-            return item.name;
-        case 'rarity':
-            return item.rarity;
-        case 'count':
-            return item.count; 
-        case 'cardId':
-            return item.cardId;
-        default:
-            return (item as any)[field] ?? null; 
-    }
-};
-
 // --- カスタムフック ---
 
 export const useCardPoolDisplay = () => {
     
-    // ストアからのデータ取得 (変更なし)
-    const { ownedCards, isLoading, resetPool } = useCardPoolStore(
+    // ストアからのデータ取得 (deleteCardPoolk -> deleteCardPool に修正)
+    const { ownedCards, isLoading, deleteCardPool } = useCardPoolStore(
         useShallow((state: CardPoolState) => ({ 
             ownedCards: state.ownedCards, 
             isLoading: state.isLoading,
-            resetPool: state.resetPool,
+            deleteCardPool: state.deleteCardPool,
         }))
     );
 
@@ -99,13 +73,13 @@ export const useCardPoolDisplay = () => {
     const [currentPage, setCurrentPage] = useState(1);
     const [viewMode, setViewMode] = useState<ViewMode>('list');
     
-    // 設定の初期化 (変更なし)
-    const [listSettings, setListSettings] = useState<any>({
+    // 設定の初期化 (ViewSettings 型を適用)
+    const [listSettings, setListSettings] = useState<ViewSettings>({
         sortField: 'number',
         sortOrder: 'asc',
         columns: 4, 
     });
-    const [collectionSettings, setCollectionSettings] = useState<any>({
+    const [collectionSettings, setCollectionSettings] = useState<ViewSettings>({
         sortField: 'number', 
         sortOrder: 'asc',
         columns: CARD_GRID_COLUMNS,
@@ -113,11 +87,12 @@ export const useCardPoolDisplay = () => {
 
     const activeSettings = viewMode === 'list' ? listSettings : collectionSettings;
     
-    const setSetting = useCallback(<K extends keyof any>(key: K, value: any[K]) => {
+    // setSetting の型推論を ViewSettings に基づいて修正
+    const setSetting = useCallback(<K extends keyof ViewSettings>(key: K, value: ViewSettings[K]) => {
         if (viewMode === 'list') {
-            setListSettings((prev: any) => ({ ...prev, [key]: value }));
+            setListSettings(prev => ({ ...prev, [key]: value }));
         } else {
-            setCollectionSettings((prev: any) => ({ ...prev, [key]: value }));
+            setCollectionSettings(prev => ({ ...prev, [key]: value }));
         }
     }, [viewMode]);
 
@@ -189,15 +164,9 @@ export const useCardPoolDisplay = () => {
     }, [ownedCards, allCards, isDTCGEnabled, viewMode, packMap]); 
 
 
-    // 🚨 削除: 未使用のため filterFunction の定義を削除 (TS6133 エラー解消)
-    // const filterFunction = useCallback((card: OwnedCardDisplay) => {
-    //     ...
-    // }, [filter]); 
-
-    
     // 汎用ソートフックの適用
     const {
-        sortedAndFilteredData: sortedCards, // 💡 検索はフックの外で適用するため、名称を sortedCards に変更
+        sortedAndFilteredData: sortedCards, 
         sortField: currentSortField,
         sortOrder: currentSortOrder,
         setSortField: setSortFieldInternal,
@@ -205,11 +174,10 @@ export const useCardPoolDisplay = () => {
     } = useSortAndFilter<OwnedCardDisplay>(ownedCardDisplayList, cardPoolFieldAccessor, {
         defaultSortField: activeSettings.sortField,
         defaultSortOrder: activeSettings.sortOrder,
-        // 🚨 削除: initialSearchTerm を削除 (TS2353 エラー解消)
     });
 
 
-    // 💡 修正: ソートされたリストに対して、全てのフィルターを適用する
+    // ソートされたリストに対して、全てのフィルターを適用する
     const finalFilteredAndSortedCards = useMemo(() => {
         
         return sortedCards.filter(card => {
@@ -239,10 +207,10 @@ export const useCardPoolDisplay = () => {
     }, [sortedCards, filter.search, filter.packId, filter.rarity]);
 
 
-    // 公開する setSortKey / toggleSortOrder (変更なし)
-    const setSortKey = useCallback((key: SortField) => {
-        setSetting('sortField', key);
-        setSortFieldInternal(key); 
+    // 公開する setSortField (命名を統一)
+    const setSortField = useCallback((field: SortField) => {
+        setSetting('sortField', field);
+        setSortFieldInternal(field); 
         setCurrentPage(1);
     }, [setSetting, setSortFieldInternal]);
     
@@ -252,7 +220,7 @@ export const useCardPoolDisplay = () => {
         setCurrentPage(1);
     }, [setSetting, currentSortOrder, toggleSortOrder]);
 
-    // ... (ページネーション、resetCollection は変更なし)
+    // ページネーション、resetCollection
     const totalPages = useMemo(() => {
         return Math.max(1, Math.ceil(finalFilteredAndSortedCards.length / CARDS_PER_PAGE));
     }, [finalFilteredAndSortedCards.length]);
@@ -264,10 +232,10 @@ export const useCardPoolDisplay = () => {
     }, [currentPage, totalPages]);
     
     const resetCollection = useCallback(async () => {
-        await resetPool();
+        await deleteCardPool(); 
         setInternalFilter({ search: null, packId: null, rarity: null });
         setCurrentPage(1);
-    }, [resetPool]);
+    }, [deleteCardPool]);
 
 
     return {
@@ -282,7 +250,7 @@ export const useCardPoolDisplay = () => {
         viewMode,
         setViewMode,
         sortField: currentSortField, 
-        setSortField: setSortKey,
+        setSortField: setSortField,
         sortOrder: currentSortOrder, 
         toggleSortOrder: publicToggleSortOrder,
         columns: activeSettings.columns,

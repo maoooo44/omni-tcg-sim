@@ -1,9 +1,14 @@
-// src/utils/sortingUtils.ts
+/**
+ * src/utils/sortingUtils.ts
+ * 
+ * データソートに関する汎用ユーティリティ関数群。
+ * 数値（number/図鑑No.）と文字列による比較関数を提供し、外部から渡された accessor を利用することで、
+ * どのエンティティでも再利用可能なソート処理を担う。
+ */
 
 /**
  * 汎用的なソートフィールドの型
- * Pack, Deck, Card のいずれも持つフィールドを想定
- * number (ソート順), name (名前), cardId (ID) など
+ * Pack, Deck, Card のいずれも持つフィールドを想定 (例: number, name, cardId)
  */
 export type SortField = 'number' | 'name' | 'cardId' | 'rarity' | string;
 
@@ -19,7 +24,7 @@ export type SortOrder = 'asc' | 'desc';
  * @param order - ソート順 ('asc' または 'desc')
  * @param accessor - ソート対象のフィールドにアクセスする関数
  * @returns 比較結果 (負: A < B, 正: A > B, 0: A = B)
- * * 💡 numberがnullの場合は、数値を持つ要素よりも後にソートされるように扱う。
+ * * numberがnull/undefinedの場合は、数値を持つ要素よりも後にソートされるように扱う。
  */
 export const compareByNumber = <T>(
     a: T,
@@ -58,6 +63,7 @@ export const compareByString = <T>(
     order: SortOrder,
     accessor: (item: T) => string
 ): number => {
+    // 大文字・小文字を無視し、ローカライズされた比較を行う
     const strA = accessor(a).toLowerCase();
     const strB = accessor(b).toLowerCase();
 
@@ -74,7 +80,7 @@ export const compareByString = <T>(
  * @param order - ソート順
  * @param fieldAccessor - データからソートフィールドの値を取得する関数
  * @returns ソートされた配列
- * * 💡 numberによるソートがデフォルト/優先ソートとなるようロジックを実装
+ * * numberによるソートがデフォルト/優先ソートとなるようロジックを実装
  */
 export const sortData = <T>(
     data: T[],
@@ -86,7 +92,7 @@ export const sortData = <T>(
     // データがない場合はそのまま返す
     if (!data || data.length === 0) return [];
     
-    // 浅いコピーを作成してソート
+    // 浅いコピーを作成してソートし、元の配列の不変性を保つ
     return [...data].sort((a, b) => {
         // 1. number フィールドによるソート (最優先のデフォルトソート)
         if (field === 'number') {
@@ -98,7 +104,7 @@ export const sortData = <T>(
             );
         }
         
-        // 文字列として比較
+        // 2. その他のフィールドによる文字列比較
         return compareByString(
             a, 
             b, 

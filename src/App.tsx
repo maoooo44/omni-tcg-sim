@@ -1,14 +1,17 @@
 /**
-* src/App.tsx
-* 
-* アプリケーションのメインコンポーネント。
-* アプリケーションのルートで全てのZustandストアを初期化し、TanStack Routerを介してルーティングを行います。
-* IndexedDBからのデータロード完了を待つためのロード画面を表示します。
-*/
+ * src/App.tsx
+ * 
+ * アプリケーションのルートコンポーネント。
+ * 全てのZustandストアを初期化し、useInitialLoadフックでIndexedDBからのデータロード完了を監視します。
+ * ロード完了後は、TanStack Routerを通じてアプリケーションのルーティング構造全体をレンダリングします。
+ */
 
 import { RouterProvider } from '@tanstack/react-router';
 import { router } from './router';
 import { useInitialLoad } from './hooks/useInitialLoad'; 
+// ロード画面を切り出したコンポーネントをインポート
+import AppLoadingScreen from './components/AppLoadingScreen'; 
+
 // ZUSTANDストア群のインポート
 import { useCardPool } from './features/card-pool/hooks/useCardPool'; 
 import { useDeckStore } from './stores/deckStore'; 
@@ -16,43 +19,26 @@ import { useUserDataStore } from './stores/userDataStore';
 import { usePackStore } from './stores/packStore'; 
 import { useCurrencyStore } from './stores/currencyStore'; 
 
-// MUIコンポーネントのインポート (ロード画面用)
-import { Box, Typography, CircularProgress, CssBaseline } from '@mui/material';
+// MUIコンポーネントのインポートはロード画面コンポーネントに移動したため、CssBaselineのみ残す
+import { CssBaseline } from '@mui/material';
 
 
 function App() {
     // 必須: 全てのZustandストアのフックを呼び出し、アプリケーションのルートでストアのコンテキストを確立します。
-    useCardPool();      
-    useDeckStore();      
+    useCardPool();      
+    useDeckStore();     
     useUserDataStore(); 
-    usePackStore();     
+    usePackStore();     
     useCurrencyStore(); 
     
     // 初期ロードフックを呼び出し、ロード完了を待つ 
     const isReady = useInitialLoad(); 
     
     // ----------------------------------------------------
-    // ロード完了待ち
+    // ロード完了待ち (切り出したコンポーネントを使用)
     // ----------------------------------------------------
     if (!isReady) {
-        return (
-            <CssBaseline>
-                 <Box 
-                     sx={{ 
-                         display: 'flex', 
-                         flexDirection: 'column', 
-                         justifyContent: 'center', 
-                         alignItems: 'center', 
-                         minHeight: '100vh' 
-                     }}
-                 >
-                     <CircularProgress color="primary" size={60} />
-                     <Typography variant="h6" sx={{ mt: 2 }}>
-                         データをロード中...
-                     </Typography>
-                 </Box>
-            </CssBaseline>
-        );
+        return <AppLoadingScreen />;
     }
     
     // ----------------------------------------------------

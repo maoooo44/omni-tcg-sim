@@ -1,313 +1,464 @@
 /**
 * src/stores/packStore.ts
 *
-* 【適用した修正】
-* 1. loadPacksアクションのクリーンアップ時間を1時間から24時間に変更 (ONE_HOUR_MS -> ONE_DAY_MS)。
-* 2. loadPacks のエラーハンドリングを追加。
-* 3. ログを詳細に追加。
+* Pack（パック）データのグローバルな状態管理を行うZustandストア。
+*
+* 責務:
+* 1. メインコレクション（'packs'）に存在する Pack データのリスト（packs）の保持と、UIで利用する編集対象パック（editingPack）の管理。
+* 2. Pack の CRUD (作成/読み取り/更新/削除) 操作のオーケストレーション。
+* 3. 関連する Card データも考慮した上での、論理削除（'trash'へ移動）・復元・履歴（'history'）保存・物理削除の制御。
+* 4. ユーザーインターフェース（UI）の操作（編集パックのロード、更新）に対応するStoreの状態変更。
+* 5. データサービス（packService, useCardStore）への非同期操作の委譲と、Storeの同期（packs, editingPack, useCardStore）の維持。
+*
+* * 外部依存:
+* - zustand (状態管理ライブラリ)
+* - ../models/pack (Pack, PackBundle 型)
+* - ../utils/dataUtils (ID生成、デフォルトデータ)
+* - ../services/packs/packService (Packデータの永続化とアーカイブ操作)
+* - ../services/data-io/packJsonIO (JSONインポート/エクスポート)
+* - ./cardStore (関連カードデータの操作)
+* - ./userDataStore (ユーザー設定の参照 - 間接依存)
 */
 import { create } from 'zustand';
-import type { Pack, /*RarityConfig,*/ } from '../models/pack'; 
-// ★修正: 新規パックのデフォルトデータ生成関数をインポート
+import type { Pack, PackBundle } from '../models/pack'; 
 import { createDefaultPackData } from '../utils/dataUtils'; 
-import { v4 as uuidv4 } from 'uuid'; 
-import { packService } from '../services/pack-logic/packService'; 
+import { packService, type CollectionKey } from '../services/packs/packService'; 
+import * as packJsonIO from '../services/data-io/packJsonIO'; 
 import { useCardStore } from './cardStore'; 
+import { useUserDataStore } from './userDataStore'; 
 
-const generatePackId = () => uuidv4(); 
-
-// Pack の必須フィールドのうち、自動で生成/設定されるものを除外した型
-type NewPackData = Omit<Pack, 'packId' | 'totalCards' | 'isOpened'>;
-
-// 💡 修正: PackStateをexportし、`startNewPackEditing`をIDを返す`initializeNewPackEditing`に変更
+// --- 修正後の PackState インターフェース定義 ---
 export interface PackState {
-    packs: Pack[];
-    // ★追加: 編集中のパックデータ
-    packForEdit: Pack | null; 
+    packs: Pack[];
+    editingPack: Pack | null; 
 
-    // --- アクション ---
-    loadPacks: () => Promise<void>; 
-    /** 新しいパックを作成 (packId, totalCards, isOpened は自動設定) */
-    createPack: (newPackData: NewPackData) => Promise<string>; 
-    updatePack: (updatedPack: Pack) => Promise<void>; 
-    deletePack: (packId: string) => Promise<void>;
-    loadPackById: (packId: string) => Promise<Pack | null>; 
+    // --- 1. 参照/ロード (変更なし) ---
+    fetchAllPacks: () => Promise<void>; 
+    fetchPackById: (packId: string) => Promise<Pack | null>; 
 
-    // ★修正: 編集フロー用アクション
-    /** 新規作成用のパックを初期化し、生成されたIDを返します。 */
-    // 💡 修正 1: シグネチャを非同期に変更
-    initializeNewPackEditing: () => Promise<string>; 
-    loadPackForEdit: (pack: Pack) => void;
-    updatePackForEdit: (updatedFields: Partial<Pack>) => void;
-    /** 新規または既存パックをDBに保存し、ストアを更新する統合アクション */
-    savePack: (packToSave: Pack) => Promise<Pack>; // ★ 修正: 保存後の Pack を返す
-    
-    // 💡 追加: ページ遷移時や削除ボタンで、DB操作を伴わずストアからのみパックを削除する
-    removePackFromStore: (packId: string) => void; 
+    // --- 2. CRUD/永続化 (変更なし) ---
+    savePack: (packToSave: Pack) => Promise<Pack>; 
 
-    updatePackIsInStore: (packId: string, isInStore: boolean) => Promise<void>;
+    // --- 3. エディタ/UI操作 (変更なし) ---
+    loadEditingPack: (packId: string) => Promise<void>;
+    initializeNewEditingPack: () => string; 
+    updateEditingPackInfo: (updatedFields: Partial<Pack>) => void;
+    
+    // --- 4. メモリ/ストア操作 (変更なし) ---
+    syncPackToStore: (pack: Pack) => void;
+    removePackFromStore: (packId: string) => void; 
+    bulkRemovePacksFromStore: (packIds: string[]) => void;
+
+    // --- 5. I/O (変更なし) ---
+    importPacksFromJson: (jsonText: string) => Promise<{ importedCount: number, newPackIds: string[], importedCardCounts: number[] }>; 
+    exportPacksToJson: (packIds: string[]) => Promise<string>; 
+
+    // --- 6. 📜 履歴アクション ---
+    fetchAllPacksFromHistory: () => Promise<Pack[]>; 
+    fetchPackBundleByIdFromHistory: (archiveId: string) => Promise<PackBundle | null>; 
+    savePackToHistory: (packToSave: Pack) => Promise<void>; 
+    restorePackFromHistory: (archiveId: string) => Promise<void>;
+    deletePackFromHistory: (archiveId: string) => Promise<void>;
+    bulkDeletePacksFromHistory: (archiveIds: string[]) => Promise<void>;
+
+    // --- 7. 🗑️ ゴミ箱アクション ---
+    fetchAllPacksFromTrash: () => Promise<Pack[]>; 
+    fetchPackBundleByIdFromTrash: (archiveId: string) => Promise<PackBundle | null>; 
+    movePackToTrash: (packId: string) => Promise<void>; 
+    bulkMovePacksToTrash: (packIds: string[]) => Promise<void>;
+    restorePackFromTrash: (archiveId: string) => Promise<void>;
+    bulkRestorePacksFromTrash: (archiveIds: string[]) => Promise<void>; 
+    deletePackFromTrash: (archiveId: string) => Promise<void>; 
+    bulkDeletePacksFromTrash: (archiveIds: string[]) => Promise<void>;
+
+    // --- 8. 🛠️ メンテナンスアクション (変更なし) ---
+    runPackGarbageCollection: () => Promise<void>;
 }
 
-export const usePackStore = create<PackState>((set, get) => ({
-    packs: [],
-    // ★追加: 編集状態の初期値
-    packForEdit: null,
 
-    /**
-     * [DB連携] パックリストをロードし、古い下書きをクリーンアップする
-     */
-    loadPacks: async () => {
-        console.log(`[PackStore:loadPacks] 🚀 START loading packs and cleaning up drafts.`); // ✅ ログ追加
-        try {
-            // 1. DBから全パックを取得
-            const allPacks = await packService.getAllPacks();
-            console.log(`[PackStore:loadPacks] Fetched ${allPacks.length} packs from DB.`); // ✅ ログ追加
-            
-            // 2. 🚨 古い下書き削除のロジックを isDraft に基づいて修正（古い name の判定は削除）
-            // 💡 クリーンアップ対象: isDraft: true で、かつ 24時間 (86400000ms) 以上経過したものに変更
-            const now = new Date().getTime();
-            // 24時間 = 24 * 60 * 60 * 1000 = 86400000 ms
-            const ONE_DAY_MS = 86400000;
-            
-            const packsToDelete = allPacks
-                .filter(p => 
-                    // isDraft が true かつ updatedAt があり、現在時刻から24時間以上経過している
-                    !p.isInStore && p.updatedAt && (now - new Date(p.updatedAt).getTime() > ONE_DAY_MS)
-                )
-                .map(p => p.packId);
+export const usePackStore = create<PackState>((set, get) => { 
+    
+    const _setEditingPack = (pack: Pack) => {
+        set({ editingPack: JSON.parse(JSON.stringify(pack)) });
+    };
 
-            // 3. 物理削除の実行（DBへの書き込み）
-            if (packsToDelete.length > 0) {
-                console.log(`[PackStore:loadPacks] 🧹 Deleting ${packsToDelete.length} expired draft packs.`); // ✅ ログ追加
-                await packService.bulkDeletePacks(packsToDelete); 
-                console.log(`[PackStore:loadPacks] Deletion complete.`); // ✅ ログ追加
-            }
-             
-            // 4. 💡 パック一覧に表示するリストを定義（isDraft: false のみ）
-            const packsToDisplay = allPacks
-                // 削除対象に含まれておらず、かつ、isDraft: false のものを表示
-                .filter(p => !packsToDelete.includes(p.packId) && p.isInStore === true); 
-            
-            // 5. Storeにセット
-            set({ packs: packsToDisplay });
-            console.log(`[PackStore:loadPacks] ✅ Loaded ${packsToDisplay.length} packs for display.`); // ✅ ログ追加
-        } catch (error) {
+    return { 
+    
+        packs: [],
+        editingPack: null,
 
-            console.error("[PackStore:loadPacks] ❌ Failed to load or cleanup packs:", error); // ✅ ログ追加
-            set({ packs: [] });
-        }
-    },
+        // ----------------------------------------------------------------------
+        // --- 1. 参照/ロード (変更なし) --- 
+        // ----------------------------------------------------------------------
 
-    // 既存のcreatePack (新しいフローでは使用されないが、互換性のために維持)
-    createPack: async (newPackData) => {
-        console.log(`[PackStore:createPack] ✍️ Creating legacy pack: ${newPackData.name}`); // ✅ ログ追加
-        const newPack: Pack = {
-            ...newPackData,
-            packId: generatePackId(),
-            totalCards: 0,
-            isOpened: false,
-        };
-        
-        const newId = await packService.savePack(newPack);
-        
-        set(state => ({
-            packs: [...state.packs, { ...newPack, packId: newId }],
-        }));
-        console.log(`[PackStore:createPack] ✅ Pack created: ${newPack.name} (ID: ${newId})`); // ✅ ログ追加
-        return newId; 
-    },
-    
-    // 既存のupdatePack (新しいフローでは使用されないが、互換性のために維持)
-    updatePack: async (updatedPack) => { 
-        console.log(`[PackStore:updatePack] 🔄 Updating legacy pack: ${updatedPack.packId}`); // ✅ ログ追加
-        await packService.updatePack(updatedPack.packId, updatedPack);
-        
-        set(state => ({
-            packs: state.packs.map(p => 
-                p.packId === updatedPack.packId ? updatedPack : p
-            ),
-        }));
-        console.log(`[PackStore:updatePack] ✅ Pack updated: ${updatedPack.name}`); // ✅ ログ追加
-    },
-    
-    deletePack: async (packId) => {
-        console.log(`[PackStore:deletePack] 💥 Deleting pack from DB and store: ${packId}`); // ✅ ログ追加
-        try {
-            // packService.deletePack は内部で bulkDeletePacks を呼び出すように修正済み
-            await packService.deletePack(packId); 
-            
-            // 関連するカードストアのステートも更新
-            const cardStore = useCardStore.getState();
-            cardStore.deleteCardsByPackId(packId);
-            console.log(`[PackStore:deletePack] Related cards deleted from store.`); // ✅ ログ追加
+        fetchAllPacks: async () => {
+            console.log(`[PackStore:fetchAllPacks] 🚀 START loading packs. (No filtering applied)`); 
+            try {
+                const packsToDisplay = await packService.fetchAllPacksFromCollection('packs');
+                set({ packs: packsToDisplay });
+                console.log(`[PackStore:fetchAllPacks] ✅ Loaded ${packsToDisplay.length} packs for display.`); 
+            } catch (error) {
+                console.error("[PackStore:fetchAllPacks] ❌ Failed to load packs:", error); 
+                set({ packs: [] });
+            }
+        },
+        
+        fetchPackById: async (packId: string) => {
+            try {
+                const pack = await packService.fetchPackByIdFromCollection(packId, 'packs');
+                return pack;
+            } catch (error) {
+                console.error(`[PackStore:fetchPackById] Failed to load pack ${packId}:`, error);
+                return null;
+            }
+        },
 
-            set((state) => ({
-                packs: state.packs.filter(pack => pack.packId !== packId)
-            }));
-            console.log(`[PackStore:deletePack] ✅ Pack removed from Store: ID: ${packId}`); // ✅ ログ追加
-        } catch (error) {
-            console.error("[PackStore:deletePack] ❌ Failed to delete pack:", error); // ✅ ログ追加
-            throw error;
-        }
-    },
-    
-    // 💡 新規追加: DB操作を伴わずストアからのみパックを削除する
-    removePackFromStore: (packId) => {
-        console.log(`[PackStore:removePackFromStore] 🗑️ START for ID: ${packId}. Current packs: ${get().packs.length}`); // ✅ ログ追加
-        set((state) => {
-            // packs リストから該当 packId を除外する
-            const updatedPacks = state.packs.filter(pack => pack.packId !== packId);
-            
-            // 編集対象パックが削除対象だった場合、packForEdit もクリアする
-            const updatedPackForEdit = state.packForEdit?.packId === packId 
-                ? null 
-                : state.packForEdit;
-            
-            console.log(`[PackStore:removePackFromStore] Packs count changed: ${state.packs.length} -> ${updatedPacks.length}`); // ✅ ログ追加
-            
-            return {
-                packs: updatedPacks,
-                packForEdit: updatedPackForEdit
-            };
-        });
-        console.log(`[PackStore:removePackFromStore] END.`); // ✅ ログ追加
-    },
+        // ----------------------------------------------------------------------
+        // --- 2. CRUD/永続化 (変更なし) ---
+        // ----------------------------------------------------------------------
 
-    loadPackById: async (packId) => {
-        console.log(`[PackStore:loadPackById] Loading pack ID: ${packId}`); // ✅ ログ追加
-        const pack = await packService.getPackById(packId);
-        console.log(`[PackStore:loadPackById] Result: ${pack ? 'Found' : 'Not Found'}`); // ✅ ログ追加
-        return pack;
-    },
-    
-    // ★修正後の新規作成初期化アクション
-    /**
-     * 新規作成用のパックを初期化し、生成されたIDを返します。
-     * PackManagerから呼び出され、即時遷移に利用されます。
-     */
-    // 💡 修正 2: async 関数として定義
-    initializeNewPackEditing: async () => {
-        console.log(`[PackStore:initializeNewPackEditing] 🟢 START New Pack Init.`); // ✅ ログ追加
-        // 1. デフォルトデータを生成 (isDraft: true が含まれると仮定)
-        const newPack = createDefaultPackData();
-        
-        // 2. DBに即時登録し、確定IDを取得 (savePackはput操作でIDを返す)
-        console.log(`[PackStore:initializeNewPackEditing] Calling packService.savePack (Draft)...`); // ✅ ログ追加
-        const newId = await packService.savePack(newPack);
-        
-        // 3. StoreのpacksリストとpackForEditを更新
-        const finalPack: Pack = { ...newPack, packId: newId };
-        set(state => ({ 
-            packs: [...state.packs, finalPack], // リストに追加
-            packForEdit: finalPack // 編集対象も更新
-        }));
-        
-        console.log(`[PackStore:initializeNewPackEditing] ✅ Initialized and saved DRAFT pack with ID: ${newId}.`); // ✅ ログ追加
-        return newId; // 確定したIDを返す
-    },
+        savePack: async (packToSave) => {
+            console.log(`[PackStore:savePack] 💾 START saving pack: ${packToSave.packId}`); 
+            
+            try {
+                const savedPacks = await packService.savePacksToCollection([packToSave], 'packs');
+                if (!savedPacks || savedPacks.length === 0) throw new Error("Service returned empty result.");
+                const savedPack = savedPacks[0];
+
+                // Store同期
+                get().syncPackToStore(savedPack);
+                
+                console.log(`[PackStore:savePack] ✅ Pack finalized and saved: ${savedPack.name} (ID: ${packToSave.packId})`); 
+                return savedPack; 
+            } catch (error) {
+                console.error("[PackStore:savePack] ❌ ERROR during save:", error); 
+                throw new Error('パックの保存に失敗しました。');
+            }
+        },
 
 
-    // 既存パックを編集用にロードする
-    loadPackForEdit: (pack) => {
-        set({ packForEdit: pack });
-        console.log(`[PackStore:loadPackForEdit] Loaded pack for editing: ${pack.name} (ID: ${pack.packId})`); // ✅ ログ追加
-    },
+        // ----------------------------------------------------------------------
+        // --- 3. エディタ/UI操作 (変更なし) ---
+        // ----------------------------------------------------------------------
+        
+        loadEditingPack: async (packId: string) => {
+            const pack = await get().fetchPackById(packId); 
+            if (pack) {
+                _setEditingPack(pack);
+            }
+        },
 
-    // 編集中のパックのフィールドを更新する (usePackEdit hookで利用)
-    updatePackForEdit: (updatedFields) => {
-        set(state => {
-            if (!state.packForEdit) return state;
+        initializeNewEditingPack: () => {
+            const tempPack = createDefaultPackData();
+            _setEditingPack(tempPack); 
+            return tempPack.packId;
+        },
 
-            // Dateの更新は savePack 時のみとする
-            const updatedPack: Pack = { 
-                ...state.packForEdit, 
-                ...updatedFields,
-            };
-            
-            console.log(`[PackStore:updatePackForEdit] PackForEdit updated: ${Object.keys(updatedFields).join(', ')}`); // ✅ ログ追加
-            return { packForEdit: updatedPack };
-        });
-    },
+        updateEditingPackInfo: (updatedFields) => {
+            set(state => {
+                if (!state.editingPack) return state;
+                return { 
+                    editingPack: { 
+                        ...state.editingPack, 
+                        ...updatedFields, 
+                        updatedAt: new Date().toISOString()
+                    } 
+                };
+            });
+        },
 
-    /**
-     * 新規または既存パックをDBに保存し、ストアを更新する統合アクション
-     * @param packToSave - 保存するパックデータ (UUIDを含む)
-     * @returns 保存された Pack データ
-     */
-     // 💡 修正 2: savePack のロジックを簡素化（isNew判定は不要になる）
-     savePack: async (packToSave) => {
-         console.log(`[PackStore:savePack] 💾 START saving pack: ${packToSave.packId}`); // ✅ ログ追加
-        // 新規/既存の判定は不要。DBに存在するドラフトを isDraft: false にして更新する。
-        const packWithFinalUpdate = { 
-            ...packToSave, 
-            isInStore: true, // 💡 パックを確定させる
-            updatedAt: new Date().toISOString() 
-        };
+        // ----------------------------------------------------------------------
+        // --- 4. メモリ/ストア操作 (変更なし) ---
+        // ----------------------------------------------------------------------
+        
+        syncPackToStore: (updatedPack) => {
+            set(state => {
+                const index = state.packs.findIndex(p => p.packId === updatedPack.packId);
+                const newPacks = [...state.packs];
+                
+                if (index !== -1) {
+                    newPacks[index] = updatedPack;
+                } else {
+                    newPacks.push(updatedPack);
+                }
+                
+                const updatedEditingPack = state.editingPack?.packId === updatedPack.packId 
+                    ? updatedPack 
+                    : state.editingPack;
+                    
+                return { packs: newPacks, editingPack: updatedEditingPack };
+            });
+        },
+        
+        removePackFromStore: (packId) => {
+            set(state => {
+                const newPacks = state.packs.filter(p => p.packId !== packId);
+                const newEditingPack = state.editingPack?.packId === packId ? null : state.editingPack;
+                return { packs: newPacks, editingPack: newEditingPack };
+            });
+            console.log(`[PackStore] Memory state cleared for pack ID: ${packId}`);
+        },
+        
+        bulkRemovePacksFromStore: (packIdsToRemove: string[]) => {
+            const idSet = new Set(packIdsToRemove);
+            set(state => {
+                const newPacks = state.packs.filter(p => !idSet.has(p.packId));
+                
+                const isEditingPackRemoved = state.editingPack && idSet.has(state.editingPack.packId);
+                const newEditingPack = isEditingPackRemoved ? null : state.editingPack;
 
-        try {
-            // 1. DBに保存し、確定IDを取得
-            console.log(`[PackStore:savePack] Calling packService.savePack (Final save, isDraft=false)...`); // ✅ ログ追加
-            await packService.savePack(packWithFinalUpdate);
-            
-            // 2. Store の packs リストと packForEdit を最新データで更新
-            // 💡 packs を更新するために loadPacks を再利用
-            console.log(`[PackStore:savePack] Calling loadPacks to refresh list...`); // ✅ ログ追加
-            await get().loadPacks();
+                return { packs: newPacks, editingPack: newEditingPack };
+            });
+            console.log(`[PackStore] Memory state cleared for ${packIdsToRemove.length} packs.`);
+        },
 
-            set({ packForEdit: packWithFinalUpdate });
-            
-            console.log(`[PackStore:savePack] ✅ Pack finalized and saved: ${packWithFinalUpdate.name} (ID: ${packToSave.packId})`); // ✅ ログ追加
-            
-            return packWithFinalUpdate; // 確定データを返す
 
-        } catch (error) {
-            console.error("[PackStore:savePack] ❌ ERROR during save:", error); // ✅ ログ追加
-            throw new Error('パックの保存に失敗しました。');
-        }
-    },
+        // ----------------------------------------------------------------------
+        // --- 5. I/O (変更なし) ---
+        // ----------------------------------------------------------------------
 
-    /**
-     * DB上のパックの isDraft ステータスを更新し、Storeの packs リストから除外/追加する（論理削除/復元）
-     */
-    updatePackIsInStore: async (packId, isInStore) => {
-        console.log(`[PackStore:updatePackIsDraft] ⚙️ START update isDraft: ID=${packId}, NewStatus=${isInStore}`); // ✅ ログ追加
-        try {
-            // 1. Store/DBからパックデータを取得
-            const packToUpdate = get().packs.find(p => p.packId === packId) || await packService.getPackById(packId);
+        importPacksFromJson: async (jsonText) => {
+            console.log(`[PackStore:importPacksFromJson] 💾 START importing from JSON...`);
+            const result = await packJsonIO.importPacksFromJson(jsonText);
+            await get().fetchAllPacks(); 
+            console.log(`[PackStore:importPacksFromJson] ✅ Imported: ${result.importedCount} packs. New IDs: ${result.newPackIds.length}`);
+            return result;
+        },
 
-            if (!packToUpdate) {
-                console.warn(`[PackStore:updatePackIsDraft] ⚠️ Pack ID ${packId} not found for status update.`); // ✅ ログ追加
-                return;
-            }
+        exportPacksToJson: async (packIds) => {
+            if (packIds.length === 0) {
+                throw new Error("エクスポート対象のパックIDが指定されていません。");
+            }
+            console.log(`[PackStore:exportPacksToJson] 📤 Exporting ${packIds.length} packs to JSON...`);
+            const jsonString = await packJsonIO.exportPacksToJson(packIds);
+            console.log(`[PackStore:exportPacksToJson] ✅ Exported to JSON string.`);
+            return jsonString;
+        },
 
-            // 2. isDraft の値を更新し、updatedAt も更新
-            const updatedPack: Pack = {
-                ...packToUpdate,
-                isInStore: isInStore,
-                updatedAt: new Date().toISOString()
-            };
+        // ----------------------------------------------------------------------
+        // --- 6. 📜 履歴アクション ---
+        // ----------------------------------------------------------------------
 
-            // 3. DBに更新を保存
-            console.log(`[PackStore:updatePackIsDraft] Calling packService.savePack (isDraft=${isInStore})...`); // ✅ ログ追加
-            await packService.savePack(updatedPack); 
-            console.log(`[PackStore:updatePackIsDraft] DB update complete.`); // ✅ ログ追加
-            
-            // 4. Storeのpacksリストを更新 (リストから除外/追加)
-            // 💡 論理削除の際は、storeの packs リストから即座に削除する
-            /*if (isDraft) {
-                console.log(`[PackStore:updatePackIsDraft] isDraft is true (Logical Delete), calling removePackFromStore...`); // ✅ ログ追加
-                get().removePackFromStore(packId); // storeから削除
-            } else {
-                // isDraft: false (復元/確定) の場合は、loadPacksでリスト全体をリフレッシュするのが安全
-                console.log(`[PackStore:updatePackIsDraft] isDraft is false, calling loadPacks to refresh list...`); // ✅ ログ追加
-                await get().loadPacks();
-            }*/
+        savePackToHistory: async (packToSave) => {
+            const packId = packToSave.packId;
+            console.log(`[PackStore:savePackToHistory] 📜💾 START saving snapshot to history for: ${packId}`);
+            try {
+                // 1. パックとカードを取得し、PackBundleを作成 
+                const cardsData = useCardStore.getState().getCardsByPackIdFromStore(packId); 
+                
+                const bundle: PackBundle = { 
+                    packData: packToSave, 
+                    cardsData: cardsData 
+                };
 
-            console.log(`[PackStore:updatePackIsDraft] ✅ Status updated (ID: ${packId}): ${isInStore}`); // ✅ ログ追加
-        } catch (error) {
-            console.error("[PackStore:updatePackIsDraft] ❌ Failed to update pack draft status:", error); // ✅ ログ追加
-            throw error;
-        }
-    },
+                // 2. PackBundleの配列をServiceに渡して保存を委譲
+                await packService.savePacksToCollection([bundle], 'history');
+                
+                console.log(`[PackStore:savePackToHistory] ✅ Snapshot (Pack+${cardsData.length} cards) saved to history for: ${packId}`);
+            } catch (error) {
+                console.error(`[PackStore:savePackToHistory] ❌ Failed to save snapshot for ${packId}:`, error);
+                throw error;
+            }
+        },
+        
+        /** 💡 単体リストア (archiveId) - Serviceのバルク関数に単体IDの配列を渡す */
+        restorePackFromHistory: async (archiveId: string) => {
+            console.log(`[PackStore:restorePackFromHistory] 📜♻️ START restoring single pack from history: ${archiveId}`);
+            try {
+                // Serviceに復元処理全体を委譲
+                const restoredPacks = await packService.restorePackBundlesFromArchive([archiveId], 'history');
+                
+                // Storeに同期
+                if (restoredPacks.length > 0) {
+                    restoredPacks.forEach(pack => get().syncPackToStore(pack)); 
+                    await useCardStore.getState().fetchAllCards(); // カードデータ再ロード
+                }
+                
+                console.log(`[PackStore:restorePackFromHistory] ✅ Pack restored and cards reloaded from history.`);
+            } catch (error) {
+                console.error(`[PackStore:restorePackFromHistory] ❌ Failed to restore pack ${archiveId} from history:`, error);
+                throw error;
+            }
+        },
 
-}));
+        fetchAllPacksFromHistory: async () => {
+            console.log(`[PackStore:fetchAllPacksFromHistory] 🧺 START fetching packs from history...`);
+            try {
+                const packs = await packService.fetchAllPacksFromCollection('history');
+                console.log(`[PackStore:fetchAllPacksFromHistory] ✅ Fetched ${packs.length} packs from history.`);
+                return packs;
+            } catch (error) {
+                console.error("[PackStore:fetchAllPacksFromHistory] ❌ Failed to fetch packs from history:", error);
+                throw error;
+            }
+        },
+
+        fetchPackBundleByIdFromHistory: async (archiveId) => {
+            console.log(`[PackStore:fetchPackBundleByIdFromHistory] 🔍 START fetching bundle with archiveId ${archiveId} from history...`);
+            try {
+                // Serviceのバルク関数にarchiveIdを渡し、結果配列から単一の要素を取得
+                const bundles = await packService.fetchPackBundlesFromCollection([archiveId], 'history');
+                const bundle = bundles[0] ?? null;
+                return bundle;
+            } catch (error) {
+                console.error(`[PackStore:fetchPackBundleByIdFromHistory] ❌ Failed to fetch bundle ${archiveId} from history:`, error);
+                return null;
+            }
+        },
+        
+        /** 💡 単体物理削除はバルクを呼び出す */
+        deletePackFromHistory: async (archiveId: string) => {
+            return get().bulkDeletePacksFromHistory([archiveId]);
+        },
+
+        /** 💡 バルク物理削除 (Archive IDの配列) */
+        bulkDeletePacksFromHistory: async (archiveIds: string[]) => {
+            if (archiveIds.length === 0) return;
+            const idList = archiveIds.slice(0, 3).join(', ');
+            console.log(`[PackStore:bulkDeletePacksFromHistory] 📜💥 START physical deletion from history: [${idList}...]`);
+            try {
+                await packService.deletePacksFromCollection(archiveIds, 'history');
+                console.log(`[PackStore:bulkDeletePacksFromHistory] ✅ ${archiveIds.length} items physically deleted from history.`);
+            } catch (error) {
+                console.error(`[PackStore:bulkDeletePacksFromHistory] ❌ Failed to delete packs from history:`, error);
+                throw error;
+            }
+        },
+
+        // ----------------------------------------------------------------------
+        // --- 7. 🗑️ ゴミ箱アクション ---
+        // ----------------------------------------------------------------------
+        
+        /** 💡 単体ゴミ箱へ移動 */
+        movePackToTrash: async (packId) => {
+            return get().bulkMovePacksToTrash([packId]);
+        },
+
+        /** 💡 新規追加: バルクゴミ箱へ移動 */
+        bulkMovePacksToTrash: async (packIds: string[]) => {
+            if (packIds.length === 0) return;
+            const idList = packIds.slice(0, 3).join(', ');
+            console.log(`[PackStore:bulkMovePacksToTrash] 🗑️ START moving ${packIds.length} packs to trash: [${idList}...]`);
+            try {
+                // 1. メインDBからパックデータを取得
+                const packsToMove = get().packs.filter(p => packIds.includes(p.packId));
+                if (packsToMove.length === 0) {
+                    console.log(`[PackStore:bulkMovePacksToTrash] No packs found in store to move.`);
+                    return;
+                }
+
+                // 2. 関連カードを取得し、PackBundleを作成
+                const bundles: PackBundle[] = packsToMove.map(packToMove => {
+                    const cardsData = useCardStore.getState().getCardsByPackIdFromStore(packToMove.packId); 
+                    return { packData: packToMove, cardsData: cardsData };
+                });
+
+                // 3. PackBundleをトラッシュにバルク保存
+                await packService.savePacksToCollection(bundles, 'trash'); 
+                
+                // 4. 本番DBをバルク削除
+                await packService.deletePacksFromCollection(packIds, 'packs'); 
+                
+                // 5. Storeから削除 (PackとCardの両方を削除)
+                get().bulkRemovePacksFromStore(packIds);
+                // Card StoreからもパックIDに紐づくカードを個別に削除
+                packIds.forEach(packId => {
+                    useCardStore.getState().removeCardsByPackIdFromStore(packId);
+                });
+                
+                console.log(`[PackStore:bulkMovePacksToTrash] ✅ ${packIds.length} packs moved to trash and removed from store.`);
+            } catch (error) {
+                console.error(`[PackStore:bulkMovePacksToTrash] ❌ Failed to move packs [${idList}...] to trash:`, error);
+                throw error;
+            }
+        },
+        
+        /** 💡 単体リストアはバルクを呼び出す */
+        restorePackFromTrash: async (archiveId: string) => {
+            return get().bulkRestorePacksFromTrash([archiveId]);
+        },
+
+        /** 💡 バルク リストア (Archive IDの配列) */
+        bulkRestorePacksFromTrash: async (archiveIds) => {
+            if (archiveIds.length === 0) return;
+            const idList = archiveIds.slice(0, 3).join(', ');
+            console.log(`[PackStore:bulkRestorePacksFromTrash] 🗑️♻️ START restoring ${archiveIds.length} packs from trash: [${idList}...]`);
+            try {
+                // 1. Serviceに復元処理全体を委譲
+                const restoredPacks = await packService.restorePackBundlesFromArchive(archiveIds, 'trash');
+                
+                // 2. Storeに同期
+                if (restoredPacks.length > 0) {
+                    restoredPacks.forEach(pack => get().syncPackToStore(pack)); 
+                    await useCardStore.getState().fetchAllCards(); // カードデータ再ロード
+                }
+
+                console.log(`[PackStore:bulkRestorePacksFromTrash] ✅ ${restoredPacks.length} packs restored and cards reloaded from trash.`);
+
+            } catch (error) {
+                console.error(`[PackStore:bulkRestorePacksFromTrash] ❌ Failed to restore packs from trash IDs [${idList}...]:`, error);
+                throw error;
+            }
+        },
+
+        fetchAllPacksFromTrash: async () => {
+            console.log(`[PackStore:fetchAllPacksFromTrash] 🧺 START fetching packs from trash...`);
+            try {
+                const packs = await packService.fetchAllPacksFromCollection('trash');
+                console.log(`[PackStore:fetchAllPacksFromTrash] ✅ Fetched ${packs.length} packs from trash.`);
+                return packs;
+            } catch (error) {
+                console.error("[PackStore:fetchAllPacksFromTrash] ❌ Failed to fetch packs from trash:", error);
+                throw error;
+            }
+        },
+
+        fetchPackBundleByIdFromTrash: async (archiveId) => {
+            console.log(`[PackStore:fetchPackBundleByIdFromTrash] 🔍 START fetching bundle with archiveId ${archiveId} from trash...`);
+            try {
+                // Serviceのバルク関数にarchiveIdを渡し、結果配列から単一の要素を取得
+                const bundles = await packService.fetchPackBundlesFromCollection([archiveId], 'trash');
+                const bundle = bundles[0] ?? null;
+                return bundle;
+            } catch (error) {
+                console.error(`[PackStore:fetchPackBundleByIdFromTrash] ❌ Failed to fetch bundle ${archiveId} from trash:`, error);
+                return null;
+            }
+        },
+        
+        /** 💡 単体物理削除 (Archive ID) */
+        deletePackFromTrash: async (archiveId) => {
+            return get().bulkDeletePacksFromTrash([archiveId]);
+        },
+        
+        /** 💡 バルク物理削除 (Archive IDの配列) */
+        bulkDeletePacksFromTrash: async (archiveIds: string[]) => {
+            if (archiveIds.length === 0) return;
+            const idList = archiveIds.slice(0, 3).join(', ');
+            console.log(`[PackStore:bulkDeletePacksFromTrash] 🗑️💥 START physical deletion from trash: [${idList}...]`);
+            try {
+                await packService.deletePacksFromCollection(archiveIds, 'trash'); 
+                console.log(`[PackStore:bulkDeletePacksFromTrash] ✅ ${archiveIds.length} packs physically deleted from trash.`);
+            } catch (error) {
+                console.error(`[PackStore:bulkDeletePacksFromTrash] ❌ Failed to delete packs from trash:`, error);
+                throw error;
+            }
+        },
+
+        // ----------------------------------------------------------------------
+        // --- 8. 🛠️ メンテナンスアクション (変更なし) ---
+        // ----------------------------------------------------------------------
+
+        runPackGarbageCollection: async () => {
+            console.log(`[PackStore:runPackGarbageCollection] 🧹 START running garbage collection...`);
+            try {
+                await packService.runPackGarbageCollection();
+                await get().fetchAllPacks();
+                console.log(`[PackStore:runPackGarbageCollection] ✅ Garbage collection complete and packs reloaded.`);
+            } catch (error) {
+                console.error("[PackStore:runPackGarbageCollection] ❌ Failed to run garbage collection:", error);
+                throw error;
+            }
+        }
+    }
+});
