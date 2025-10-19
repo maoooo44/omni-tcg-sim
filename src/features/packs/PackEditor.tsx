@@ -18,19 +18,20 @@ import JsonImportModal from './components/JsonIOModal';
 
 // サブUIコンポーネントのインポート
 import PackCardList from './components/PackCardList';
-import CardEditorModal from '../../components/modals/CardEditorModal';
+import CardModal from '../../components/modals/CardModal';
 import RarityEditorModal from '../../components/modals/RarityEditorModal';
 import PackInfoForm from './components/PackInfoForm';
 
 import type { Card as CardType } from '../../models/card'; 
 import { usePackEditor } from './hooks/usePackEditor'; 
+// 💡 カスタムフィールド設定関連の型をインポート
+import type { CustomFieldType, CustomFieldIndex, FieldSetting } from '../../models/custom-field';
+
 
 // usePackEditorフックの戻り値の型と、ページから追加されるpropsを結合
 interface PackEditorProps extends ReturnType<typeof usePackEditor> {
     packId: string;
     handleOpenCardViewModal: (card: CardType) => void;
-    // ★ 修正: isAllViewModeをPackEditorPropsに追加
-    isAllViewMode: boolean; 
 }
 
 const PackEditor: React.FC<PackEditorProps> = ({
@@ -49,14 +50,6 @@ const PackEditor: React.FC<PackEditorProps> = ({
     handleSelectChange,
     handleSave,
     handleRemovePack,
-    // 💡 物理削除と復元ハンドラを受け取る
-    handlePhysicalDeletePack, 
-    handleRestorePack,
-    onPhysicalDelete, 
-    onRestore, 
-    
-    // ★ 修正: isAllViewModeを引数で受け取る
-    isAllViewMode,
 
     cards,
     handleCardSave,
@@ -90,6 +83,10 @@ const PackEditor: React.FC<PackEditorProps> = ({
     handleMenuClose,
     handleImportClick,
     handleExportClick,
+
+    // 💡 修正1: usePackEditorからカスタムフィールド設定関連のプロパティを受け取る
+    customFieldSettings, 
+    handleCustomFieldSettingChange, // (type: CustomFieldType, index: CustomFieldIndex, field: keyof FieldSetting, value: any) の形式
     
     handleOpenCardViewModal,
 }) => {
@@ -99,6 +96,8 @@ const PackEditor: React.FC<PackEditorProps> = ({
 
     // フォームの編集可能状態を制御
     const isEditable = isEditorMode;
+    // 💡 isReadOnly は isEditable の反対
+    const isCardModalReadOnly = !isEditable;
 
     return (
         <Box sx={{ p: 3 }}>
@@ -116,16 +115,11 @@ const PackEditor: React.FC<PackEditorProps> = ({
                 toggleEditorMode={toggleEditorMode}
                 handleSave={handleSave}
                 handleRemovePack={handleRemovePack}
-                /* 💡 修正: 物理削除と復元ハンドラを PackEditorToolbar に渡す */
-                handlePhysicalDeletePack={handlePhysicalDeletePack}
-                handleRestorePack={handleRestorePack}
                 anchorEl={anchorEl}
                 handleMenuOpen={handleMenuOpen}
                 handleMenuClose={handleMenuClose}
                 handleImportClick={handleImportClick}
                 handleExportClick={handleExportClick}
-                // ★ 修正: isAllViewModeをPackEditorToolbarに渡す
-                isAllViewMode={isAllViewMode}
             />
 
             {/* アラートメッセージ表示エリア */}
@@ -176,7 +170,7 @@ const PackEditor: React.FC<PackEditorProps> = ({
             </Grid>
             
             {/* モーダル群 (CardEditorModal, RarityEditorModal) */}
-            <CardEditorModal 
+            <CardModal 
                 open={isCardModalOpen}
                 onClose={handleCloseCardEditorModal}
                 card={editingCard}
@@ -184,14 +178,30 @@ const PackEditor: React.FC<PackEditorProps> = ({
                 onSave={handleCardSave}
                 // ★ 修正: onDelete を削除し、新しい3つのハンドラを追加 (これが正しいコード)
                 onRemove={handleRemoveCard} // 論理削除
-                onPhysicalDelete={onPhysicalDelete} // 物理削除 (usePackEditorから取得)
-                onRestore={onRestore} // 復元 (usePackEditorから取得)
-                // ★ 修正: isAllViewMode を渡す
-                isAllViewMode={isAllViewMode}
-
-
                 currentPackName={packData.name}
                 currentPackId={packId}
+                
+                // 💡 修正2: 必須プロパティ customFieldSettings, isReadOnly を追加
+                customFieldSettings={customFieldSettings}
+                isReadOnly={isCardModalReadOnly} 
+                // 💡 修正3: CardModal の期待する型に合わせるラッパー関数を useCallback で定義
+                onCustomFieldSettingChange={React.useCallback((
+                    // CardModal の expected な引数
+                    _itemType: "Card" | "Deck" | "Pack", 
+                    type: CustomFieldType, 
+                    index: CustomFieldIndex, 
+                    settingUpdates: Partial<FieldSetting>
+                ) => {
+                    // usePackEditor のハンドラ (type, index, field, value) 形式に変換して呼び出す
+                    if (Object.keys(settingUpdates).length === 1) {
+                        const field = Object.keys(settingUpdates)[0] as keyof FieldSetting;
+                        const value = settingUpdates[field];
+                        
+                        // usePackEditor のハンドラを呼び出す
+                        // itemType はフック側で不要なため無視
+                        handleCustomFieldSettingChange(type, index, field, value); 
+                    }
+                }, [handleCustomFieldSettingChange])}
             />
 
 

@@ -3,16 +3,31 @@
  *
  * Deckモデル内のMap構造（mainDeck, sideDeck, extraDeck）をJSON互換の形式へ
  * シリアライズ/デシリアライズ（Mapの変換/復元）するドメイン固有のI/Oサービス。
- * 💡 修正: PackJsonIOと同様に、ID衝突解決やナンバリングなどの**インポートビジネスロジック**もここで担当する。
+ * ID衝突解決などのインポートビジネスロジックもここで担当する。
  */
 
 import type { Deck } from '../../models/deck';
 import { exportDataToJson, importDataFromJson, type Serializer, type Deserializer } from '../../utils/genericJsonIO';
-import { deckService } from '../decks/deckService'; // 💡 追加: 永続化のためにDeckServiceをインポート
-import { v4 as uuidv4 } from 'uuid'; // 💡 追加: ID再割り当てのためにuuidをインポート
-import { getNextNumber } from '../../utils/numberingUtils'; // 💡 追加: ナンバリングのためにユーティリティをインポート
+import { deckService } from '../decks/deckService';
+// 💡 修正点: generateId, applyDefaultsIfMissing, createDefaultDeckData をインポート
+import { generateId, applyDefaultsIfMissing, createDefaultDeck } from '../../utils/dataUtils'; 
 
-// --- 固有の変換ロジックの定義 ---
+// --- 💡 修正点: 不要なインポートを削除 ---
+// import { v4 as uuidv4 } from 'uuid'; 
+// import { getNextNumber } from '../../utils/numberingUtils'; 
+
+// --- インポートオプションの定義 (変更なし) ---
+
+/** ID衝突時のDeckデータの処理方法 */
+export type DeckIdConflictStrategy = 'RENAME' | 'SKIP';
+
+/** インポート処理のオプション */
+export interface DeckImportOptions {
+    /** 既存のDeckIdとインポートデータのDeckIdが衝突した場合の戦略 */
+    deckIdConflictStrategy: DeckIdConflictStrategy;
+}
+
+// --- 固有の変換ロジックの定義 (変更なし) ---
 
 /** デッキのMap構造をJSON互換配列に変換するシリアライザ */
 const deckSerializer: Serializer<Deck[]> = (decks: Deck[]) => {
@@ -39,12 +54,29 @@ const deckDeserializer: Deserializer<Deck[]> = (loadedData: any): Deck[] => {
     })) as Deck[];
 };
 
-// --- 汎用I/Oを使用した公開関数 ---
+// --- 汎用I/Oを使用した公開関数 (変更なし) ---
 
 /**
  * Deck配列をJSON文字列にエクスポートする。
  */
-export const exportDecksToJson = (decks: Deck[]): string => {
+/**
+ * 💡 [修正] Deck ID配列を受け取り、Deckデータ配列を取得・シリアライズし、JSON文字列にエクスポートする。
+ */
+export const exportDecksToJson = async (deckIds: string[]): Promise<string> => {
+    
+    // 1. I/O層内でサービスを呼び出し、必要なデータを非同期で取得
+    //    fetchDecksByIdsは (Deck | null)[] を返す可能性がある
+    const fetchedDecks = await deckService.fetchDecksByIds(deckIds);
+    
+    // 2. 💡 修正点: nullを除去して、型を Deck[] に絞り込む
+    //    (deck): deck is Deck のような型ガード関数をフィルタに渡すことで、TypeScriptに型を理解させる
+    const decks: Deck[] = fetchedDecks.filter((deck): deck is Deck => deck !== null);
+    
+    if (decks.length === 0) {
+        throw new Error('エクスポート対象のデッキデータが見つかりませんでした。');
+    }
+
+    // 3. 取得したDeck[]をシリアライザーに通し、JSON文字列としてエクスポート
     return exportDataToJson(decks, deckSerializer);
 };
 
@@ -55,74 +87,94 @@ const deserializeDecksFromJson = (jsonText: string): Deck[] => {
     return importDataFromJson(jsonText, deckDeserializer);
 };
 
-// --- 💡 追加: インポートビジネスロジックと永続化連携 ---
+// --- インポートビジネスロジックと永続化連携 ---
 
 /**
- * 💡 新規追加: JSON文字列からDeck配列をインポートし、ID衝突解決やナンバリングを行った上でDBに保存する。
+ * JSON文字列からDeck配列をインポートし、ID衝突解決を行った上でDBに保存する。
+ * 💡 修正: ナンバリング処理を削除
+ * @param jsonText - インポートするJSON文字列
+ * @param options - インポートオプション
+ * @returns 新しく追加されたデッキのIDと、スキップされたIDのリスト
  */
-export const processImportDecks = async (jsonText: string): Promise<{ importedCount: number, renamedCount: number, skippedIds: string[] }> => {
-    console.log("[deckJsonIO] START bulk import process.");
+export const importDecksFromJson = async (
+    jsonText: string,
+    options?: DeckImportOptions
+): Promise<{ newDeckIds: string[], skippedIds: string[] }> => {
+    console.log("[deckJsonIO:importDecksFromJson] START bulk import process.");
     
     // 1. JSON文字列をDeck[]にデシリアライズ
     const decksToImport: Deck[] = deserializeDecksFromJson(jsonText);
     
     if (decksToImport.length === 0) {
-        return { importedCount: 0, renamedCount: 0, skippedIds: [] };
+        return { newDeckIds: [], skippedIds: [] };
     }
 
-    // 2. 既存のデータをロードし、ID衝突解決とナンバリングに必要な情報を取得
-    // 💡 PackServiceと同様に、キャッシュが未ロードであればロードする (ナンバリングのために必要)
+    // 2. 既存のデータをロードし、ID衝突解決に必要な情報を取得
     await deckService.fetchAllDecks(); 
     const existingDecks = deckService.getAllDecksFromCache();
 
-    let importedCount = 0;
-    let renamedCount = 0;
     const skippedIds: string[] = [];
+    const newDeckIds: string[] = [];
     
-    // 既存のデッキIDと現在の最大番号を取得 (キャッシュから取得)
+    // 既存のデッキIDを取得 (キャッシュから取得)
     const existingIds = new Set(existingDecks.map(d => d.deckId));
-    let currentMaxNumber = existingDecks
-        .map(d => d.number)
-        .filter((n): n is number => !!n)
-        .reduce((max, current) => Math.max(max, current), 0);
     
+    // 💡 修正: ナンバリング関連の変数(currentMaxNumber)を削除
+
     const decksToSave: Deck[] = [];
 
-    // 3. ID衝突解決とナンバリングのビジネスロジックを実行
-    decksToImport.forEach(newDeck => {
-        let deck: Deck = { ...newDeck };
-        
-        // IDが重複している場合 -> IDをリネームして衝突を避ける
-        if (existingIds.has(deck.deckId)) {
-            deck.name = `${deck.name} (Imported)`;
-            deck.deckId = uuidv4(); // 新しいIDを割り当て
-            renamedCount++;
+    // オプションが渡されなかった場合のデフォルト戦略を 'SKIP' に設定
+    const deckIdConflictStrategy: DeckIdConflictStrategy = options?.deckIdConflictStrategy || 'SKIP';
+    
+    const defaultDeckData = createDefaultDeck();
+
+    // 3. ID衝突解決とデータ補完ロジックを実行
+    decksToImport.forEach(rawDeck => {
+        let deck: Deck = { ...rawDeck };
+        const originalDeckId = deck.deckId;
+
+        // ID衝突時の挙動をオプションで制御
+        if (existingIds.has(originalDeckId)) {
+            
+            if (deckIdConflictStrategy === 'SKIP') {
+                // SKIP戦略: IDが衝突したらスキップ
+                skippedIds.push(originalDeckId);
+                console.log(`[deckJsonIO] Deck ID ${originalDeckId} skipped due to conflict.`);
+                return; // このデッキの処理を終了し、次のループへ
+            }
+            
+            // 'RENAME' (新しいIDを割り当てる) 戦略の場合
+            deck.deckId = generateId(); // 💡 修正: generateIdを使用
+            console.log(`[deckJsonIO] Deck ID collision for ${originalDeckId}. New ID assigned: ${deck.deckId}`);
         }
         
-        // number の自動採番ロジック (インポートデータに番号がない場合)
-        if (deck.number === undefined || deck.number === null) {
-            currentMaxNumber = getNextNumber(currentMaxNumber, 1);
-            deck.number = currentMaxNumber;
-        }
+        // 💡 修正: データのクリーンアップ/更新日設定
+        // 1. 欠落フィールドの補完 (createdAtなどが含まれる)
+        deck = applyDefaultsIfMissing(deck, defaultDeckData);
         
-        // データのクリーンアップ/更新日設定 (責務: data-io層で行う)
-        deck.createdAt = deck.createdAt || new Date().toISOString();
+        // 2. updatedAt を最新に上書き
         deck.updatedAt = new Date().toISOString();
-        deck.isInStore = false; // 💡 インポートされたデッキは一旦ドラフト（非表示）として扱うのが自然
         
-        // 💡 [重要] IDが重複した場合は、新しいIDをexistingIdsに追加し、以降のインポートデータとの衝突を避ける
-        if (renamedCount > 0 && !existingIds.has(deck.deckId)) {
+        // 3. Map型の初期化が欠落している場合に補完（applyDefaultsIfMissingではMapの初期化は意図的に除外）
+        // ただし、deckDeserializer で Map 構造に復元されているため、通常は不要だが、念のため。
+        deck.mainDeck = deck.mainDeck || new Map();
+        deck.sideDeck = deck.sideDeck || new Map();
+        deck.extraDeck = deck.extraDeck || new Map();
+
+
+        // 💡 [重要] 新しいIDをexistingIdsに追加し、以降のインポートデータとの衝突を避ける
+        if (!existingIds.has(deck.deckId)) {
             existingIds.add(deck.deckId);
         }
-
+        
         decksToSave.push(deck);
-        importedCount++;
+        newDeckIds.push(deck.deckId);
     });
     
     // 4. ドメインサービスに永続化（DBへの書き込み）を依頼
-    await deckService.bulkPutDecks(decksToSave);
+    await deckService.saveDecks(decksToSave);
     
-    console.log(`[deckJsonIO] ✅ Bulk import complete. Imported: ${importedCount}, Renamed: ${renamedCount}`);
+    console.log(`[deckJsonIO:importDecksFromJson] ✅ Bulk import complete. Imported: ${newDeckIds.length}. Skipped: ${skippedIds.length}`);
     
-    return { importedCount, renamedCount, skippedIds };
+    return { newDeckIds, skippedIds };
 };

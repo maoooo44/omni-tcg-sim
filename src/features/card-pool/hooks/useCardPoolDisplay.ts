@@ -105,7 +105,6 @@ export const useCardPoolDisplay = () => {
     const packMap = useMemo(() => {
         return new Map<string, Pick<Pack, 'name' | 'number'>>(
             packs
-                .filter(pack => pack.isInStore) 
                 .map(pack => [
                     pack.packId, 
                     { name: pack.name, number: pack.number || null }
@@ -116,7 +115,6 @@ export const useCardPoolDisplay = () => {
     // パックフィルター用に使用可能なパックリストを抽出 (変更なし)
     const availablePacks = useMemo(() => {
         return packs
-            .filter(p => p.isInStore)
             .map(pack => ({ 
                 packId: pack.packId, 
                 name: pack.name, 

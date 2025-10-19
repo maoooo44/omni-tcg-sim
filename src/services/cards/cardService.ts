@@ -4,7 +4,7 @@
  * Card（カード）データに関するデータベースアクセス、ローカルキャッシュ管理、および関連するロジックを管理するサービス層モジュール。
  *
  * * 責務:
- * 1. DBからのデータロードとグローバルなインメモリキャッシュ（cardCache）の構築・提供。
+ * 1. DBからのデータロードとグローバルなインメモリキャッシュ（_cardCache）の構築・提供。
  * 2. メインコレクション（'cards'）の **CRUD 操作をバルク処理に統一して** 提供する。
  * 3. パック削除時の**関連カードの一括物理削除（カスケード削除の受け入れ）**を担う。
  * 4. DBコア層（dbCore）とデータマッパー（dbMappers）の橋渡し役を担う。
@@ -18,13 +18,15 @@ import {
     bulkPutItemsToCollection, 
     bulkDeleteItemsFromCollection, 
     bulkFetchItemsByIdsFromCollection, 
+    // 💡 PackIdによるDBアクセスが必要な場合、dbCoreに新しい関数が必要になるが、
+    // ここではfetchAllItemsFromCollectionが利用可能と仮定し、キャッシュを使ってフィルタリングする
 } from '../database/dbCore';
 import { 
     cardToDBCard, // Card -> DBCard 変換
     dbCardToCard, // DBCard -> Card 変換
 } from '../database/dbMappers';
 
-let cardCache: Map<string, Card> | null = null;
+let _cardCache: Map<string, Card> | null = null;
 
 
 export const cardService = {
@@ -34,15 +36,16 @@ export const cardService = {
     // ----------------------------------------
 
     getAllCardsFromCache(): Card[] {
-        return cardCache ? Array.from(cardCache.values()) : [];
+        return _cardCache ? Array.from(_cardCache.values()) : [];
     },
 
     getCardByIdFromCache(cardId: string): Card | undefined {
-        return cardCache?.get(cardId);
+        return _cardCache?.get(cardId);
     },
 
     /**
      * キャッシュから指定されたパックIDに紐づくカード群を取得します。
+     * 💡 StoreのI/O処理でPackIdでフィルタリングするために利用されます。
      */
     getCardsByPackIdFromCache(packId: string): Card[] {
         return this.getAllCardsFromCache() 
@@ -62,7 +65,7 @@ export const cardService = {
         
         console.log(`[CardService:fetchAllCards] 🔍 Fetching all cards.`);
         
-        if (cardCache) { 
+        if (_cardCache) { 
             console.log(`[CardService:fetchAllCards] ✅ Cache hit (all cards).`);
             return this.getAllCardsFromCache(); 
         }
@@ -75,8 +78,8 @@ export const cardService = {
             );
             
             // キャッシュが存在しない場合、DBから取得したデータでキャッシュを構築
-            if (!cardCache) {
-                cardCache = new Map(cards.map(c => [c.cardId, c]));
+            if (!_cardCache) {
+                _cardCache = new Map(cards.map(c => [c.cardId, c]));
             }
 
             return cards;
@@ -122,7 +125,7 @@ export const cardService = {
             // 3. 取得結果をキャッシュと結果Mapに追加
             fetchedCardsOrNull.forEach(card => {
                 if (card) {
-                    cardCache?.set(card.cardId, card); 
+                    _cardCache?.set(card.cardId, card); 
                     resultsMap.set(card.cardId, card);
                 }
             });
@@ -130,6 +133,27 @@ export const cardService = {
 
         // 4. 元の ids の順序で結果配列を再構成
         return ids.map(id => resultsMap.get(id) ?? null);
+    },
+    
+    /**
+     * 💡 新規追加: 指定されたパックIDに紐づく全てのカードをDBから一括取得します。
+     * @param packIds Pack IDの配列
+     * @returns Card[]
+     */
+    async fetchCardsByPackIds(packIds: string[]): Promise<Card[]> {
+        if (packIds.length === 0) return [];
+
+        console.log(`[CardService:fetchCardsByPackIds] 🔍 Fetching cards for ${packIds.length} packs.`);
+        
+        // 1. 全カードをロード（キャッシュを最新化/利用）
+        const allCards = await this.fetchAllCards();
+        
+        // 2. packIdsでフィルタリング
+        const packIdsSet = new Set(packIds);
+        const filteredCards = allCards.filter(card => packIdsSet.has(card.packId));
+
+        console.log(`[CardService:fetchCardsByPackIds] ✅ Found ${filteredCards.length} cards.`);
+        return filteredCards;
     },
 
     // ----------------------------------------
@@ -154,8 +178,7 @@ export const cardService = {
             await bulkPutItemsToCollection('cards', dbCardsToSave);
             
             // 3. Cacheを更新 (Card型で)
-            // DBに保存したデータと同一のはずなので、元の cards を使用
-            cards.forEach(card => cardCache?.set(card.cardId, card));
+            cards.forEach(card => _cardCache?.set(card.cardId, card));
 
             console.log(`[CardService:saveCards] ✅ Successfully saved ${cards.length} cards.`);
             return cards; 
@@ -176,7 +199,7 @@ export const cardService = {
 
         try {
             await bulkDeleteItemsFromCollection('cards', cardIds);
-            cardIds.forEach(id => cardCache?.delete(id));
+            cardIds.forEach(id => _cardCache?.delete(id));
             console.log(`[CardService:deleteCards] ✅ Successfully deleted ${cardIds.length} cards.`);
         } catch (error) {
             console.error("[CardService:deleteCards] ❌ Failed to bulk delete cards:", error);

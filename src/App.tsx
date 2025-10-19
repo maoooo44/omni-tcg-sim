@@ -1,7 +1,6 @@
 /**
  * src/App.tsx
- * 
- * アプリケーションのルートコンポーネント。
+ * * アプリケーションのルートコンポーネント。
  * 全てのZustandストアを初期化し、useInitialLoadフックでIndexedDBからのデータロード完了を監視します。
  * ロード完了後は、TanStack Routerを通じてアプリケーションのルーティング構造全体をレンダリングします。
  */
@@ -25,14 +24,21 @@ import { CssBaseline } from '@mui/material';
 
 function App() {
     // 必須: 全てのZustandストアのフックを呼び出し、アプリケーションのルートでストアのコンテキストを確立します。
-    useCardPool();      
-    useDeckStore();     
+    console.log("[App] 💡 Initializing Zustand Stores...");
+    console.log("[App] - CardPool Store Hook...");
+    useCardPool();      
+    console.log("[App] - Deck Store Hook...");
+    useDeckStore();     
+    console.log("[App] - UserData Store Hook...");
     useUserDataStore(); 
-    usePackStore();     
+    console.log("[App] - Pack Store Hook...");
+    usePackStore();     
+    console.log("[App] - Currency Store Hook...");
     useCurrencyStore(); 
     
     // 初期ロードフックを呼び出し、ロード完了を待つ 
     const isReady = useInitialLoad(); 
+    console.log(`[App] Initial Load Status: isReady=${isReady}`);
     
     // ----------------------------------------------------
     // ロード完了待ち (切り出したコンポーネントを使用)

@@ -11,15 +11,11 @@ import {
     Box, Typography, CircularProgress,
 } from '@mui/material'; 
 import { useParams, useBlocker } from '@tanstack/react-router'; 
-// ★ 修正1: useShallowをインポート
-import { useShallow } from 'zustand/react/shallow';
-
 import PackEditor from '../features/packs/PackEditor'; 
 import { usePackEditor } from '../features/packs/hooks/usePackEditor'; 
 import type { Card as CardType } from '../models/card'; 
 import { useUIStore, type UIStore } from '../stores/uiStore'; 
-// ★ 修正2: useUserDataStoreをインポート
-import { useUserDataStore } from '../stores/userDataStore';
+
 
 const PackEditorPage: React.FC = () => {
     
@@ -29,11 +25,8 @@ const PackEditorPage: React.FC = () => {
     // usePackEditorからすべての状態とハンドラを取得
     const packEditorProps = usePackEditor(packId);
     
-    // ★ 修正3: useUserDataStoreから isAllViewMode を取得
-    const isAllViewMode = useUserDataStore(useShallow(state => state.isAllViewMode)); 
-
     // ナビゲーション制御に必要なプロパティをフックの戻り値から取得
-    const { packData, isNewPack, isDirty, removePackFromStore } = packEditorProps;
+    const { packData, isNewPack, isDirty, /*removePackFromStore*/ } = packEditorProps;
 
     // ★ useBlocker の実装: 未保存の変更がある場合のナビゲーションブロック
     useBlocker({
@@ -61,10 +54,10 @@ const PackEditorPage: React.FC = () => {
         return () => {
             // 新規パックの場合、かつ変更がある場合、アンマウント時にストアの状態をクリーンアップ
             if (isNewPack && isDirty) {
-                removePackFromStore(packId); 
+                //removePackFromStore(packId); 
             }
         };
-    }, [isDirty, isNewPack, packId, removePackFromStore]); 
+    }, [isDirty, isNewPack, packId, /*removePackFromStore*/]); 
     
     // グローバルストアからモーダルを開く関数を取得
     const openGlobalCardViewModal = useUIStore((state: UIStore) => state.openCardViewModal);
@@ -91,8 +84,6 @@ const PackEditorPage: React.FC = () => {
             packId={packId}
             {...packEditorProps}
             handleOpenCardViewModal={handleOpenCardViewModal}
-            // ★ 修正4: isAllViewModeを渡す
-            isAllViewMode={isAllViewMode} 
         />
     );
 };

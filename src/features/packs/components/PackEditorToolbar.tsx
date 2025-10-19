@@ -5,6 +5,7 @@
  * 主にパックのメタ情報（Packデータ）と、各種アクションハンドラ（保存、削除、モード切替、インポート/エクスポート）を受け取り、
  * 編集状態やデータ状態に応じて、ボタンの有効/無効を制御し、適切なUIを提供します。
  * 責務：ページタイトル表示、主要な操作ボタンのレンダリング、データ入出力メニューの表示。
+ * * 💡 修正: packData.isInStore および isAllViewMode に関連する論理削除/復元/完全削除のロジックを全て削除しました。
  */
 import React from 'react';
 import { 
@@ -17,10 +18,7 @@ import ImportExportIcon from '@mui/icons-material/ImportExport';
 import UploadFileIcon from '@mui/icons-material/UploadFile';
 import DownloadFileIcon from '@mui/icons-material/DownloadForOffline';
 import InsertDriveFileIcon from '@mui/icons-material/InsertDriveFile'; 
-// 💡 追加: 復元、物理削除用のアイコン
-import RestoreIcon from '@mui/icons-material/Restore';
-import DeleteForeverIcon from '@mui/icons-material/DeleteForever';
-
+// RestoreIcon, DeleteForeverIcon は論理削除/復元ロジック削除に伴い不要
 import type { Pack } from '../../../models/pack';
 
 interface PackEditorToolbarProps {
@@ -32,16 +30,15 @@ interface PackEditorToolbarProps {
     isDisabled: boolean;
     csvIOLoading: boolean;
     jsonIOLoading: boolean;
-    // ✅ 修正: isAllViewModeをPropsとして追加
-    isAllViewMode: boolean; 
+    // ❌ 削除: isAllViewMode は廃止
     
     toggleEditorMode: () => void; 
     handleSave: () => void;
-    // 既存の論理削除
+    // 既存の論理削除 (論理削除機能自体は残す)
     handleRemovePack: () => void;
-    // 💡 追加: 物理削除と復元
-    handlePhysicalDeletePack: () => void;
-    handleRestorePack: () => void;
+    // ❌ 削除: 物理削除と復元は論理削除ロジック削除に伴い不要
+    // handlePhysicalDeletePack: () => void;
+    // handleRestorePack: () => void;
     
     anchorEl: null | HTMLElement;
     handleMenuOpen: (event: React.MouseEvent<HTMLElement>) => void;
@@ -60,15 +57,14 @@ const PackEditorToolbar: React.FC<PackEditorToolbarProps> = ({
     isDisabled,
     csvIOLoading,
     jsonIOLoading,
-    // ✅ 修正: isAllViewModeを取得
-    isAllViewMode, 
+    // ❌ 削除: isAllViewModeを取得
     
     toggleEditorMode,
     handleSave,
     handleRemovePack,
-    // 💡 物理削除と復元ハンドラ
-    handlePhysicalDeletePack,
-    handleRestorePack,
+    // ❌ 削除: 物理削除と復元ハンドラ
+    // handlePhysicalDeletePack,
+    // handleRestorePack,
     
     anchorEl,
     handleMenuOpen,
@@ -77,55 +73,32 @@ const PackEditorToolbar: React.FC<PackEditorToolbarProps> = ({
     handleExportClick,
 }) => {
     
-    // 論理削除されているかどうかを packData.isInStore のみで判定
-    const isDeleted = packData.isInStore === false;
+    // ❌ 削除: 論理削除されているかどうかを packData.isInStore のみで判定するロジックを削除
+    // const isDeleted = packData.isInStore === false; 
     
-    // 論理削除されている場合、編集モードは強制的にON
-    const isCurrentEditorMode = isDeleted ? true : isEditorMode;
-    // 論理削除パックは復元されるまで保存できない
-    const isSaveDisabled = isDeleted || isDisabled || !isDirty;
+    // 修正: 論理削除の考慮を削除
+    const isCurrentEditorMode = isEditorMode;
+    // 修正: 論理削除の考慮を削除
+    const isSaveDisabled = isDisabled || !isDirty;
+
+    // 💡 論理削除パックの表示はパック一覧画面に任せ、PackEditorは既存パックと新規パックのみを扱う
+    const pageTitle = isNewPack 
+        ? '新規パック作成' 
+        : `パック編集: ${packData.name}`;
 
     return (
         <Box sx={{ mb: 4, display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
             <Typography variant="h4" component="h1">
-                {isNewPack 
-                    ? '新規パック作成' 
-                    : isDeleted
-                        ? `パック復元・削除: ${packData.name}`
-                        : `パック編集: ${packData.name}`
-                }
+                {pageTitle}
             </Typography>
             
             {/* ツールバーアクションボタン群 */}
             <Box sx={{ display: 'flex', gap: 1 }}>
                 
-                {/* 復元/削除ボタン群 (packData.isInStore が false かつ isAllViewMode が true のみ) */}
-                {/* ✅ 修正: isDeleted (packData.isInStore === false) と isAllViewMode の両方をチェック */}
-                {isDeleted && isAllViewMode && ( 
-                    <>
-                        <Button
-                            variant="contained"
-                            color="success"
-                            onClick={handleRestorePack}
-                            startIcon={<RestoreIcon />}
-                        >
-                            パックを復元
-                        </Button>
-                        <Button
-                            variant="outlined"
-                            color="error"
-                            onClick={handlePhysicalDeletePack}
-                            startIcon={<DeleteForeverIcon />}
-                        >
-                            完全削除
-                        </Button>
-                        <Divider orientation="vertical" flexItem sx={{ mx: 1 }} />
-                    </>
-                )}
+                {/* ❌ 削除: 復元/削除ボタン群 (isDeleted, isAllViewMode のチェックを全て削除) */}
 
-                {/* 編集/閲覧モード切り替えボタン (論理削除されていないパックのみ) */}
-                {/* isExistingPack のチェックは、論理削除されていない既存パックを指すため残す */}
-                {isExistingPack && !isDeleted && (
+                {/* 編集/閲覧モード切り替えボタン (既存パックの場合のみ) */}
+                {isExistingPack && ( // 修正: 論理削除のチェック (!isDeleted) を削除
                     <Button 
                         variant="outlined" 
                         onClick={toggleEditorMode}
@@ -140,14 +113,14 @@ const PackEditorToolbar: React.FC<PackEditorToolbarProps> = ({
                     variant="contained" 
                     startIcon={<SaveIcon />} 
                     onClick={handleSave} 
-                    // 編集モードかつ変更があり、論理削除されていない場合のみ有効
+                    // 修正: 論理削除されていないかどうかのチェックを削除
                     disabled={isSaveDisabled} 
                 >
                     保存
                 </Button>
 
-                {/* データ入出力ボタン (既存パックかつ論理削除されていないパックのみ) */}
-                {isExistingPack && !isDeleted && (
+                {/* データ入出力ボタン (既存パックの場合のみ) */}
+                {isExistingPack && ( // 修正: 論理削除のチェック (!isDeleted) を削除
                     <Tooltip title="データ入出力 (CSV/JSON)">
                         <IconButton
                             onClick={handleMenuOpen}
@@ -202,12 +175,13 @@ const PackEditorToolbar: React.FC<PackEditorToolbarProps> = ({
 
                 </Menu>
                 
-                {/* 論理削除ボタン (既存パックかつ編集モードかつ論理削除されていない場合のみ) */}
-                {isExistingPack && !isDeleted && (
+                {/* 論理削除ボタン (既存パックかつ編集モードの場合のみ) */}
+                {isExistingPack && isCurrentEditorMode && ( // 修正: 論理削除のチェック (!isDeleted) を削除
                     <Button 
                         variant="outlined" 
                         color="error" 
                         onClick={handleRemovePack} 
+                        // 論理削除されたパックではないため、ここでは isCurrentEditorMode のチェックは不要だが、既存コードに合わせて残す
                         disabled={!isCurrentEditorMode} 
                     >
                         ストアから除外

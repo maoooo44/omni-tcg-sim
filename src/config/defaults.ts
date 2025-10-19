@@ -2,18 +2,28 @@
  * src/config/defaults.ts
  *
  */
-import type { ArchiveItemType } from '../models/db-types';
-import type { ArchiveCollectionKey } from '../services/user-data/userDataService'; // ★ ArchiveCollectionKeyはuserDataServiceからインポート
+import type { ArchiveItemType, ArchiveCollectionKey } from '../models/archive';
+
+// 💡 修正: インデックスシグネチャを Record<T, U> に変更するか、より構造的な型を使用します。
+
+// アイテムタイプごとのGC設定の型
+export type ItemGcConfig = Record<ArchiveItemType, {
+    timeLimit: number; // 保持期間 (日数)
+    maxSize: number; // 最大アイテム数
+}>;
 
 // GC設定のデフォルト値の型
-export interface GCServiceDefaults {
-    [key: ArchiveCollectionKey]: {
-        [key in ArchiveItemType]: {
-            timeLimit: number; // 保持期間 (日数)
-            maxSize: number; // 最大アイテム数
-        };
-    };
-}
+// ArchiveCollectionKey ('trash' | 'history') をキーとするマップ型
+export type GCServiceDefaults = Record<ArchiveCollectionKey, ItemGcConfig>;
+// または、以下のようにマップ型をネストして直接定義することもできます。
+// export type GCServiceDefaults = {
+//     [K in ArchiveCollectionKey]: {
+//         [T in ArchiveItemType]: {
+//             timeLimit: number; // 保持期間 (日数)
+//             maxSize: number; // 最大アイテム数
+//         };
+//     };
+// };
 
 /**
  * アーカイブコレクション ('trash' および 'history') ごとの GC デフォルト設定。

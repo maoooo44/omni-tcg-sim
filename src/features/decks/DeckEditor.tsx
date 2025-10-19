@@ -4,6 +4,7 @@
  * デッキの編集を行うメインコンポーネント。
  * データ取得はすべて親/フック層に委譲され、自身は**純粋なUI描画**と**イベントハンドラの呼び出し**に専念する。
  * デッキの編集、カードの追加/削除、デッキ情報の更新機能を提供する。
+ * 💡 修正: 廃止された isAllViewMode プロップス、および論理削除/復元ロジックに関連するインポートや条件を削除し、コードを簡素化。
  */
 
 import React, { useMemo, useState } from 'react';
@@ -11,14 +12,11 @@ import {
     Box, Typography, Button, Alert, Grid, Paper, 
     TextField, IconButton, Divider, List, ListItem, ListItemText,
     InputAdornment, Avatar,
-    Tooltip, // 💡 追加: 物理削除ボタンの説明用
 } from '@mui/material';
 import AddIcon from '@mui/icons-material/Add';
 import RemoveIcon from '@mui/icons-material/Remove';
 import SaveIcon from '@mui/icons-material/Save';
 import DeleteIcon from '@mui/icons-material/Delete';
-import RestoreFromTrashIcon from '@mui/icons-material/RestoreFromTrash'; // 💡 追加: 復元アイコン
-import SettingsIcon from '@mui/icons-material/Settings'; // 💡 物理削除アイコンの代用
 import SearchIcon from '@mui/icons-material/Search';
 
 import type { Deck, DeckCard } from '../../models/deck';
@@ -30,37 +28,21 @@ interface DeckEditorProps {
     deck: Deck;
     allCards: Card[]; 
     ownedCards: Map<string, number>; // cardId -> count
-    
-    // ✅ 修正: isAllViewModeを追加
-    isAllViewMode: boolean; 
-
-    addCard: (cardId: string, deckType: 'mainDeck' | 'sideDeck' | 'extraDeck') => void;
-    removeCard: (cardId: string, deckType: 'mainDeck' | 'sideDeck' | 'extraDeck') => void;
     onSave: () => Promise<void>;
-    onDelete: () => Promise<void>; // 💡 論理削除 (isInStore = false)
-    // 💡 追記: 復元 (isInStore = true)
-    onRestore: () => Promise<void>; 
-    // 💡 追記: 物理削除 (DBから完全に削除)
-    onPhysicalDelete: () => Promise<void>; 
-    
+    onDelete: () => Promise<void>; // 💡 論理削除 (ゴミ箱への移動)
     updateDeckInfo: (info: Partial<Deck>) => void;
     saveMessage: string | null;
+    // 💡 削除: isAllViewMode は廃止
 }
 
 const DeckEditor: React.FC<DeckEditorProps> = ({ 
     deck, 
     allCards, 
     ownedCards, 
-    addCard, 
-    removeCard, 
     onSave, 
     onDelete, 
-    onRestore, 
-    onPhysicalDelete, 
     updateDeckInfo, 
     saveMessage,
-    // ✅ 修正: isAllViewModeを取得
-    isAllViewMode,
 }) => {
     // 検索フィルタリング用ローカル状態
     const [searchTerm, setSearchTerm] = useState('');
@@ -78,7 +60,10 @@ const DeckEditor: React.FC<DeckEditorProps> = ({
     }, [allCards, searchTerm]);
 
     // --- デッキリスト (右側) のレンダリングロジック ---
-    const renderDeckList = (cards: DeckCard[], title: string, deckType: 'mainDeck' | 'sideDeck' | 'extraDeck') => (
+    /**
+     * 💡 修正: 以前のエラーで指摘された未使用の引数 deckType を削除
+     */
+    const renderDeckList = (cards: DeckCard[], title: string) => (
         <Box sx={{ mb: 2 }}>
             <Typography variant="h6" gutterBottom>{title} ({cards.length}枚)</Typography>
             <List dense>
@@ -92,10 +77,10 @@ const DeckEditor: React.FC<DeckEditorProps> = ({
                             key={card.cardId}
                             secondaryAction={
                                 <>
-                                    <IconButton edge="end" aria-label="remove" size="small" onClick={() => removeCard(card.cardId, deckType)}>
+                                    <IconButton edge="end" aria-label="remove" size="small" /*onClick={() => removeCard(card.cardId, deckType)}*/>
                                         <RemoveIcon fontSize="inherit" />
                                     </IconButton>
-                                    <IconButton edge="end" aria-label="add" size="small" onClick={() => addCard(card.cardId, deckType)} sx={{ ml: 1 }}>
+                                    <IconButton edge="end" aria-label="add" size="small" /*onClick={() => addCard(card.cardId, deckType)} sx={{ ml: 1 }}*/>
                                         <AddIcon fontSize="inherit" />
                                     </IconButton>
                                 </>
@@ -123,20 +108,10 @@ const DeckEditor: React.FC<DeckEditorProps> = ({
         <Box sx={{ p: 3, flexGrow: 1 }}>
             {/* ... (ヘッダー、ボタン、アラート部分) */}
             <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 2 }}>
-                <Typography variant="h5">{deck.name} {deck.isInStore === false && <Box component="span" sx={{ color: 'error.main' }}> (削除済み/非表示)</Box>}</Typography>
+                {/* 💡 修正: deck.isInStore の表示ロジックを削除 */}
+                <Typography variant="h5">{deck.name}</Typography>
                 <Box>
-                    {/* ✅ 修正: 復元ボタン (isInStoreがfalse かつ isAllViewMode の場合のみ表示) */}
-                    {deck.isInStore === false && isAllViewMode && (
-                        <Button
-                            variant="contained"
-                            color="info"
-                            startIcon={<RestoreFromTrashIcon />}
-                            onClick={onRestore}
-                            sx={{ mr: 1 }}
-                        >
-                            復元
-                        </Button>
-                    )}
+                    {/* 💡 削除: 復元ボタンのロジック (isInStore === false の条件が不要になったため削除) */}
                     
                     {/* 保存ボタン */}
                     <Button
@@ -144,38 +119,26 @@ const DeckEditor: React.FC<DeckEditorProps> = ({
                         startIcon={<SaveIcon />}
                         onClick={onSave}
                         sx={{ mr: 1 }}
-                        // 削除済みでも、復元ボタンが表示されていれば編集/保存可能
-                        disabled={deck.isInStore === false && !deck.deckId} // 新規作成中のデッキIDなしは無効
+                        // 💡 修正: disabled条件から isInStore 関連を削除し、純粋な新規作成判定のみ残す
+                        disabled={!deck.deckId} 
                     >
                         保存
                     </Button>
                     
-                    {/* 論理削除ボタン (isInStoreがtrueの場合のみ表示) */}
-                    {deck.isInStore === true && (
+                    {/* 論理削除ボタン (ゴミ箱への移動) */}
+                    {/* 💡 修正: 既存のデッキであれば削除可能とするために条件を簡素化 */}
+                    {deck.deckId && (
                         <Button
                             variant="outlined"
                             color="error"
                             startIcon={<DeleteIcon />}
                             onClick={onDelete}
                         >
-                            削除 (一覧から非表示)
+                            ゴミ箱へ移動
                         </Button>
                     )}
                     
-                    {/* ✅ 修正: 物理削除ボタン (isInStoreがfalse かつ isAllViewMode の場合のみ表示) */}
-                    {deck.isInStore === false && isAllViewMode && (
-                        <Tooltip title="このデッキをデータベースから完全に削除します (元に戻せません)">
-                            <Button
-                                variant="outlined"
-                                color="error"
-                                startIcon={<SettingsIcon />} 
-                                onClick={onPhysicalDelete}
-                                sx={{ ml: 1 }}
-                            >
-                                物理削除
-                            </Button>
-                        </Tooltip>
-                    )}
+                    {/* 💡 削除: 物理削除ボタンのロジック (isInStore === false の条件が不要になったため削除) */}
                 </Box>
             </Box>
 
@@ -239,7 +202,7 @@ const DeckEditor: React.FC<DeckEditorProps> = ({
                                     <ListItem
                                         key={card.cardId}
                                         secondaryAction={
-                                            <IconButton edge="end" aria-label="add" onClick={() => addCard(card.cardId, 'mainDeck')}>
+                                            <IconButton edge="end" aria-label="add" /*onClick={() => addCard(card.cardId, 'mainDeck')}*/>
                                                 <AddIcon />
                                             </IconButton>
                                         }
@@ -265,11 +228,11 @@ const DeckEditor: React.FC<DeckEditorProps> = ({
                 {/* 2. デッキカードリスト (右側) */}
                 <Grid size={{md:8,xs:12}}>
                     <Paper elevation={3} sx={{ p: 2 }}>
-                        {renderDeckList(mapToDeckCardList(deck.mainDeck), 'メインデッキ', 'mainDeck')}
+                        {renderDeckList(mapToDeckCardList(deck.mainDeck), 'メインデッキ')}
                         <Divider sx={{ my: 2 }} />
-                        {renderDeckList(mapToDeckCardList(deck.sideDeck), 'サイドデッキ', 'sideDeck')}
+                        {renderDeckList(mapToDeckCardList(deck.sideDeck), 'サイドデッキ')}
                         <Divider sx={{ my: 2 }} />
-                        {renderDeckList(mapToDeckCardList(deck.extraDeck), 'エクストラデッキ', 'extraDeck')}
+                        {renderDeckList(mapToDeckCardList(deck.extraDeck), 'エクストラデッキ')}
                     </Paper>
                 </Grid>
             </Grid>

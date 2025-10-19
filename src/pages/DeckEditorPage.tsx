@@ -8,13 +8,8 @@
 import React from 'react';
 import { useParams} from '@tanstack/react-router'; 
 import { Box, Alert } from '@mui/material'; 
-// ★ 追加: useShallowをインポート
-import { useShallow } from 'zustand/react/shallow'; 
-
 import DeckEditor from '../features/decks/DeckEditor'; 
 import { useDeckEditor } from '../features/decks/hooks/useDeckEditor'; 
-// ★ 追加: useUserDataStoreをインポート（パスは仮定）
-import { useUserDataStore } from '../stores/userDataStore'; 
 // useDeckEditor, DeckEditor, Card, Deck などの型定義インポートは省略
 
 const DeckEditorPage: React.FC = () => {
@@ -36,9 +31,7 @@ interface DeckEditorContentProps {
 
 const DeckEditorContent: React.FC<DeckEditorContentProps> = ({ deckId }) => {
     
-    // ★ 修正: useUserDataStoreから isAllViewMode を取得
-    const isAllViewMode = useUserDataStore(useShallow(state => state.isAllViewMode)); 
-
+ 
     // useDeckEditor hookから全てのロジックとデータを取得 (ビジネスロジックの分離)
     const {
         isLoading,
@@ -48,10 +41,6 @@ const DeckEditorContent: React.FC<DeckEditorContentProps> = ({ deckId }) => {
         // 💡 修正: useDeckEditor の新しい戻り値名に合わせる
         onSave, // handlesaveCurrentDeck から onSave に変更
         onDelete, // handleDeleteDeck から onDelete に変更
-        onRestore, // 💡 追加: 新しい復元アクション
-        onPhysicalDelete, // 💡 追加: 新しい物理削除アクション
-        addCard, 
-        removeCard,
         allCards,
         ownedCards,
     } = useDeckEditor(deckId); 
@@ -83,21 +72,14 @@ const DeckEditorContent: React.FC<DeckEditorContentProps> = ({ deckId }) => {
         <Box sx={{ flexGrow: 1 }}>
             <DeckEditor
                 deck={currentDeck} 
-                addCard={addCard} 
-                removeCard={removeCard} 
                 // 💡 修正: 新しいプロパティ名で渡す
                 onSave={onSave} 
                 onDelete={onDelete} 
-                // 💡 追加: DeckEditorPropsに必要な復元/物理削除アクションを渡す
-                onRestore={onRestore}
-                onPhysicalDelete={onPhysicalDelete}
-                
+                // 💡 追加: DeckEditorPropsに必要な復元/物理削除アクションを渡す             
                 updateDeckInfo={updateDeckInfo} 
                 saveMessage={saveMessage} 
                 allCards={allCards} 
                 ownedCards={ownedCards} 
-                // ★ 修正: isAllViewModeを渡す
-                isAllViewMode={isAllViewMode} 
             />
         </Box>
     );

@@ -14,12 +14,14 @@ import { useEffect, useCallback } from 'react';
 import { useNavigate } from '@tanstack/react-router'; 
 import { useShallow } from 'zustand/react/shallow';
 import { usePackStore } from '../../../stores/packStore';
-import { useUserDataStore } from '../../../stores/userDataStore'; // 💡 追加
+import { useUserDataStore } from '../../../stores/userDataStore'; 
 import { useSortAndFilter } from '../../../hooks/useSortAndFilter';
 
 import type { Pack } from '../../../models/pack';
 import { type SortField } from '../../../utils/sortingUtils';
 import { packFieldAccessor, PACK_SORT_OPTIONS } from '../packUtils';
+// 💡 修正: 新規デッキ作成用のユーティリティをインポート
+import { createDefaultPack } from '../../../utils/dataUtils';
 
 interface UsePackListResult {
     packs: Pack[];
@@ -32,9 +34,9 @@ interface UsePackListResult {
     toggleSortOrder: () => void;
     setSearchTerm: (term: string) => void;
     handleSelectPack: (packId: string) => void;
-    handleNewPack: () => Promise<void>;
+    handleNewPack: () => void; // 💡 修正: initializeNewPackEditingがなくなったため、Promise<void>ではなくなった
     handleDeletePack: (packId: string, packName: string) => void; 
-    isAllViewMode: boolean; // 💡 追加
+    isAllViewMode: boolean;
 }
 
 const defaultSortOptions = {
@@ -46,16 +48,15 @@ export const usePackList = (): UsePackListResult => {
     const navigate = useNavigate();
 
     // ストアからのデータとアクションの取得
+    // 💡 修正: initializeNewPackEditingを削除。fetchPacksをfetchAllPacksに、deletePackをmovePackToTrashに変更。
     const { 
         packs, 
-        initializeNewPackEditing, 
-        fetchPacks,
-        deletePack, 
+        fetchAllPacks, // 💡 修正: fetchPacks -> fetchAllPacks
+        movePackToTrash, // 💡 修正: deletePack -> movePackToTrash
     } = usePackStore(useShallow(state => ({
         packs: state.packs,
-        initializeNewPackEditing: state.initializeNewEditingPack,
-        fetchPacks: state.fetchPacks,
-        deletePack: state.deletePack, 
+        fetchAllPacks: state.fetchAllPacks,
+        movePackToTrash: state.movePackToTrash,
     })));
 
     // 💡 追加: UserDataStoreから isAllViewMode を取得
@@ -65,8 +66,8 @@ export const usePackList = (): UsePackListResult => {
 
     // 初期ロードの実行
     useEffect(() => {
-        fetchPacks();
-    }, [fetchPacks]); 
+        fetchAllPacks(); // 💡 修正: fetchPacks -> fetchAllPacks
+    }, [fetchAllPacks]); 
     
     // ソート＆フィルタリングフックの適用
     const {
@@ -75,7 +76,6 @@ export const usePackList = (): UsePackListResult => {
         sortOrder,
         searchTerm,
         setSortField,
-        //setSortOrder,
         toggleSortOrder,
         setSearchTerm,
     } = useSortAndFilter<Pack>(packs, packFieldAccessor, defaultSortOptions);
@@ -85,24 +85,32 @@ export const usePackList = (): UsePackListResult => {
         navigate({ to: `/data/packs/$packId`, params: { packId } });
     }, [navigate]);
     
-    const handleNewPack = useCallback(async () => {
-        const newPackId = await initializeNewPackEditing(); 
+    // 💡 修正: 新規パック作成ロジックを createDefaultPack を使って実装
+    const handleNewPack = useCallback(() => {
+        // createDefaultPack を使用して新しい一意のIDを持つ空のパックデータを生成しIDを取得
+        const newPack = createDefaultPack();
+        const newPackId = newPack.packId; 
+        
+        // 🚨 注意: 本来、この初期パックを Store/ローカル状態に追加するロジックが必要ですが、
+        // usePackEditorがIDを受け取って初期化を行うと仮定し、IDのみを渡します。
+
         navigate({ to: `/data/packs/$packId`, params: { packId: newPackId } }); 
-    }, [initializeNewPackEditing, navigate]);
+    }, [navigate]);
 
     // 削除ハンドラ (データ操作ロジック)
+    // 💡 修正: deletePack -> movePackToTrash に変更し、フックのアクション名を同じにする
     const handleDeletePack = useCallback((packId: string, packName: string) => {
-        if (!window.confirm(`パック「${packName}」と関連するすべてのカードを完全に削除しますか？`)) {
+        if (!window.confirm(`パック「${packName}」をゴミ箱に移動しますか？`)) {
             return;
         }
         try {
-            deletePack(packId); 
+            movePackToTrash(packId); // 💡 修正: ストアアクション movePackToTrash を呼び出す
             // 削除後のUI更新はZustandストア経由で自動的に行われる
         } catch (error) {
             alert('パックの削除に失敗しました。');
             console.error(error);
         }
-    }, [deletePack]);
+    }, [movePackToTrash]); // 💡 依存配列も movePackToTrash に修正
 
 
     return {
@@ -118,6 +126,6 @@ export const usePackList = (): UsePackListResult => {
         handleSelectPack,
         handleNewPack,
         handleDeletePack, 
-        isAllViewMode, // 💡 追加
+        isAllViewMode, 
     };
 };

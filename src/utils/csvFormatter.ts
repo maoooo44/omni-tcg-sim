@@ -15,7 +15,7 @@ export const formatCardsToCsv = (cards: Card[]): string => {
 
     // Cardのプロパティを安全に扱うためのキーリストを定義
     const headers: (keyof Card)[] = [
-        'cardId', 'packId', 'number', /*'term', 'definition', 'lastViewedAt', 'createdAt',*/ 'updatedAt', 'isInStore'
+        'cardId', 'packId', 'number', /*'term', 'definition', 'lastViewedAt', 'createdAt',*/ 'updatedAt',
     ];
     
     // 値のフォーマットとエスケープ

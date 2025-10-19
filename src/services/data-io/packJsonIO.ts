@@ -2,26 +2,32 @@
  * src/services/data-io/packJsonIO.ts
  *
  * 単一/複数のPackとその収録カード（関連データ）をまとめてJSON形式でシリアライズ/デシリアライズするドメインI/Oサービス。
- * JSONI/Oだけでなく、インポート時のID再採番とデータ初期化ロジックも担う。
+ * JSONI/Oだけでなく、インポート時のID衝突解決とデータ初期化ロジックも担う。
  */
 
 import { packService } from '../packs/packService';
-import { cardSearchService } from '../cards/cardSearchService';
-import { cardDataService } from '../cards/cardDataService';
-import { generateId, createDefaultPackData } from '../../utils/dataUtils';
-import type { Pack } from '../../models/pack';
+import { cardService } from '../cards/cardService';
+// 💡 修正点: generateId と dataUtils の補完関数をインポート
+import { generateId, createDefaultPack, applyDefaultsIfMissing } from '../../utils/dataUtils'; 
+import type { Pack, PackBundle } from '../../models/pack'; // 💡 修正点: PackBundleをインポート
 import type { Card } from '../../models/card';
+// 💡 修正点: シリアライザ/デシリアライザを使用しないため、Serializer, Deserializerの型は不要
 import { exportDataToJson, importDataFromJson } from '../../utils/genericJsonIO'; 
 
-// 💡 修正: JSONファイルとしてエクスポートされる、単一Pack+Cardsのデータ構造
-interface PackData {
-    pack: Pack;
-    cards: Card[];
-}
+// --- 💡 修正点: ローカルの型定義 PackData, PacksExportData を削除し、PackBundle を使用する ---
+// PackBundle は { packData: Pack, cardsData: Card[] } を想定
 
-// 💡 追加: 複数のPackとそのCardsを扱うためのトップレベル構造
-interface PacksExportData {
-    exports: PackData[];
+// ----------------------------------------------------
+// 💡 追加: インポートオプションの定義 (変更なし)
+// ----------------------------------------------------
+
+/** ID衝突時のPackデータの処理方法 */
+export type PackIdConflictStrategy = 'RENAME' | 'SKIP';
+
+/** インポート処理のオプション */
+export interface PackImportOptions {
+    /** 既存のPackIdとインポートデータのPackIdが衝突した場合の戦略 */
+    packIdConflictStrategy: PackIdConflictStrategy;
 }
 
 // ----------------------------------------------------
@@ -30,12 +36,11 @@ interface PacksExportData {
 
 /**
  * 💡 [個別エクスポート] 単一パックとその収録カードをJSON形式でエクスポートする
- * 複数エクスポート関数を呼び出すラッパー。
+ * 複数エクスポート関数を呼び出すラッパー。（維持）
  * @param packId - エクスポート対象のパックID
  * @returns JSON形式の文字列
  */
 export const exportPackToJson = async (packId: string): Promise<string> => {
-    // 💡 複数エクスポート関数に委譲
     return exportPacksToJson([packId]);
 };
 
@@ -46,10 +51,13 @@ export const exportPackToJson = async (packId: string): Promise<string> => {
  * @returns JSON形式の文字列
  */
 export const exportPacksToJson = async (packIds: string[]): Promise<string> => {
-    const exportItems: PackData[] = [];
+    // 💡 修正点: PackBundle[] を使用
+    const exportItems: PackBundle[] = [];
     
     for (const packId of packIds) {
-        const pack = await packService.getPackById(packId);
+        // fetchPacksByIds は Pack[] を返す可能性があるため、[0]を取得（パックIDがユニークであることを前提）
+        const packs = await packService.fetchPacksByIds([packId]);
+        const pack = packs[0];
         
         if (!pack) {
             console.warn(`[packJsonIO] Pack ID ${packId} not found. Skipping export.`);
@@ -57,11 +65,11 @@ export const exportPacksToJson = async (packIds: string[]): Promise<string> => {
         }
         
         // 関連するカードデータをすべて取得
-        const cards = await cardSearchService.getCardsByPackId(packId);
+        const cards = await cardService.fetchCardsByPackIds([packId]);
 
         exportItems.push({
-            pack,
-            cards
+            packData: pack, // 💡 修正点: packDataに変更
+            cardsData: cards // 💡 修正点: cardsDataに変更
         });
     }
 
@@ -69,113 +77,127 @@ export const exportPacksToJson = async (packIds: string[]): Promise<string> => {
         throw new Error('エクスポート対象のパックデータが見つかりませんでした。');
     }
     
-    const exportData: PacksExportData = { exports: exportItems };
-    
-    // genericJsonIOの関数を使ってJSON文字列を返す
-    return exportDataToJson(exportData); 
+    // 💡 修正点: PackBundle[] を直接エクスポート（最上位の exports フィールドを削除）
+    return exportDataToJson(exportItems); 
 };
 
 // ----------------------------------------------------
 // [2] Import (インポート)
 // ----------------------------------------------------
 
-/**
- * 💡 [個別インポート] JSON文字列から単一パックとその収録カードをインポートし、DBに新規登録する
- * 複数インポート関数を呼び出すラッパー。
- * @param jsonText - インポートするJSON文字列
- * @returns 新規作成されたパックのIDとインポートされたカードの総数
- */
-export const importPackFromJson = async (jsonText: string): Promise<{ newPackId: string, importedCardCount: number }> => {
-    // 💡 複数インポート関数に委譲
-    const result = await importPacksFromJson(jsonText);
-
-    // 単数インポートでは、結果は必ず1つのはず
-    if (result.importedCount !== 1 || result.newPackIds.length !== 1) {
-        throw new Error("単一パックのインポートに失敗しました。JSONファイルに複数のパックが含まれている可能性があります。");
-    }
-    
-    return {
-        newPackId: result.newPackIds[0],
-        importedCardCount: result.importedCardCounts[0]
-    };
-};
+// 💡 修正点: importPackFromJson の削除 (単一インポート関数の廃止)
 
 
 /**
  * 💡 [一括インポート] JSON文字列から複数パックとその収録カードを一括でインポートし、DBに新規登録する
- * インポートされたパックIDとカードIDは、DBの既存データとの衝突を避けるため全て再採番されます。
+ * Pack IDが既存データと衝突した場合の挙動はオプションによって制御されます。
  * @param jsonText - インポートするJSON文字列
- * @returns 新規作成されたパックのIDの配列と、それぞれのインポートされたカードの総数の配列
+ * @param options - インポートオプション (オプション)
+ * @returns 新規作成されたパックのIDの配列と、スキップされたIDの配列
  */
-export const importPacksFromJson = async (jsonText: string): Promise<{ importedCount: number, newPackIds: string[], importedCardCounts: number[] }> => {
-    console.log("[packJsonIO] START bulk import.");
+export const importPacksFromJson = async (
+    jsonText: string, 
+    options?: PackImportOptions
+): Promise<{ newPackIds: string[], skippedIds: string[] }> => {
+    console.log("[packJsonIO:importPacksFromJson] START bulk import.");
     
-    // genericJsonIOの関数を使ってJSON文字列をパース
-    const parsedData = importDataFromJson<PacksExportData>(jsonText); 
+    // 💡 修正点: PackBundle[] を直接パースする
+    const bundlesToImport = importDataFromJson<PackBundle[]>(jsonText); 
     
-    if (!parsedData.exports || !Array.isArray(parsedData.exports)) {
-        throw new Error('JSONの形式が正しくありません。exportsフィールド（配列）が必要です。');
+    if (!Array.isArray(bundlesToImport)) {
+        throw new Error('JSONの形式が正しくありません。PackBundleの配列である必要があります。');
     }
+    
+    // 💡 既存の Pack ID を取得
+    await packService.fetchAllPacks();
+    const existingPacks = packService.getAllPacksFromCache();
+    // Setはインポート中のID衝突チェックにも使うため、インポートで新しく割り当てられたIDも追加していく
+    const existingPackIds = new Set(existingPacks.map(p => p.packId));
     
     const packsToSave: Pack[] = [];
     const cardsToSave: Card[] = [];
     const newPackIds: string[] = [];
-    const importedCardCounts: number[] = [];
+    const skippedIds: string[] = []; 
+    
+    // オプションが渡されなかった場合のデフォルト戦略を 'SKIP' に設定
+    const packIdConflictStrategy: PackIdConflictStrategy = options?.packIdConflictStrategy || 'SKIP';
 
-    for (const exportedItem of parsedData.exports) {
-        if (!exportedItem.pack || !exportedItem.cards) {
-            console.warn('[packJsonIO] Skipping malformed item in exports array.');
+    for (const exportedItem of bundlesToImport) { // 💡 修正: bundlesToImport をループ
+        if (!exportedItem.packData || !exportedItem.cardsData) { // 💡 修正: packData, cardsData にアクセス
+            console.warn('[packJsonIO] Skipping malformed item in imports array.');
+            // 💡 スキップ対象のIDは不明だが、データが不完全なため処理を継続
             continue;
         }
 
-        // 1. 新しいPack IDを生成
-        const newPackId = generateId();
+        let currentPackId = exportedItem.packData.packId;
         
-        // 2. Packデータを準備 (IDと関連情報を更新)
-        const newPack: Pack = {
-            ...exportedItem.pack,
-            packId: newPackId,        // 新しいIDを強制適用
-            isOpened: false,          // 外部からのインポートなので、強制的に未開封状態にする
-            totalCards: exportedItem.cards.length,
-            // updatedAt/createdAt はインポート時の値を使用し、savePackでupdatedAtを上書きする
-        };
-        // 💡 修正: createDefaultPackData() が抜けていたため追加（既存のコードに合わせて修正）
-        const newPackWithDefaults: Pack = { 
-            ...createDefaultPackData(), 
-            ...newPack 
-        };
+        // ID衝突時の挙動をオプションで制御
+        if (existingPackIds.has(currentPackId)) {
+            
+            if (packIdConflictStrategy === 'SKIP') {
+                // SKIP戦略: IDが衝突したら、そのパック全体をスキップ
+                skippedIds.push(currentPackId);
+                console.log(`[packJsonIO] Pack ID ${currentPackId} skipped due to conflict.`);
+                continue; // このパックの処理を終了し、次のループへ
+            }
+            
+            // 'RENAME' (新しいIDを割り当てる) 戦略の場合
+            currentPackId = generateId(); // 💡 修正: uuidv4ではなくgenerateIdを使用
+            // 💡 新しいIDも existingPackIds に追加し、以降のインポートデータとの衝突を避ける
+            existingPackIds.add(currentPackId); 
+            console.log(`[packJsonIO] Pack ID collision. New ID assigned: ${currentPackId}`);
+        }
         
-        packsToSave.push(newPackWithDefaults);
-        newPackIds.push(newPackId);
+        // 1. Packデータを準備 (IDと関連情報を更新)
+        // 💡 修正点: 欠落フィールドの補完ロジックを適用
+        const defaultPack = createDefaultPack();
         
-        // 3. Cardデータを準備 (新しいPack IDとCard IDを再採番)
-        const newCards: Card[] = exportedItem.cards.map(card => ({
+        let newPack: Pack = applyDefaultsIfMissing(
+            { // 適用時に packId, totalCards, isOpened, updatedAt を優先的に更新
+                ...exportedItem.packData,
+                packId: currentPackId,  
+                isOpened: false,       
+                totalCards: exportedItem.cardsData.length,
+                updatedAt: new Date().toISOString(),
+                // createdAt が欠落している場合にのみデフォルト値が適用される
+            },
+            defaultPack
+        );
+        
+        // データの整合性チェックを強化: createdAt の欠落時の補完（applyDefaultsIfMissingで処理されるはずだが念のため）
+        if (!newPack.createdAt) {
+             newPack.createdAt = new Date().toISOString();
+        }
+        
+        packsToSave.push(newPack);
+        newPackIds.push(currentPackId);
+        
+        // 2. Cardデータを準備 (Pack IDを新しいものに、Card IDはインポートデータのIDを維持)
+        const newCards: Card[] = exportedItem.cardsData.map(card => ({ // 💡 修正: cardsData にアクセス
             ...card,
-            cardId: generateId(), // Card IDを再採番
-            packId: newPackId,    // 新しいPack IDを適用
+            // cardId はインポートデータを維持
+            packId: currentPackId,  // 新しいPack IDを適用
         }));
+
         cardsToSave.push(...newCards);
-        importedCardCounts.push(newCards.length);
     }
     
-    const importedCount = packsToSave.length;
+    const importedCount = packsToSave.length; 
     
-    if (importedCount === 0) {
-        return { importedCount: 0, newPackIds: [], importedCardCounts: [] };
+    if (importedCount === 0 && skippedIds.length === 0) {
+        return { newPackIds: [], skippedIds: [] };
     }
 
-    // 4. DBへの保存（PackServiceのbulkPutPacksを利用して一括保存に修正）
-    // 💡 修正: packService.bulkPutPacks が利用可能になったため、単数saveのループを削除し、一括保存に置き換える。
-    await packService.bulkPutPacks(packsToSave);
+    // 3. DBへの保存
+    await packService.savePacks(packsToSave);
     
-    // 5. Cardの一括保存
-    await cardDataService.bulkSaveCards(cardsToSave);
+    // 4. Cardの一括保存
+    await cardService.saveCards(cardsToSave);
 
-    console.log(`[packJsonIO] ✅ Bulk import complete. Imported ${importedCount} packs and ${cardsToSave.length} cards.`);
+    console.log(`[packJsonIO:importPacksFromJson] ✅ Bulk import complete. Imported ${importedCount} packs. Skipped ${skippedIds.length} packs. Total cards saved: ${cardsToSave.length}`);
 
     return { 
-        importedCount,
-        newPackIds, 
-        importedCardCounts
+        newPackIds,
+        skippedIds,
     };
 };

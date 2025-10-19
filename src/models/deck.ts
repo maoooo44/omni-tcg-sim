@@ -13,7 +13,7 @@ export interface Deck {
     name: string;
     number?: number | null; 
     imageUrl: string; // オプションとし、デフォルトでは空または undefined を想定
-    imgColor?: string; // 例: 'red', 'blue'
+    imageColor?: string; // 例: 'red', 'blue'
     ruleId?: string; // このデッキが準拠するカスタムルールセットのID（オプション）
     deckType: DeckType; // デッキの構成要素
     totalCards: number;

@@ -130,7 +130,7 @@ const PackInfoForm: React.FC<PackInfoFormProps> = ({
                 <TextField
                     label="カード裏面画像URL"
                     name="cardBackUrl"
-                    value={packData.cardBackUrl || ''} 
+                    value={packData.cardBackImageUrl || ''} 
                     onChange={handleInputChange}
                     fullWidth
                     margin="normal"

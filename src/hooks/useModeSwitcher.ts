@@ -9,25 +9,34 @@
 import { useState, useCallback } from 'react';
 import { useShallow } from 'zustand/react/shallow';
 import { useUserDataStore} from '../stores/userDataStore';
-import {  type CurrentGameMode } from '../models/userData'; // 💡 修正: userData.tsにパス修正
+import {  type CurrentGameMode } from '../models/userData';
 import { useCardPoolStore } from '../stores/cardPoolStore';
-import { Alert} from '@mui/material';
 
 
-// ダイアログのコンテンツの型定義（ロジックの戻り値）
-interface DialogContentData {
+// 💡 修正: ダイアログのコンテンツの型定義を、JSXを含まないデータ構造に統一
+
+interface DialogMessageData {
+    mainText: string;
+    alertText: string;
+    alertSeverity: 'error' | 'warning' | 'info';
+    secondaryAlert?: {
+        text: string;
+        severity: 'error' | 'warning' | 'info';
+    } | null;
+}
+
+export interface DialogContentData { // 外部コンポーネントで利用するため export
     title: string;
-    message: React.ReactNode;
+    message: DialogMessageData;
     confirmText: string;
     disabled?: boolean;
 }
 
-interface ModeSwitcher {
+export interface ModeSwitcher { // 外部コンポーネントで利用するため export
     currentMode: CurrentGameMode;
     currentModeText: string;
     currentModeColor: string;
     cheatCount: number;
-    isAllViewMode: boolean; // 💡 追加: 全表示モードの状態
     // ダイアログの状態
     isModeSelectOpen: boolean;
     isWarningOpen: boolean;
@@ -39,7 +48,6 @@ interface ModeSwitcher {
     doubleConfirmContent: DialogContentData;
     // ハンドラ
     setIsModeSelectOpen: (open: boolean) => void;
-    setAllViewMode: (isMode: boolean) => Promise<void>; // 💡 追加: 全表示モードのセッター
     handleModeSelection: (newMode: CurrentGameMode) => void;
     handleFirstConfirmation: () => void;
     handleCancel: () => void;
@@ -54,15 +62,11 @@ export const useModeSwitcher = (coins: number): ModeSwitcher => {
         cheatCount, 
         setDTCGMode, 
         setGodMode,
-        isAllViewMode, // ✅ 取得済み
-        setAllViewMode, // ✅ 取得済み
     } = useUserDataStore(useShallow(state => ({
         getCurrentMode: state.getCurrentMode,
         cheatCount: state.cheatCount,
         setDTCGMode: state.setDTCGMode,
         setGodMode: state.setGodMode,
-        isAllViewMode: state.isAllViewMode, 
-        setAllViewMode: state.setAllViewMode, 
     })));
     // カードプール削除アクションを直接取得
     const clearCardPool = useCardPoolStore.getState().deleteCardPool;
@@ -150,25 +154,24 @@ export const useModeSwitcher = (coins: number): ModeSwitcher => {
         }
     }, [targetMode, currentMode, handleModeChangeConfirmed]);
     
-    // ダイアログのコンテンツ生成ロジックはフック内に保持
+    // ダイアログのコンテンツ生成ロジック
     const getWarningContent = (mode: CurrentGameMode | null): DialogContentData => {
-    // ... (getWarningContent の中身は省略。変更なし)
-        if (!mode) return { title: 'エラー', message: '', confirmText: '続行' };
+        if (!mode) return { 
+            title: 'エラー', 
+            message: { mainText: '', alertText: 'ターゲットモードが設定されていません。', alertSeverity: 'error' }, 
+            confirmText: '続行' 
+        };
         
         const transition = `${currentMode} -> ${mode}`;
 
         if (transition === 'dtcg -> free') {
             return {
                 title: '⚠️ フリーモードへの切り替え警告',
-                message: (
-                    <>
-                        <Alert severity="error" sx={{ mb: 2 }}>
-                            **フリーモード**へ切り替える際は、**所有カード情報がすべて削除されます**。
-                            この操作は元に戻せません。
-                        </Alert>
-                        <p>よろしいですか？（**次のステップで最終確認を行います**）</p>
-                    </>
-                ),
+                message: {
+                    alertSeverity: 'error',
+                    alertText: '**フリーモード**へ切り替える際は、**所有カード情報がすべて削除されます**。この操作は元に戻せません。',
+                    mainText: 'よろしいですか？（**次のステップで最終確認を行います**）'
+                },
                 confirmText: '次の確認に進む',
             };
         }
@@ -177,18 +180,14 @@ export const useModeSwitcher = (coins: number): ModeSwitcher => {
             const isDisabled = transition === 'free -> god';
             return {
                 title: '🚨 ゴッドモードへの切り替え警告',
-                message: (
-                    <>
-                        <Alert severity="warning" sx={{ mb: 2 }}>
-                            **ゴッドモード**は、デバッグ・検証用のチート機能です。
-                            このモードに切り替えると、**チートカウンタが1増加**し、あなたの活動履歴として記録されます。（現在のカウント: **{cheatCount}**）
-                        </Alert>
-                        <p>
-                            開封結果などのシミュレーション結果を自由に操作できるようになります。よろしいですか？
-                            {isDisabled && <Alert severity='error' sx={{ mt: 1 }}>⚠️ **この遷移は禁止されています。キャンセルしてください。**</Alert>}
-                        </p>
-                    </>
-                ),
+                message: {
+                    alertSeverity: 'warning',
+                    alertText: `**ゴッドモード**は、デバッグ・検証用のチート機能です。このモードに切り替えると、**チートカウンタが1増加**し、あなたの活動履歴として記録されます。（現在のカウント: **${cheatCount}**）`,
+                    mainText: '開封結果などのシミュレーション結果を自由に操作できるようになります。よろしいですか？',
+                    secondaryAlert: isDisabled 
+                        ? { text: '⚠️ **この遷移は禁止されています。キャンセルしてください。**', severity: 'error' } 
+                        : null,
+                },
                 confirmText: isDisabled ? '続行 (禁止)' : '記録して続行',
                 disabled: isDisabled,
             };
@@ -197,15 +196,11 @@ export const useModeSwitcher = (coins: number): ModeSwitcher => {
         if (mode === 'dtcg') { // FREE/GOD -> DTCG
             return {
                 title: '❗️ DTCGモードへの切り替え確認',
-                message: (
-                    <>
-                        <Alert severity="info" sx={{ mb: 2 }}>
-                            **DTCGモード**は、コインシステム、開封履歴などの**機能制限**と**記録機能**が有効になるモードです。
-                            この操作は今後のアプリの動作と記録に影響します。
-                        </Alert>
-                        <p>よろしいですか？（この確認で実行されます）</p>
-                    </>
-                ),
+                message: {
+                    alertSeverity: 'info',
+                    alertText: '**DTCGモード**は、コインシステム、開封履歴などの**機能制限**と**記録機能**が有効になるモードです。この操作は今後のアプリの動作と記録に影響します。',
+                    mainText: 'よろしいですか？（この確認で実行されます）'
+                },
                 confirmText: '切り替える',
             };
         }
@@ -213,47 +208,47 @@ export const useModeSwitcher = (coins: number): ModeSwitcher => {
         if (transition === 'god -> free') {
             return {
                 title: '⚠️ フリーモードへの切り替え確認',
-                message: (
-                    <>
-                        <Alert severity="warning" sx={{ mb: 2 }}>
-                            ゴッドモードの機能が停止し、フリーモードになります。
-                            カードプールは削除されませんが、シミュレーション結果の自由な操作はできなくなります。
-                        </Alert>
-                        <p>切り替えますか？</p>
-                    </>
-                ),
+                message: {
+                    alertSeverity: 'warning',
+                    alertText: 'ゴッドモードの機能が停止し、フリーモードになります。カードプールは削除されませんが、シミュレーション結果の自由な操作はできなくなります。',
+                    mainText: '切り替えますか？'
+                },
                 confirmText: '切り替える',
             };
         }
 
-        return { title: 'モード切り替え確認', message: <p>本当に切り替えますか？</p>, confirmText: '切り替える' };
+        return { 
+            title: 'モード切り替え確認', 
+            message: { 
+                mainText: '本当に切り替えますか？', 
+                alertText: '', 
+                alertSeverity: 'info' 
+            }, 
+            confirmText: '切り替える' 
+        };
     };
     
     // 二重確認ダイアログのコンテンツ生成 (DTCGからの離脱時のみ)
     const getDoubleConfirmContent = (mode: CurrentGameMode | null): DialogContentData => {
-    // ... (getDoubleConfirmContent の中身は省略。変更なし)
         if (!mode || currentMode !== 'dtcg' || (mode !== 'free' && mode !== 'god')) {
-            return { title: '', message: '', confirmText: '' };
+            return { 
+                title: '', 
+                message: { mainText: '', alertText: '', alertSeverity: 'info' }, 
+                confirmText: '' 
+            };
         }
         
         const isToFree = mode === 'free';
         
         return {
             title: `🚨 最終確認：本当に${isToFree ? 'フリー' : 'ゴッド'}モードへ変更しますか？`,
-            message: (
-                <>
-                    <Alert severity="error" sx={{ mb: 2 }}>
-                        **最終確認**：DTCGルールが停止し、{isToFree ? '**カードプールが完全に削除されます**。' : '**チートモード（ゴッドモード）**が有効になります。'}
-                        この操作は元に戻せません。
-                    </Alert>
-                    <p>
-                        {isToFree
-                            ? '最終確認として、続行ボタンを押すとカードプールが削除された後、フリーモードに切り替わります。'
-                            : '最終確認として、続行ボタンを押すとチートカウンタが記録された後、ゴッドモードに切り替わります。'
-                        }
-                    </p>
-                </>
-            ),
+            message: {
+                alertSeverity: 'error',
+                alertText: `**最終確認**：DTCGルールが停止し、${isToFree ? '**カードプールが完全に削除されます**。' : '**チートモード（ゴッドモード）**が有効になります。'}この操作は元に戻せません。`,
+                mainText: isToFree
+                    ? '最終確認として、続行ボタンを押すとカードプールが削除された後、フリーモードに切り替わります。'
+                    : '最終確認として、続行ボタンを押すとチートカウンタが記録された後、ゴッドモードに切り替わります。',
+            },
             confirmText: isToFree ? 'カードプールを削除して変更する' : 'チート記録を承諾して変更する',
         };
     };
@@ -264,7 +259,6 @@ export const useModeSwitcher = (coins: number): ModeSwitcher => {
         currentModeText,
         currentModeColor,
         cheatCount,
-        isAllViewMode, // ✅ 公開
         isModeSelectOpen,
         isWarningOpen,
         isDoubleConfirmOpen,
@@ -272,7 +266,6 @@ export const useModeSwitcher = (coins: number): ModeSwitcher => {
         warningContent: getWarningContent(targetMode),
         doubleConfirmContent: getDoubleConfirmContent(targetMode),
         setIsModeSelectOpen,
-        setAllViewMode, // ✅ 公開
         handleModeSelection,
         handleFirstConfirmation,
         handleCancel,

@@ -3,20 +3,18 @@
  *
  * アプリケーションのグローバルナビゲーションバー。
  * 純粋にUIのレイアウトと、ナビゲーション、外部ダイアログの起動ボタンの責務を持つ。
- * DTCGモードのロジックは useDtcgModeSwitcher に、ダイアログUIは DtcgModeSwitchDialogs に分離されている。
+ * DTCGモードのロジックは useModeSwitcher に、ダイアログUIは GameModeSwitchModal に分離されている。
  */
 import React, { useState } from 'react';
 import {
     AppBar, Toolbar, Typography, Button, Box, IconButton, Tooltip,
     Menu, MenuItem, Divider,
-    // 💡 追加: スイッチコンポーネントのインポート
-    Switch, FormControlLabel 
+    // Switch, FormControlLabel は isAllViewMode 関連の削除に伴い不要
 } from '@mui/material';
 import SettingsIcon from '@mui/icons-material/Settings';
 import FileDownloadIcon from '@mui/icons-material/FileDownload';
 import ThreeDRotationIcon from '@mui/icons-material/ThreeDRotation';
-// 💡 追加: 可視性/フィルタリングアイコンのインポート
-import VisibilityIcon from '@mui/icons-material/Visibility'; 
+// VisibilityIcon は isAllViewMode 関連の削除に伴い不要
 import { Link } from '@tanstack/react-router';
 
 // ★ 修正: useGameModeSwitcher から useModeSwitcher へリネーム
@@ -29,14 +27,11 @@ import GameModeSwitchModal from '../modals/GameModeSwitchModal';
 // Propsの定義を簡素化
 interface NavbarProps {
     coins: number;
-    /*isDTCGEnabled: boolean; 
-    isGodMode: boolean;*/
 }
 
 const Navbar: React.FC<NavbarProps> = ({ coins }) => {
 
     // ★ 修正箇所1: フックの戻り値を modeSwitcherProps として全て取得する
-    // 💡 修正: useGameModeSwitcher から useModeSwitcher へ
     const modeSwitcherProps = useModeSwitcher(coins);
     
     // 必要な状態・セッターを modeSwitcherProps から分割代入
@@ -44,9 +39,7 @@ const Navbar: React.FC<NavbarProps> = ({ coins }) => {
         currentModeText,
         currentModeColor,
         setIsModeSelectOpen, // モード選択ダイアログを開くハンドラ
-        // 💡 修正: isAllDataViewEnabled, setAllDataViewEnabled から isAllViewMode, setAllViewMode へ
-        isAllViewMode,
-        setAllViewMode, 
+    // 💡 修正: isAllViewMode, setAllViewMode 関連の処理を全て削除
     } = modeSwitcherProps; 
 
     // DataImportExportDialog の状態
@@ -74,11 +67,7 @@ const Navbar: React.FC<NavbarProps> = ({ coins }) => {
         setIsModeSelectOpen(true); // フックのセッターを使用
     };
     
-    // 💡 修正: 全データ表示モードの切り替えハンドラ
-    const handleToggleAllDataView = () => {
-        // 💡 修正: setAllDataViewEnabled(!isAllDataViewEnabled) から setAllViewMode(!isAllViewMode) へ
-        setAllViewMode(!isAllViewMode);
-    };
+    // 💡 修正: 全データ表示モードの切り替えハンドラを削除
     
     return (
         <AppBar position="static" color="primary">
@@ -132,28 +121,8 @@ const Navbar: React.FC<NavbarProps> = ({ coins }) => {
                         **DTCG モード切り替え** ({currentModeText})
                     </MenuItem>
                     
-                    {/* 💡 修正: 全データ表示モードのトグルスイッチ */}
-                    <MenuItem disableRipple disableTouchRipple> {/* クリックでメニューが閉じないように無効化 */}
-                        <FormControlLabel
-                            control={
-                                <Switch
-                                    checked={isAllViewMode} // 💡 修正
-                                    onChange={handleToggleAllDataView}
-                                    onClick={(e) => e.stopPropagation()} // MenuItemのクリックイベントをブロック
-                                />
-                            }
-                            label={
-                                <Box sx={{ display: 'flex', alignItems: 'center' }}>
-                                    <VisibilityIcon sx={{ mr: 1, color: isAllViewMode ? 'primary.main' : 'text.disabled' }} /> {/* 💡 修正 */}
-                                    <Typography variant="inherit">
-                                        全データ表示モード
-                                    </Typography>
-                                </Box>
-                            }
-                            sx={{ m: 0, pl: 1, pr: 1, width: '100%', justifyContent: 'space-between' }}
-                        />
-                    </MenuItem>
-
+                    {/* 💡 修正: 全データ表示モードのトグルスイッチの MenuItem を削除 */}
+                    
 
                     <Divider />
 
@@ -197,28 +166,7 @@ const Navbar: React.FC<NavbarProps> = ({ coins }) => {
                             **DTCG モード切り替え**
                         </MenuItem>
                         
-                        {/* 💡 修正: モバイルメニューにも全データ表示モードのトグルスイッチを追加 */}
-                        <MenuItem disableRipple disableTouchRipple>
-                            <FormControlLabel
-                                control={
-                                    <Switch
-                                        checked={isAllViewMode} // 💡 修正
-                                        onChange={handleToggleAllDataView}
-                                        onClick={(e) => e.stopPropagation()}
-                                    />
-                                }
-                                label={
-                                    <Box sx={{ display: 'flex', alignItems: 'center' }}>
-                                        <VisibilityIcon sx={{ mr: 1, color: isAllViewMode ? 'primary.main' : 'text.disabled' }} /> {/* 💡 修正 */}
-                                        <Typography variant="inherit">
-                                            全データ表示モード
-                                        </Typography>
-                                    </Box>
-                                }
-                                sx={{ m: 0, pl: 1, pr: 1, width: '100%', justifyContent: 'space-between' }}
-                            />
-                        </MenuItem>
-
+                        {/* 💡 修正: モバイルメニューの全データ表示モードのトグルスイッチを削除 */}
 
                         <MenuItem onClick={handleOpenImportExportDialog}>
                             <FileDownloadIcon sx={{ mr: 1 }} />

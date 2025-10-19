@@ -9,7 +9,7 @@
 
 import { db } from './db';
 import type { Collection, Table } from 'dexie';
-import type { ArchiveItemType } from '../../models/db-types'; 
+import type { ArchiveItemType } from '../../models/archive'; 
 
 // DBコレクション名の共通型
 export type DbCollectionName = 'cards' | 'packs' | 'cardPool' | 'decks' | 'userSettings' | 'presets' | 'history' | 'trash'; 

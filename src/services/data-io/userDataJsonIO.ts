@@ -5,7 +5,7 @@
  * (UserDataStateはMap構造を含まないため、汎用JsonIOのデフォルト動作を利用する)
  */
 
-import type { UserData } from '../../models/userData';
+import type { UserDataState } from '../../models/userData';
 import { exportDataToJson, importDataFromJson } from '../../utils/genericJsonIO';
 
 // --- 汎用I/Oを使用した公開関数 ---
@@ -13,7 +13,7 @@ import { exportDataToJson, importDataFromJson } from '../../utils/genericJsonIO'
 /**
  * UserDataStateをJSON文字列にエクスポートする。
  */
-export const exportUserDataToJson = (userDataState: UserData): string => {
+export const exportUserDataToJson = (userDataState: UserDataState): string => {
     // UserDataStateはMap構造を含まないため、serializer/deserializerは省略し、
     // genericJsonIOのデフォルト動作（データをそのままJSON化）を利用する。
     return exportDataToJson(userDataState);
@@ -22,7 +22,7 @@ export const exportUserDataToJson = (userDataState: UserData): string => {
 /**
  * JSON文字列からUserDataStateをインポートする。
  */
-export const importUserDataFromJson = (jsonText: string): UserData => {
+export const importUserDataFromJson = (jsonText: string): UserDataState => {
     // deserializerは省略し、genericJsonIOのデフォルト動作（パース結果を型として返す）を利用する。
-    return importDataFromJson<UserData>(jsonText);
+    return importDataFromJson<UserDataState>(jsonText);
 };

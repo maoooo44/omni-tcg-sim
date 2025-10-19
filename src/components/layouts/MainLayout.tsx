@@ -11,8 +11,6 @@ import { Container } from '@mui/material';
 
 // Navbarとその依存関係をインポート
 import Navbar from './Navbar';
-// 💡 CardViewModalをインポート
-import CardViewModal from '../modals/CardViewModal';
 // coinsを取得するために useCurrencyStore をインポート
 import { useCurrencyStore } from '../../stores/currencyStore';
 //import { useUserDataStore } from '../../stores/userDataStore';
@@ -50,7 +48,6 @@ const MainLayout: React.FC = () => {
             </Container>
 
             {/* 💡 グローバルなCardViewModalをルートレイアウトに配置 */}
-            <CardViewModal />
 
             {/* 以前の MainLayout のフッター（今回は省略） */}
         </>

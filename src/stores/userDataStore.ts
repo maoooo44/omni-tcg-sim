@@ -4,46 +4,107 @@
  * ユーザーの設定（DTCG/Free/God Mode）および、それに関連するメタデータ（チート回数）の
  * グローバルな状態を管理するZustandストア。
  * 責務は、モード間の複雑なロジック処理と、userDataServiceを介した設定の永続化である。
+ * 💡 修正: カスタムフィールド設定 (customFieldConfig) の更新と永続化アクションを追加。
  */
 
 import { create } from 'zustand';
-// 💡 修正: DEFAULT_SETTINGS をインポート。PersistedUserSettings も新しい型を使用
+// userDataService から PersistedUserSettings と DEFAULT_SETTINGS をインポート
 import { userDataService, type PersistedUserSettings, DEFAULT_SETTINGS } from '../services/user-data/userDataService'; 
-// 💡 修正: 型定義を models/userData.ts からインポート
-import { type CurrentGameMode, type UserData } from '../models/userData'; 
+// models/userData から必要な型をインポート
+import { 
+    type CurrentGameMode, 
+    type UserDataState, 
+    type CustomFieldConfig,
+
+} from '../models/userData'; 
+import type { CustomFieldType, CustomFieldIndex, FieldSetting } from '../models/custom-field';
+
+
+// ----------------------------------------
+// 💡 UserDataStore インターフェースの定義 (状態 + アクション)
+// ----------------------------------------
+
+/**
+ * @description ユーザーデータのZustandストア全体（状態 + アクション）のインターフェース
+ * 💡 UserDataState を継承し、アクションを追加する
+ */
+export interface UserDataStore extends UserDataState {
+    // 💡 状態に依存するセレクター
+    getCurrentMode: () => CurrentGameMode;
+    
+    // --- アクション ---
+    loadUserData: () => Promise<void>; 
+    setDTCGMode: (isEnabled: boolean) => Promise<void>; 
+    setGodMode: (isGMode: boolean) => Promise<void>; 
+    
+    /** 外部データ（インポート）でユーザーデータを更新する */
+    importUserData: (data: Omit<UserDataState & { coins: number }, 'coins'>) => Promise<void>;
+
+    /** * 💡 新規追加: カスタムフィールドの設定 (displayName, isEnabled, description) を更新し永続化する 
+     * itemType: 'Card', 'Deck', 'Pack'
+     */
+    onSettingChange: (
+        itemType: 'Card' | 'Deck' | 'Pack',
+        type: CustomFieldType, 
+        index: CustomFieldIndex, 
+        settingUpdates: Partial<FieldSetting>
+    ) => Promise<void>; // 永続化を伴うため Promise<void>
+}
+
+
+// ----------------------------------------
+// 初期値設定
+// ----------------------------------------
+
+// 💡 customFieldConfig の初期値を追加 (DEFAULT_SETTINGSから取得)
+const initialCustomFieldConfig: CustomFieldConfig = { 
+    Pack: DEFAULT_SETTINGS.customFieldConfig.Pack,
+    Card: DEFAULT_SETTINGS.customFieldConfig.Card,
+    Deck: DEFAULT_SETTINGS.customFieldConfig.Deck,
+};
 
 // ユーザーデータの初期値 (状態部分のみ)
-// 💡 修正: GC設定を新しいネスト構造に変更
-const initialState = {
+const initialState: UserDataState = {
     isDTCGEnabled: true, 
     isGodMode: false,
     cheatCount: 0,
     isAllViewMode: false, 
     
-    // GC設定の初期値 (DEFAULT_SETTINGSの構造と一致させる)
     gcSettings: DEFAULT_SETTINGS.gcSettings,
+    
+    customFieldConfig: initialCustomFieldConfig, 
 };
 
+
+// ----------------------------------------
+// ヘルパー関数
+// ----------------------------------------
+
 // DB保存のための永続化可能な状態を抽出するヘルパー関数
-// 💡 修正: GC設定を gcSettings オブジェクトとして PersistedUserSettings に含める
-const getPersistableState = (state: UserData): PersistedUserSettings => ({
+// PersistedUserSettings に customFieldConfig が含まれる前提で実装
+const getPersistableState = (state: UserDataStore): PersistedUserSettings => ({
     isDTCGEnabled: state.isDTCGEnabled,
     isGodMode: state.isGodMode,
     cheatCount: state.cheatCount,
     isAllViewMode: state.isAllViewMode, 
     
-    // 💡 修正: gcSettings をネストされたオブジェクトとして格納
     gcSettings: state.gcSettings,
+    
+    customFieldConfig: state.customFieldConfig, 
 });
 
 
-export const useUserDataStore = create<UserData>((set, get) => ({
+// ----------------------------------------
+// Zustand Store 実装
+// ----------------------------------------
+
+export const useUserDataStore = create<UserDataStore>((set, get) => ({
     ...initialState,
     
     // 現在のモードを計算して返すセレクター
     getCurrentMode: () => {
         const { isDTCGEnabled, isGodMode } = get();
-        if (isGodMode) return 'god' as CurrentGameMode; // 💡 型アサーションを追加
+        if (isGodMode) return 'god' as CurrentGameMode; 
         if (isDTCGEnabled) return 'dtcg' as CurrentGameMode;
         return 'free' as CurrentGameMode;
     },
@@ -52,15 +113,16 @@ export const useUserDataStore = create<UserData>((set, get) => ({
         try {
             const settings = await userDataService.loadSettings();
             if (settings) {
-                // 💡 修正: GC設定を gcSettings オブジェクトとしてストアにロード
                 set({ 
                     isDTCGEnabled: settings.isDTCGEnabled,
                     isGodMode: settings.isGodMode,
                     cheatCount: settings.cheatCount,
                     isAllViewMode: settings.isAllViewMode ?? initialState.isAllViewMode,
                     
-                    // gcSettingsはloadSettingsでDEFAULT_SETTINGSとマージされているため、そのままセット
                     gcSettings: settings.gcSettings,
+                    
+                    // customFieldConfig をロード（未設定の場合は初期値）
+                    customFieldConfig: settings.customFieldConfig ?? initialState.customFieldConfig,
                 });
             }
             console.log("✅ User data initialized.");
@@ -80,7 +142,7 @@ export const useUserDataStore = create<UserData>((set, get) => ({
         
         if (isGMode && !currentGodMode) {
             const { cheatCount } = get();
-            let newCheatCount = cheatCount + 1; // ゴッドモードONで必ずカウントアップ
+            let newCheatCount = cheatCount + 1; 
             
             set({ 
                 isGodMode: isGMode, 
@@ -99,25 +161,52 @@ export const useUserDataStore = create<UserData>((set, get) => ({
         
         await userDataService.saveSettings(getPersistableState(get()));
     },
-    
-    setAllViewMode: async (isMode: boolean) => { 
-        set({ isAllViewMode: isMode }); 
-        await userDataService.saveSettings(getPersistableState(get()));
-        console.log(`All Data View Mode set to ${isMode}.`);
-    },
-    
-    importUserData: async (data) => {
-        // 💡 修正: GC設定を gcSettings オブジェクトとしてセット
+        
+    importUserData: async (data) => { 
         set({ 
             isDTCGEnabled: data.isDTCGEnabled,
             isGodMode: data.isGodMode,
             cheatCount: data.cheatCount,
             isAllViewMode: data.isAllViewMode,
             
-            gcSettings: data.gcSettings, // 新しい構造をそのままセット
+            gcSettings: data.gcSettings, 
+            
+            customFieldConfig: data.customFieldConfig,
         });
         await userDataService.saveSettings(getPersistableState(get()));
+        console.log("User data imported and saved.");
     },
 
-}));
+    // ----------------------------------------
+    // 💡 新規実装: onSettingChange
+    // ----------------------------------------
+    onSettingChange: async (itemType, type, index, settingUpdates) => {
+        set((state) => {
+            // customFieldConfig 全体をシャローコピー
+            const newConfig = { ...state.customFieldConfig };
+            
+            // 該当する itemType の設定をシャローコピー
+            const newCategory = { ...newConfig[itemType] };
+            
+            // 該当する CustomFieldType の設定をシャローコピー
+            const newTypeFields = { ...newCategory[type] };
+            
+            // 該当フィールドの現在の設定を取得し、更新内容をマージ
+            const currentSetting = newTypeFields[index];
+            newTypeFields[index] = { 
+                ...currentSetting,
+                ...settingUpdates 
+            } as FieldSetting; // FieldSettingとしてキャスト
+            
+            // 階層を遡って新しい設定オブジェクトを構築
+            newCategory[type] = newTypeFields;
+            newConfig[itemType] = newCategory;
 
+            return { customFieldConfig: newConfig };
+        });
+        
+        // 永続化を実行
+        await userDataService.saveSettings(getPersistableState(get()));
+        console.log(`✅ Custom Field Setting updated for ${itemType} ${type}${index}`);
+    },
+}));

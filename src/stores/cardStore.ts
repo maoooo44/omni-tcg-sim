@@ -6,27 +6,40 @@
  */
 import { create } from 'zustand';
 import type { Card } from '../models/card';
-// Serviceから CollectionKey 型をインポート
-import { cardDataService, type CollectionKey } from '../services/cards/cardDataService';
-// 💡 修正 (項目 3, 5): I/O責務分離のため cardCsvIO をインポート (※ファイルは後で作る前提)
+// 💡 修正: Serviceのファイル名を変更
+import { cardService } from '../services/cards/cardService';
+// I/O責務分離のため cardCsvIO をインポート
 import * as cardCsvIO from '../services/data-io/cardCsvIO';
-import { useUserDataStore } from './userDataStore';
 
+// 💡 追加: customFieldDefs の型をインポート
+import type { CustomFieldDefinition } from '../services/data-io/dataIOUtils'; 
+
+// 💡 修正: importCardsFromCsv の戻り値の型
+export interface ImportResult {
+    importedCount: number;
+    updatedCount: number;
+}
 
 export interface CardStore {
     cards: Card[];
+    isLoading: boolean;
 
     // ----------------------------------------------------------------------
-    // --- 1. 参照/ロード (コレクション指定の個別アクションに統一) --- (項目4)
+    // --- 1. 参照/ロード (コレクション指定の個別アクションに統一) ---
     // ----------------------------------------------------------------------
-    // 💡 修正: 汎用アクション(fetchAllCardsFromCollection, fetchCardByIdFromCollection)を廃止し、個別アクションに分離。
     fetchAllCards: () => Promise<void>;
-    fetchCardById: (cardId: string) => Promise<Card | null>;
+    fetchCardById: (cardId: string) => Promise<Card | null>; 
+    /** * @NEW: 指定されたパックIDに紐づくカード群をDBまたはキャッシュから取得します。（単数）
+     */
+    fetchCardsByPackId: (packId: string) => Promise<Card[]>; // 👈 既存
+    /** * @NEW: 指定されたパックID（配列）に紐づくカード群をDBまたはキャッシュから取得します。（一括）
+     */
+    bulkFetchCardsByPackIds: (packIds: string[]) => Promise<Card[]>; // 👈 追加
     
-    // --- 2. CRUD/永続化 (move/restore/physical delete) ---
-    saveCard: (card: Card) => Promise<void>;
-    moveCardToTrash: (cardId: string) => Promise<void>;
-    
+    // --- 2. CRUD/永続化 (physical delete) ---
+    saveCard: (card: Card) => Promise<void>; 
+    deleteCard: (cardId: string) => Promise<void>; 
+
     // --- 4. メモリ/ストア操作 (Stateに対する低レベル操作) ---
     syncCardToStore: (card: Card) => void;
     removeCardFromStore: (cardId: string) => void;
@@ -37,105 +50,121 @@ export interface CardStore {
     // --- 5. 一括/I/O ---
     bulkSaveCards: (cards: Card[]) => Promise<void>;
     bulkDeleteCards: (cardIds: string[]) => Promise<void>; 
-    // 💡 修正 (項目 3, 5): インポートはCSVデータを受け取る形式に変更（StoreがI/Oワークフローの調整役になるため）
-    importCards: (csvText: string, packId: string) => Promise<{ importedCount: number, updatedCount: number }>;
+    // 💡 修正: customFieldDefs を受け取るようにシグネチャを変更
+    importCardsFromCsv: (packId: string, csvText: string, customFieldDefs: CustomFieldDefinition[]) => Promise<ImportResult>;
     exportCardsToCsv: (packId: string) => Promise<string>;
-
-    // --- 6. 📜 履歴アクション ---
-    /*fetchAllCardsFromHistory: () => Promise<Card[]>;
-    fetchCardByIdFromHistory: (historyId: string) => Promise<Card | null>;
-    saveCardToHistory: (cardId: string) => Promise<void>;
-    restoreCardFromHistory: (historyId: string) => Promise<void>;*/
-
-    // --- 7. 🗑️ ゴミ箱アクション ---
-    fetchAllCardsFromTrash: () => Promise<Card[]>;
-    fetchCardByIdFromTrash: (cardId: string) => Promise<Card | null>;
-    restoreCardFromTrash: (cardId: string) => Promise<void>;
-    deleteCardFromTrash: (cardId: string) => Promise<void>; 
-    
-    // --- 8. 🛠️ メンテナンスアクション ---
-    runCardGarbageCollection: () => Promise<void>;
 }
 
+const initialState = {
+    cards: [] as Card[], 
+    isLoading: false,
+};
+
 export const useCardStore = create<CardStore>((set, get) => ({
-    cards: [],
+    ...initialState,
     
     // ----------------------------------------------------------------------
     // --- 1. 参照/ロード (個別アクション) ---
     // ----------------------------------------------------------------------
     
-    // 💡 修正 (項目 2, 4): メインコレクション参照アクション
-    fetchAllCards: async () => {
-        const collectionKey: CollectionKey = 'cards';
-        // 💡 修正 (項目 2): isAllViewModeとフィルタリングロジックを完全に削除。StoreはUI表示制御の責務を持たない。
-        console.log(`[CardStore:fetchAllCards] 🚀 START loading main cards from ${collectionKey}.`);
+    fetchAllCards: async () => { set({ isLoading: true });
+        console.log(`[CardStore:fetchAllCards] 🚀 START loading main cards.`);
         
         try {
-            // Service層でDBロードとコレクションに応じたデータ変換を行う (汎用関数を利用)
-            const allCards = await cardDataService.fetchAllCardsFromCollection(collectionKey);
-            
-            // StoreのStateを更新
+            // Service層でDBロードを行う 
+            // 💡 修正: cardDataService -> cardService に変更
+            const allCards = await cardService.fetchAllCards(); 
             set({ cards: allCards });
             console.log(`[CardStore:fetchAllCards] ✅ Loaded ${allCards.length} cards for display.`);
         } catch (error) {
-            console.error(`[CardStore:fetchAllCards] ❌ Failed to load cards from ${collectionKey}:`, error);
+            console.error(`[CardStore:fetchAllCards] ❌ Failed to load cards:`, error); 
             set({ cards: [] });
-            throw error;
+        } finally {
+            set({ isLoading: false });
         }
     },
-    
-    // 💡 修正 (項目 4): メインコレクション単一参照アクション
+
     fetchCardById: async (cardId: string) => {
         try {
-            // データ取得ロジックはCardDataServiceに一元化 (汎用関数を利用)
-            // 💡 修正: IDを第一引数に
-            const card = await cardDataService.fetchCardByIdFromCollection(cardId, 'cards');
-            return card;
+            // 💡 修正: cardDataService -> cardService に変更
+            const cards = await cardService.fetchCardsByIds([cardId]);
+            return cards[0] || null; 
         } catch (error) {
-            console.error(`[CardStore:fetchCardById] Failed to load card ${cardId} from cards:`, error);
+            console.error(`[CardStore:fetchCardById] Failed to load card ${cardId}:`, error);
             return null;
         }
     },
 
+    /**
+     * @NEW: 指定されたパックIDに紐づくカード群をDBまたはキャッシュから取得します。（単数）
+     * Storeのcardsは更新しません。
+     */
+    fetchCardsByPackId: async (packId: string) => { // 👈 既存実装の利用
+        try {
+            // 💡 cardServiceにfetchCardsByPackIdsを実装する必要があります。
+            const cards = await cardService.fetchCardsByPackIds([packId]);
+            return cards;
+        } catch (error) {
+            console.error(`[CardStore:fetchCardsByPackId] Failed to load cards for pack ${packId}:`, error);
+            return [];
+        }
+    },
+
+    /**
+     * @NEW: 指定されたパックID（配列）に紐づくカード群をDBまたはキャッシュから一括取得します。
+     * Storeのcardsは更新しません。 (修正箇所)
+     */
+    bulkFetchCardsByPackIds: async (packIds: string[]) => { // 👈 新規実装
+        if (packIds.length === 0) return [];
+        try {
+            // Service層で複数のPack IDに対する一括取得（DBクエリまたは並列フェッチ）を委譲
+            const cards = await cardService.fetchCardsByPackIds(packIds);
+            return cards;
+        } catch (error) {
+            console.error(`[CardStore:bulkFetchCardsByPackIds] Failed to load cards for ${packIds.length} packs:`, error);
+            return [];
+        }
+    },
     // ----------------------------------------------------------------------
     // --- 2. CRUD/永続化 ---
     // ----------------------------------------------------------------------
     
     saveCard: async (cardToSave) => {
         try {
-            // ServiceのsaveCardが更新日時、numberを設定し、最新のCardを返す
-            const savedCard = await cardDataService.saveCard(cardToSave);
-            // StoreのStateをServiceから返された最新のデータで同期
-            get().syncCardToStore(savedCard);
+            // ServiceのsaveCardsが更新日時、numberを設定し、最新のCard配列を返す
+            // 💡 修正: cardDataService.bulkSaveCards -> cardService.saveCards に変更
+            const savedCards = await cardService.saveCards([cardToSave]);
+            
+            if (savedCards.length > 0) {
+                 get().syncCardToStore(savedCards[0]);
+            } else {
+                 throw new Error("Card save failed, service returned no cards.");
+            }
         } catch (error) {
             console.error("[CardStore:saveCard] Failed to save card:", error);
             throw error;
         }
     },
     
-    moveCardToTrash: async (cardId) => {
-        console.log(`[CardStore:moveCardToTrash] 🗑️ START moving card to trash: ${cardId}`);
+    deleteCard: async (cardId) => {
+        console.log(`[CardStore:deleteCard] 💥 START physical deletion: ${cardId}`);
         try {
-            // 1. トラッシュにセーブ
-            // 💡 修正: IDを第一引数に
-            await cardDataService.saveCardToCollection(cardId, 'trash');
+            // 1. ServiceにメインDBからの物理削除を委譲。
+            // 💡 修正: cardDataService -> cardService に変更
+            await cardService.deleteCards([cardId]); 
             
-            // 2. **メインDB**から削除 (物理削除)
-            // 💡 修正: IDを第一引数に
-            await cardDataService.deleteCardFromCollection(cardId, 'cards');
-            
-            // 3. Storeから削除
+            // 2. Storeから削除
             get().removeCardFromStore(cardId);
 
-            console.log(`[CardStore:moveCardToTrash] ✅ Card moved to trash and removed from store: ${cardId}`);
+            console.log(`[CardStore:deleteCard] ✅ Card physically deleted and removed from store: ${cardId}`);
         } catch (error) {
-            console.error("[CardStore:moveCardToTrash] ❌ Failed to move card to trash:", error);
+            console.error("[CardStore:deleteCard] ❌ Failed to delete card:", error);
             throw error;
         }
     },
     
     // ----------------------------------------------------------------------
-    // --- 4. メモリ/ストア操作 ---
+    // --- 4. メモリ/ストア操作 (既存のまま) ---
     // ----------------------------------------------------------------------
     
     syncCardToStore: (updatedCard) => {
@@ -150,7 +179,7 @@ export const useCardStore = create<CardStore>((set, get) => ({
             }
         });
     },
-    
+
     removeCardFromStore: (cardId) => {
         set(state => ({
             cards: state.cards.filter(c => c.cardId !== cardId)
@@ -167,7 +196,7 @@ export const useCardStore = create<CardStore>((set, get) => ({
             return { cards: Array.from(updatedCardsMap.values()) };
         });
     },
-    
+
     bulkRemoveCardsFromStore: (cardIdsToRemove: string[]) => {
         const idSet = new Set(cardIdsToRemove);
         set(state => ({
@@ -175,7 +204,7 @@ export const useCardStore = create<CardStore>((set, get) => ({
         }));
         console.log(`[CardStore] Memory state cleared for ${cardIdsToRemove.length} cards.`);
     },
-    
+
     removeCardsFromStoreByPackId: (packId) => {
         set((state) => ({
             cards: state.cards.filter(card => card.packId !== packId)
@@ -191,10 +220,9 @@ export const useCardStore = create<CardStore>((set, get) => ({
         try {
             if (cardsToFinalize.length === 0) return;
             
-            // DB操作はServiceに委譲
-            const savedCards = await cardDataService.bulkSaveCards(cardsToFinalize);
+            // 💡 修正: cardDataService.bulkSaveCards -> cardService.saveCards に変更
+            const savedCards = await cardService.saveCards(cardsToFinalize);
             
-            // StoreのStateを同期
             get().bulkSyncCardsToStore(savedCards);
 
             console.log(`[CardStore:bulkSaveCards] ✅ Bulk save finished for ${savedCards.length} cards. Store state updated.`);
@@ -207,9 +235,9 @@ export const useCardStore = create<CardStore>((set, get) => ({
     bulkDeleteCards: async (cardIds: string[]) => {
         try {
             if (cardIds.length === 0) return;
-            // DB削除はServiceに委譲 (メインコレクションからの物理削除)
-            await cardDataService.bulkDeleteCards(cardIds);
-            // StoreのStateから除去
+            // 💡 修正: cardDataService -> cardService に変更
+            await cardService.deleteCards(cardIds);
+            
             get().bulkRemoveCardsFromStore(cardIds);
             console.log(`[CardStore:bulkDeleteCards] ✅ Successfully deleted ${cardIds.length} cards.`);
         } catch (error) {
@@ -218,203 +246,56 @@ export const useCardStore = create<CardStore>((set, get) => ({
         }
     },
 
-    // 💡 修正 (項目 3, 5): I/Oワークフロー調整役として修正
-    importCards: async (csvText: string, packId: string) => {
+    // 💡 修正: customFieldDefs を受け取るようにシグネチャと実装を変更
+    importCardsFromCsv: async (
+        packId: string, 
+        csvText: string, 
+        customFieldDefs: CustomFieldDefinition[]
+    ): Promise<ImportResult> => {
         try {
-            // 1. I/O ServiceにCSVパースを委譲
-            const cardsToImport = await cardCsvIO.importCardsFromCsv(csvText, packId);
+            // 1. I/O Service に CSVパースと Card オブジェクトへのマッピングを完全に委譲
+            const cardsToImport = await cardCsvIO.importCardsFromCsv(packId, csvText, customFieldDefs);
 
-            // 2. Serviceのキャッシュに依存してインポート前の状態をチェック
-            // （このロジックはCardDataServiceの利用を許容）
-            const preExistingCards = new Set(
-                cardsToImport.map(c => c.cardId)
-                    .filter(id => cardDataService.getCardByIdFromCache(id))
+            if (cardsToImport.length === 0) {
+                return { importedCount: 0, updatedCount: 0 };
+            }
+
+            // 2. Serviceのバルク参照関数を使用して既存カードIDを取得 (新規/更新のカウントのため)
+            const cardIdsToCacheCheck = cardsToImport.map(c => c.cardId);
+            const fetchedCards = await cardService.fetchCardsByIds(cardIdsToCacheCheck);
+            const preExistingCardIds = new Set(fetchedCards
+                .filter((c): c is Card => c !== null)
+                .map(c => c.cardId)
             );
-            
-            // 3. DB保存はServiceに委譲。加工済みカードリストを受け取る。
-            const savedCards = await cardDataService.bulkSaveCards(cardsToImport);
 
-            // 4. Storeの状態を同期する。
+            // 3. DB保存はServiceに委譲。
+            const savedCards = await cardService.saveCards(cardsToImport);
+
+            // 4. Storeを同期
             get().bulkSyncCardsToStore(savedCards);
 
-            // 5. カウントロジック
-            const importedCount = savedCards.filter(card => !preExistingCards.has(card.cardId)).length;
+            // 5. 結果を計算
+            const importedCount = savedCards.filter(card => !preExistingCardIds.has(card.cardId)).length;
             const updatedCount = savedCards.length - importedCount;
 
             return { importedCount: importedCount, updatedCount: updatedCount };
         } catch (error) {
-            console.error("[CardStore:importCards] Failed to import cards:", error);
+            console.error("[CardStore:importCardsFromCsv] Failed to import cards:", error);
+            // ユーザーに表示するエラーメッセージは、ServiceまたはHookでより具体的に生成されるべき
             throw new Error("カードデータの一括インポートに失敗しました。");
         }
     },
     
-    // 💡 修正 (項目 3, 5): I/Oワークフロー調整役として修正
     exportCardsToCsv: async (packId) => {
         try {
             // 1. Service層からエクスポート対象のデータ（メインコレクション）を取得
-            const cardsToExport = await cardDataService.getCardsByPackId(packId); 
+            const cardsToExport = await cardService.fetchCardsByPackIds([packId]); 
             
             // 2. I/O ServiceにCSV生成を委譲
             const csvString = await cardCsvIO.exportCardsToCsv(cardsToExport);
             return csvString;
         } catch (error) {
             console.error("[CardStore:exportCardsToCsv] ❌ Failed to export cards:", error);
-            throw error;
-        }
-    },
-
-    // ----------------------------------------------------------------------
-    // --- 6. 📜 履歴アクション ---
-    // ----------------------------------------------------------------------
-
-     // 💡 新規追加 (項目 4): 履歴コレクション全参照アクション
-    /*fetchAllCardsFromHistory: async () => {
-        const collectionKey: CollectionKey = 'history';
-        console.log(`[CardStore:fetchAllCardsFromHistory] 📜 🚀 START loading cards from ${collectionKey}.`);
-        
-        try {
-            // Service層でDBロードとコレクションに応じたデータ変換を行う (汎用関数を利用)
-            const historyCards = await cardDataService.fetchAllCardsFromCollection(collectionKey);
-            // 履歴はStore Stateを更新しない
-            return historyCards; 
-        } catch (error) {
-            console.error(`[CardStore:fetchAllCardsFromHistory] ❌ Failed to load cards from ${collectionKey}:`, error);
-            throw error;
-        }
-    },
-
-    // 💡 新規追加 (項目 4): 履歴コレクション単一参照アクション
-    fetchCardByIdFromHistory: async (historyId: string) => {
-        try {
-            // データ取得ロジックはCardDataServiceに一元化 (汎用関数を利用)
-            // 💡 修正: IDを第一引数に
-            const card = await cardDataService.fetchCardByIdFromCollection(historyId, 'history');
-            return card;
-        } catch (error) {
-            console.error(`[CardStore:fetchCardByIdFromHistory] Failed to load card ${historyId} from history:`, error);
-            return null;
-        }
-    },
-
-
-    saveCardToHistory: async (cardId) => {
-        console.log(`[CardStore:saveCardToHistory] 📜💾 START saving snapshot to history for: ${cardId}`);
-        try {
-            // Serviceに履歴コレクションへの保存を委譲
-            // 💡 修正: IDを第一引数に
-            await cardDataService.saveCardToCollection(cardId, 'history');
-            console.log(`[CardStore:saveCardToHistory] ✅ Snapshot saved to history for: ${cardId}`);
-        } catch (error) {
-            console.error(`[CardStore:saveCardToHistory] ❌ Failed to save snapshot for ${cardId}:`, error);
-            throw error;
-        }
-    },
-
-    restoreCardFromHistory: async (historyId) => {
-        console.log(`[CardStore:restoreCardFromHistory] 📜♻️ START restoring card from history: ${historyId}`);
-        try {
-            // 1. Serviceに履歴からの復元処理を委譲。
-            const savedCard = await cardDataService.restoreCardFromHistory(historyId);
-            
-            if (!savedCard) throw new Error(`Restored card not returned from service for history ID: ${historyId}`);
-            
-            // 2. メインカードリストに同期
-            get().syncCardToStore(savedCard); 
-            
-            console.log(`[CardStore:restoreCardFromHistory] ✅ Main card restored/updated from history ID: ${historyId}`);
-        } catch (error) {
-            console.error(`[CardStore:restoreCardFromHistory] ❌ Failed to restore card from history ID ${historyId}:`, error);
-            throw error;
-        }
-    },*/
-
-    // ----------------------------------------------------------------------
-    // --- 7. 🗑️ ゴミ箱アクション ---
-    // ----------------------------------------------------------------------
-    
-    // 💡 修正 (項目 4): トラッシュコレクション全参照アクション
-    fetchAllCardsFromTrash: async () => {
-        const collectionKey: CollectionKey = 'trash';
-        console.log(`[CardStore:fetchAllCardsFromTrash] 🚀 START loading cards from ${collectionKey}.`);
-        
-        try {
-            // Service層でDBロードとコレクションに応じたデータ変換を行う (汎用関数を利用)
-            const allCards = await cardDataService.fetchAllCardsFromCollection(collectionKey);
-            // トラッシュはStore Stateを更新しない
-            return allCards; 
-        } catch (error) {
-            console.error(`[CardStore:fetchAllCardsFromTrash] ❌ Failed to load cards from ${collectionKey}:`, error);
-            throw error;
-        }
-    },
-    
-    // 💡 修正 (項目 4): トラッシュコレクション単一参照アクション
-    fetchCardByIdFromTrash: async (cardId: string) => {
-        try {
-            // データ取得ロジックはCardDataServiceに一元化 (汎用関数を利用)
-            // 💡 修正: IDを第一引数に
-            const card = await cardDataService.fetchCardByIdFromCollection(cardId, 'trash');
-            return card;
-        } catch (error) {
-            console.error(`[CardStore:fetchCardByIdFromTrash] Failed to load card ${cardId} from trash:`, error);
-            return null;
-        }
-    },
-
-    restoreCardFromTrash: async (cardId) => {
-        console.log(`[CardStore:restoreCardFromTrash] ♻️ START restoring card from trash: ${cardId}`);
-        try {
-            // 1. トラッシュからパックを取得 (💡 修正: 汎用アクションを個別アクションに置き換え)
-            // fetchCardByIdFromTrash の中で service の呼び出しは修正済み
-            const cardToRestore = await get().fetchCardByIdFromTrash(cardId);
-            if (!cardToRestore) throw new Error(`Card ${cardId} not found in trash.`);
-            
-            // 2. 本番DBにセーブ (ServiceのsaveCardを利用)
-            const savedCard = await cardDataService.saveCard(cardToRestore); 
-            
-            // 3. トラッシュから削除 (Serviceの汎用関数を利用)
-            // 💡 修正: IDを第一引数に
-            await cardDataService.deleteCardFromCollection(cardId, 'trash');
-            
-            // 4. Storeに追加/同期
-            get().syncCardToStore(savedCard);
-            console.log(`[CardStore:restoreCardFromTrash] ✅ Card restored from trash and added to store: ${cardId}`);
-        } catch (error) {
-            console.error(`[CardStore:restoreCardFromTrash] ❌ Failed to restore card ${cardId} from trash:`, error);
-            throw error;
-        }
-    },
-
-    deleteCardFromTrash: async (cardId) => {
-        console.log(`[CardStore:deleteCardFromTrash] 🗑️💥 START physical deletion from trash: ${cardId}`);
-        try {
-            // Serviceに物理削除を委譲（**trashコレクション**からのみ削除）
-            // 💡 修正: IDを第一引数に
-            await cardDataService.deleteCardFromCollection(cardId, 'trash');
-            console.log(`[CardStore:deleteCardFromTrash] ✅ Card physically deleted from trash: ${cardId}`);
-        } catch (error) {
-            console.error(`[CardStore:deleteCardFromTrash] ❌ Failed to delete card ${cardId} from trash:`, error);
-            throw error;
-        }
-    },
-    
-    // ----------------------------------------------------------------------
-    // --- 8. 🛠️ メンテナンスアクション (新規追加) ---
-    // ----------------------------------------------------------------------
-
-    runCardGarbageCollection: async () => {
-        console.log(`[CardStore:runCardGarbageCollection] 🧹 START running card garbage collection...`);
-        try {
-            // Serviceにガベージコレクション実行を委譲 (親パックのないカードの削除など)
-            await cardDataService.runCardGarbageCollection(); 
-            
-            // データの整合性確保のため、メインのカードリストを再ロード
-            // 💡 修正: 汎用アクションを個別アクションに置き換え
-            await get().fetchAllCards();
-            
-            console.log(`[CardStore:runCardGarbageCollection] ✅ Card garbage collection complete and cards reloaded.`);
-        } catch (error) {
-            console.error("[CardStore:runCardGarbageCollection] ❌ Failed to run card garbage collection:", error);
             throw error;
         }
     },

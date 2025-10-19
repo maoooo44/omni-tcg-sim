@@ -15,7 +15,7 @@ import { hasProbabilityMismatch } from '../../utils/validationUtils';
 
 // 補助関数: DBからカードデータを取得し、IDの配列を返す (非同期)
 const getCardIdsByPackAndRarity = async (packId: string, rarity: string): Promise<string[]> => {
-    const availableCards: Card[] = await cardSearchService.getCardsByPackAndRarity(packId, rarity);
+    const availableCards: Card[] = await cardSearchService.fetchCardsByPackIdAndRarity(packId, rarity);
     return availableCards.map(card => card.cardId);
 };
 

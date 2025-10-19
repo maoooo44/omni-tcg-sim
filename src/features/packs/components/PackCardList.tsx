@@ -5,6 +5,7 @@
  * `useSortAndFilter` カスタムフックを使用し、カードデータに対するソート、フィルタリング、およびその状態管理を抽象化しています。
  * 編集権限（isEditable）に応じて、カードの編集モーダル（新規追加または既存カード）または閲覧モーダルを開くコールバック関数を提供します。
  * Material UI Gridには、ユーザー定義のv7構文（item廃止、size使用）が適用されています。
+ * 💡 修正: isInStoreとisAllViewModeの廃止に伴い、関連ロジック（FadedOverlayの使用、isFaded判定、ポインターイベント制限）を削除。
  */
 
 import React from 'react';
@@ -18,8 +19,8 @@ import { useSortAndFilter } from '../../../hooks/useSortAndFilter';
 import { type SortField } from '../../../utils/sortingUtils';
 import SortAndFilterControls, { type SortOption } from '../../../components/controls/SortAndFilterControls';
 
-// 💡 FadedOverlayをインポート
-import { FadedOverlay } from '../../../components/common/FadedOverlay';
+// 💡 FadedOverlayのインポートを削除
+// import { FadedOverlay } from '../../../components/common/FadedOverlay';
 
 // 共通画像ユーティリティと定数
 import {
@@ -95,7 +96,7 @@ const PackCardList: React.FC<PackCardListProps> = ({
 
     // useSortAndFilterフックの適用
     const {
-        sortedAndFilteredData: displayedCards, // フィルタリング・ソート後のカードリスト (変更なし)
+        sortedAndFilteredData: displayedCards, // フィルタリング・ソート後のカードリスト
         sortField,
         sortOrder,
         searchTerm,
@@ -107,8 +108,6 @@ const PackCardList: React.FC<PackCardListProps> = ({
         defaultSortOrder: 'asc'
     });
     
-    // 💡 変更点: displayedCards の再ソートロジックを削除し、useSortAndFilterの結果を直接使用
-
     // propsで受け取ったリストをそのまま使用 (フック適用前の元のリスト)
     const cardsInPack = cards;
 
@@ -186,18 +185,18 @@ const PackCardList: React.FC<PackCardListProps> = ({
                     {/* カードリストの描画 (ソート・フィルタ後のデータを使用) */}
                     {hasFilteredResults ? (
                         displayedCards.map(card => {
-                            // 💡 変更点: 論理削除済みフラグ
-                            const isFaded = !card.isInStore;
+                            // 💡 変更: 論理削除済みフラグ (isInStore) の判定と関連ロジックを削除
+                            // const isFaded = !card.isInStore; // 削除
                             
-                            // 💡 変更点: Cardコンポーネントを FadedOverlay でラップ
+                            // 💡 変更: Cardコンポーネントを FadedOverlay でラップするロジックを削除
                             const cardContent = (
                                 <Card
                                     sx={{
                                         width: CARD_GRID_WIDTH,
                                         cursor: 'pointer',
                                         boxShadow: 1,
-                                        // 薄いカードはインタラクションを制限したい場合
-                                        pointerEvents: isFaded ? 'none' : 'auto', 
+                                        // 💡 変更: フェードロジック削除により pointerEvents の条件分岐も削除
+                                        // pointerEvents: isFaded ? 'none' : 'auto', // 削除
                                     }}
                                     onClick={() => handleSelectCard(card)}
                                 >
@@ -223,7 +222,7 @@ const PackCardList: React.FC<PackCardListProps> = ({
                                             )}
                                             <Typography variant="subtitle2" noWrap>
                                                 {card.name}
-                                                {/* 💡 変更点: 論理削除済みを示すテキストを削除 */}
+                                                {/* 💡 変更: 論理削除済みを示すテキストを削除 */}
                                             </Typography>
                                             <Typography variant="caption" color="text.secondary">{card.rarity}</Typography>
                                         </CardContent>
@@ -234,14 +233,8 @@ const PackCardList: React.FC<PackCardListProps> = ({
                             return (
                                 // MaterialUI Grid の構文は保持 (sizeを使用)
                                 <Grid size={{xs:6,sm:4,md:3,lg:2}} key={card.cardId}>
-                                    {isFaded ? (
-                                        // 💡 FadedOverlayでラップ
-                                        <FadedOverlay opacity={0.4}>
-                                            {cardContent}
-                                        </FadedOverlay>
-                                    ) : (
-                                        cardContent
-                                    )}
+                                    {/* 💡 変更: FadedOverlayによるラップを削除し、cardContentを直接表示 */}
+                                    {cardContent}
                                 </Grid>
                             );
                         })
