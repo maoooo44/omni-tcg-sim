@@ -47,7 +47,7 @@ export class OmniTCGSimDB extends Dexie {
                      
             
             // cards: V2の変更点をすべて含む最新スキーマ
-            cards: `&cardId, [packId+number], packId, name, number, imageColor, rarity, isFavorite, isFavorite, createdAt,
+            cards: `&cardId, [packId+number], packId, name, number, imageColor, rarity, isFavorite, createdAt,
                     custom_1_bool, custom_2_bool, custom_3_bool, custom_4_bool, custom_5_bool, custom_6_bool, custom_7_bool, custom_8_bool, custom_9_bool, custom_10_bool,
                     custom_1_num, custom_2_num, custom_3_num, custom_4_num, custom_5_num, custom_6_num, custom_7_num, custom_8_num, custom_9_num, custom_10_num,
                     custom_1_str, custom_2_str, custom_3_str, custom_4_str, custom_5_str, custom_6_str, custom_7_str, custom_8_str, custom_9_str, custom_10_str`,
