@@ -1,8 +1,9 @@
 // src/services/data-io/dataIOUtils.ts
 
 import type { Card } from '../../models/card';
-import type { CustomFieldType, CustomFieldIndex } from '../../models/custom-field';
-import type { CustomFieldConfig } from '../../models/userData';
+// CustomField の型定義は共通 models に移動したため、そこから参照します。
+// カスタムフィールド型の抽象は廃止。型リテラルで直接記述。
+import type { CardFieldSettings } from '../../models/pack';
 
 /**
  * @description CSV/JSONインポート/エクスポートでの照合に使用するカスタムフィールドの定義
@@ -14,7 +15,7 @@ export interface CustomFieldDefinition {
     /** Cardモデルの実際の物理キー名 (例: "custom_1_num") */
     cardKey: keyof Card; 
     /** データ型 */
-    type: CustomFieldType;
+    type: 'num' | 'str';
 }
 
 /**
@@ -24,39 +25,35 @@ export interface CustomFieldDefinition {
  * @returns 照合に使用する CustomFieldDefinition の配列
  */
 export const createCardCustomFieldDefinitions = (
-    config: CustomFieldConfig
+    cardSettings: CardFieldSettings | undefined
 ): CustomFieldDefinition[] => {
-    
-    // config.Cardがundefinedになる可能性に備えて早期リターン
-    if (!config.Card) return [];
+    // 新しいモデルでは Card のカスタム表示設定は Pack.cardFieldSettings (CardFieldSettings) に存在します。
+    if (!cardSettings) return [];
 
-    const cardConfig = config.Card;
     const definitions: CustomFieldDefinition[] = [];
-    
-    const fieldTypes: CustomFieldType[] = ['bool', 'num', 'str'];
 
-    fieldTypes.forEach(type => {
-        // インデックス 1 から 10 までをループ
-        for (let i = 1; i <= 10; i++) {
-            const index = i as CustomFieldIndex;
-            // Record<CustomFieldIndex, FieldSetting> から設定を取得
-            const setting = cardConfig[type][index]; 
-
-            if (!setting) continue; // 設定が未定義の場合はスキップ
-            
-            // 物理名 (Card のプロパティ名) を構築
-            const cardKey = `custom_${index}_${type}` as keyof Card; 
-            
-            // isEnabled かつ displayName が設定されている場合にマッピング情報を作成
-            if (setting.isEnabled && setting.displayName.trim() !== '') {
-                definitions.push({
-                    fieldName: setting.displayName,
-                    cardKey: cardKey,
-                    type: type,
-                });
-            }
+    // num_1..num_6 と str_1..str_6 を走査して、表示設定が有効かつ表示名があれば定義を作成する
+    for (let i = 1; i <= 6; i++) {
+        const numKey = `num_${i}` as keyof CardFieldSettings;
+        const numSetting = (cardSettings as any)[numKey] as { displayName: string; isVisible: boolean } | undefined;
+        if (numSetting && numSetting.isVisible && numSetting.displayName.trim() !== '') {
+            definitions.push({
+                fieldName: numSetting.displayName,
+                cardKey: `num_${i}` as keyof Card,
+                type: 'num',
+            });
         }
-    });
+
+        const strKey = `str_${i}` as keyof CardFieldSettings;
+        const strSetting = (cardSettings as any)[strKey] as { displayName: string; isVisible: boolean } | undefined;
+        if (strSetting && strSetting.isVisible && strSetting.displayName.trim() !== '') {
+            definitions.push({
+                fieldName: strSetting.displayName,
+                cardKey: `str_${i}` as keyof Card,
+                type: 'str',
+            });
+        }
+    }
 
     return definitions;
 };

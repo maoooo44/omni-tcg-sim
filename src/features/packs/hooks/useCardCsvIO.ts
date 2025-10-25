@@ -10,7 +10,6 @@
 import { useState, useCallback } from 'react';
 import { useCardStore } from '../../../stores/cardStore';
 import { usePackStore } from '../../../stores/packStore';
-import { useUserDataStore } from '../../../stores/userDataStore'; 
 import { useShallow } from 'zustand/react/shallow';
 
 import { createCardCustomFieldDefinitions } from '../../../services/data-io/dataIOUtils'; 
@@ -34,8 +33,8 @@ export const useCardCsvIO = (packId: string, onCardListUpdated: () => Promise<vo
         exportCardsToCsv: state.exportCardsToCsv,
     })));
     
-    // 💡 追加: ユーザー設定からカスタムフィールド設定を取得
-    const customFieldConfig = useUserDataStore(state => state.customFieldConfig);
+    // カスタムフィールド設定はパックごとの cardFieldSettings に移動したため、
+    // currentPack.cardFieldSettings を利用します。
 
     // 💡 修正: editingPackの廃止に伴い、packsリストからpackIdに一致するものを探すロジックのみ残す
     const currentPack = usePackStore(state => 
@@ -71,8 +70,8 @@ export const useCardCsvIO = (packId: string, onCardListUpdated: () => Promise<vo
                     return;
                 }
 
-                // 1. UI/UX層でカスタムフィールド定義を生成 (CSVヘッダー照合用)
-                const customFieldDefs = createCardCustomFieldDefinitions(customFieldConfig);
+                // 1. 現在のパック設定からカスタムフィールド定義を生成 (CSVヘッダー照合用)
+                const customFieldDefs = createCardCustomFieldDefinitions(currentPack?.cardFieldSettings);
 
                 // 2. Store のアクション経由で Service 層にCSVテキストと定義を渡して処理を委譲
                 result = await importCardsFromCsv(
@@ -115,7 +114,7 @@ export const useCardCsvIO = (packId: string, onCardListUpdated: () => Promise<vo
         };
 
         reader.readAsText(file);
-    }, [packId, customFieldConfig, importCardsFromCsv, onCardListUpdated]); // 💡 修正: currentPack を依存配列から削除
+    }, [packId, currentPack, importCardsFromCsv, onCardListUpdated]);
     
     
     // --- handleExportCards の定義 (変更なし) ---

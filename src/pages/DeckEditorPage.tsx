@@ -14,14 +14,12 @@ import { useDeckEditor } from '../features/decks/hooks/useDeckEditor';
 
 const DeckEditorPage: React.FC = () => {
 
-    // 1. URLパラメータからdeckIdを取得 
-    // 💡 useParamsの戻り値の型を明示（ここでは、useDeckEditorに渡すためのstringとして扱う）
+    // 1. URLパラメータからdeckIdを取得
     const { deckId } = useParams({ strict: false }) as { deckId: string };
-    
     // 2. DeckEditorContent コンポーネントをレンダリング
     // key={deckId} を設定することで、URLパラメータが変わった際にフックを強制リセット
     return (
-        <DeckEditorContent key={deckId} deckId={deckId || 'new'} /> // 💡 新規作成時は'new'を渡すように修正
+        <DeckEditorContent key={deckId} deckId={deckId} />
     );
 };
 
@@ -55,16 +53,15 @@ const DeckEditorContent: React.FC<DeckEditorContentProps> = ({ deckId }) => {
             </Box>
         );
     }
-    
-    // データが見つからない場合のエラー表示
-    if (!currentDeck || currentDeck.deckId === '') {
-             return (
-                 <Box sx={{ p: 3 }}>
-                     <Alert severity="error">
-                         編集するデッキデータがありません。無効なURLにアクセスした可能性があります。
-                     </Alert>
-                 </Box>
-             );
+    // データが見つからない場合のみエラー表示（新規作成は通す）
+    if (!currentDeck) {
+        return (
+            <Box sx={{ p: 3 }}>
+                <Alert severity="error">
+                    編集するデッキデータがありません。無効なURLにアクセスした可能性があります。
+                </Alert>
+            </Box>
+        );
     }
 
     // Featureコンポーネントをレンダリングし、必要なPropsを渡す (UI/機能の分離)

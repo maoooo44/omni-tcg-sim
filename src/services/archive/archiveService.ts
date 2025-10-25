@@ -13,16 +13,12 @@ import {
     runGarbageCollectionForCollection, 
     type DbCollectionName 
 } from '../database/dbCore';
-import { 
-    userDataService, 
-    type PersistedUserSettings, 
-    // 💡 修正: GCSetting をインポートしてデフォルト設定の型として使用
-    type GCSetting, 
-} from '../user-data/userDataService'; 
+import type { PersistedUserSettings, GCSetting  } from "../../models/userData";
+import { userDataService } from '../user-data/userDataService'; 
 import { generateId } from '../../utils/dataUtils'; 
 import { resolveNumberWithFallback } from '../../utils/valueResolver';
 // 💡 修正: ARCHIVE_GC_DEFAULTS に GCSetting 型を付与するため、インポート時に型キャストを適用
-import { ARCHIVE_GC_DEFAULTS } from '../../config/defaults'; 
+import { ARCHIVE_GC_DEFAULTS } from '../../configs/defaults'; 
 
 // 💡 修正: ARCHIVE_GC_DEFAULTS の型を GCSetting にキャストすることでインデックスアクセスを許可
 const GC_DEFAULTS = ARCHIVE_GC_DEFAULTS as unknown as GCSetting; // 型ガードのため、ローカル定数にキャストして保持

@@ -1,10 +1,5 @@
-/**
- * src/config/defaults.ts
- *
- */
+//src/configs/gcDefaults.ts
 import type { ArchiveItemType, ArchiveCollectionKey } from '../models/archive';
-
-// 💡 修正: インデックスシグネチャを Record<T, U> に変更するか、より構造的な型を使用します。
 
 // アイテムタイプごとのGC設定の型
 export type ItemGcConfig = Record<ArchiveItemType, {

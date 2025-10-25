@@ -8,20 +8,20 @@
  * 2. データ取得（初期ロード）の実行。
  * 3. 汎用フック（useSortAndFilter）を使用して、パックデータにソートとフィルタリングの機能を提供する。
  * 4. UIからの操作（パック選択、新規作成、削除）に対応するナビゲーションおよびデータ操作ハンドラ（useCallbackでメモ化）を提供する。
- * 💡 5. useUserDataStoreからisAllViewModeを取得し、論理削除アイテムの表示を制御する責務の一部を担う。
  */
-import { useEffect, useCallback } from 'react';
+import { useEffect, useCallback, useState } from 'react';
 import { useNavigate } from '@tanstack/react-router'; 
 import { useShallow } from 'zustand/react/shallow';
 import { usePackStore } from '../../../stores/packStore';
-import { useUserDataStore } from '../../../stores/userDataStore'; 
 import { useSortAndFilter } from '../../../hooks/useSortAndFilter';
 
 import type { Pack } from '../../../models/pack';
 import { type SortField } from '../../../utils/sortingUtils';
-import { packFieldAccessor, PACK_SORT_OPTIONS } from '../packUtils';
+import { packFieldAccessor } from '../packUtils';
+import { PACK_SORT_OPTIONS } from '../../../configs/sortAndFilterDefaults';
 // 💡 修正: 新規デッキ作成用のユーティリティをインポート
 import { createDefaultPack } from '../../../utils/dataUtils';
+import type { FilterCondition } from '../../../components/controls/SortAndFilterControls';
 
 interface UsePackListResult {
     packs: Pack[];
@@ -35,8 +35,8 @@ interface UsePackListResult {
     setSearchTerm: (term: string) => void;
     handleSelectPack: (packId: string) => void;
     handleNewPack: () => void; // 💡 修正: initializeNewPackEditingがなくなったため、Promise<void>ではなくなった
-    handleDeletePack: (packId: string, packName: string) => void; 
-    isAllViewMode: boolean;
+    handleDeletePack: (packId: string, packName: string) => void;
+    handleFilterChange: (filters: FilterCondition[]) => void;
 }
 
 const defaultSortOptions = {
@@ -59,19 +59,17 @@ export const usePackList = (): UsePackListResult => {
         movePackToTrash: state.movePackToTrash,
     })));
 
-    // 💡 追加: UserDataStoreから isAllViewMode を取得
-    const { isAllViewMode } = useUserDataStore(useShallow(state => ({
-        isAllViewMode: state.isAllViewMode,
-    })));
-
     // 初期ロードの実行
     useEffect(() => {
         fetchAllPacks(); // 💡 修正: fetchPacks -> fetchAllPacks
     }, [fetchAllPacks]); 
     
+    // フィルタ条件の状態管理
+    const [filters, setFilters] = useState<FilterCondition[]>([]);
+    
     // ソート＆フィルタリングフックの適用
     const {
-        sortedAndFilteredData: displayedPacks,
+        sortedAndFilteredData: sortedPacks,
         sortField,
         sortOrder,
         searchTerm,
@@ -79,6 +77,40 @@ export const usePackList = (): UsePackListResult => {
         toggleSortOrder,
         setSearchTerm,
     } = useSortAndFilter<Pack>(packs, packFieldAccessor, defaultSortOptions);
+
+    // フィルタリング処理
+    const displayedPacks = sortedPacks.filter(pack => {
+        return filters.every(filter => {
+            const value = pack[filter.field as keyof Pack];
+            
+            if (filter.field === 'name' || filter.field === 'series' || filter.field === 'description') {
+                // テキストフィールド: 部分一致（大文字小文字区別なし）
+                return String(value || '').toLowerCase().includes(String(filter.value).toLowerCase());
+            } else if (filter.field === 'cardsPerPack' || filter.field === 'totalCards' || filter.field === 'price' || filter.field === 'number') {
+                // 数値フィールド: 範囲検索対応
+                const filterValue = String(filter.value);
+                if (filterValue.includes('-')) {
+                    const [min, max] = filterValue.split('-').map(Number);
+                    const numValue = Number(value);
+                    return numValue >= min && numValue <= max;
+                } else {
+                    return Number(value) === Number(filter.value);
+                }
+            } else if (filter.field === 'packType') {
+                // select: 完全一致
+                return value === filter.value;
+            } else if (filter.field === 'isFavorite' || filter.field === 'isOpened') {
+                // boolean: 完全一致
+                return value === filter.value;
+            }
+            return true;
+        });
+    });
+
+    // フィルタ変更ハンドラ
+    const handleFilterChange = useCallback((newFilters: FilterCondition[]) => {
+        setFilters(newFilters);
+    }, []);
 
     // アクションハンドラ (ナビゲーションロジック)
     const handleSelectPack = useCallback((packId: string) => {
@@ -119,13 +151,13 @@ export const usePackList = (): UsePackListResult => {
         sortField,
         sortOrder,
         searchTerm,
-        PACK_SORT_OPTIONS,
+            PACK_SORT_OPTIONS,
         setSortField,
         toggleSortOrder,
         setSearchTerm,
         handleSelectPack,
         handleNewPack,
-        handleDeletePack, 
-        isAllViewMode, 
+        handleDeletePack,
+        handleFilterChange,
     };
 };

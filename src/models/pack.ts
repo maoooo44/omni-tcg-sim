@@ -35,6 +35,39 @@ export interface AdvancedRarityConfig {
     fixedValue: number; // 確定枚数
 }
 
+export interface DisplaySetting {
+    /** ユーザーフレンドリーな表示名 (例: 'マナコスト', '逃げるエネルギー') */
+    displayName: string;
+    /** 詳細画面などでこのフィールドを表示するかどうか */
+    isVisible: boolean;
+    /** 表示順序 (オプション) */
+    order?: number; 
+}
+
+/** カードの標準フィールドの表示設定を定義する型 */
+export interface PackFieldSettings {
+    num_1: DisplaySetting;
+    num_2: DisplaySetting;
+    str_1: DisplaySetting;
+    str_2: DisplaySetting;
+}
+
+/** カードの標準フィールドの表示設定を定義する型 */
+export interface CardFieldSettings {
+    num_1: DisplaySetting;
+    num_2: DisplaySetting;
+    num_3: DisplaySetting;
+    num_4: DisplaySetting;
+    num_5: DisplaySetting;
+    num_6: DisplaySetting;
+    str_1: DisplaySetting;
+    str_2: DisplaySetting;
+    str_3: DisplaySetting;
+    str_4: DisplaySetting;
+    str_5: DisplaySetting;
+    str_6: DisplaySetting;
+}
+
 export interface Pack {
     packId: string; // パックID (ユニークID, 自動生成)
     name: string;
@@ -47,7 +80,6 @@ export interface Pack {
     cardsPerPack: number; // 1パックあたりの封入枚数
     totalCards: number; // 収録カード総数 (自動集計)
     series: string; // TCGシリーズ名
-    releaseDate: string; // ISO 8601形式の発売日
     description: string;
     isOpened: boolean; // 開封済みフラグ
     isFavorite: boolean;
@@ -60,45 +92,20 @@ export interface Pack {
     specialProbabilitySlots: number;
     isAdvancedRulesEnabled: boolean;
 
-    // ⬇️ ★ 修正: 統一されたカスタムインデックス30枠を追加（アプリケーションモデル）
-    // DBへの永続化と高速なフィルタリング・ソートのために利用されるフィールド
+    cardPresetId?: string;
 
-    // ブール値カスタムインデックス (10枠)
-    custom_1_bool?: boolean;
-    custom_2_bool?: boolean;
-    custom_3_bool?: boolean;
-    custom_4_bool?: boolean;
-    custom_5_bool?: boolean;
-    custom_6_bool?: boolean;
-    custom_7_bool?: boolean;
-    custom_8_bool?: boolean;
-    custom_9_bool?: boolean;
-    custom_10_bool?: boolean;
-    
-    // 数値カスタムインデックス (10枠)
-    custom_1_num?: number;
-    custom_2_num?: number;
-    custom_3_num?: number;
-    custom_4_num?: number;
-    custom_5_num?: number;
-    custom_6_num?: number;
-    custom_7_num?: number;
-    custom_8_num?: number;
-    custom_9_num?: number;
-    custom_10_num?: number;
+    num_1?: number | null;
+    num_2?: number | null; 
+    str_1?: string;
+    str_2?: string;
 
-    // 文字列カスタムインデックス (10枠)
-    custom_1_str?: string;
-    custom_2_str?: string;
-    custom_3_str?: string;
-    custom_4_str?: string;
-    custom_5_str?: string;
-    custom_6_str?: string;
-    custom_7_str?: string;
-    custom_8_str?: string;
-    custom_9_str?: string;
-    custom_10_str?: string;
+    packFieldSettings?: PackFieldSettings;
+    cardFieldSettings?: CardFieldSettings;
 
+    /** ユーザー定義のタグ/その他の属性。カスタムフィールドの代わり。 */
+    tag?: Record<string, string>;
+    /** 全文検索用の連結文字列（tagを結合） */
+    searchText?: string;
 }
 
 export interface PackBundle {

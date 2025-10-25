@@ -7,33 +7,55 @@
 import React from 'react';
 import { 
     TextField, Box, Typography, Select, MenuItem, InputLabel, FormControl, 
-    Button,
+    Button, Divider,
 } from '@mui/material'; 
 
 import type { Pack } from '../../../models/pack';
+// 💡 修正1: Card 型をインポート
+import type { Card } from '../../../models/card';
 import PackPreviewCard from '../components/PackPreviewCard';
 import { PACK_TYPE_OPTIONS } from '../packUtils'; 
+
+import CustomFieldManager from '../../../components/controls/CustomFieldManager'; 
+import type { DisplaySetting } from '../../../models/pack';
+
 
 // PackEditorPageから渡されるPropsの型定義
 interface PackInfoFormProps {
     packData: Pack;
     isEditable: boolean;
-    //isDisable: boolean;
     handleInputChange: (e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement>) => void;
     // SelectのonChangeの型
     handleSelectChange: (e: { target: { name: string; value: unknown } }) => void; 
     handleOpenRarityEditorModal: () => void;
     handleSave: (e: React.FormEvent<HTMLFormElement>) => void;
+    
+    // 💡 修正3: Packカスタムフィールドの変更ハンドラを CustomFieldManagerProps から流用
+    onPackCustomFieldChange: (field: string, value: any) => void;
+
+    // 💡 修正4: Packカスタムフィールドの設定情報を受け取る
+    customFieldSettings: Record<string, DisplaySetting>;
+    
+    // 💡 修正5: Packカスタムフィールド設定変更ハンドラを CustomFieldManagerProps から流用
+    onCustomFieldSettingChange: (
+        itemType: 'Card' | 'Deck' | 'Pack',
+        type: 'num' | 'str',
+        index: number,
+        settingUpdates: Partial<DisplaySetting>
+    ) => void;
 }
 
 const PackInfoForm: React.FC<PackInfoFormProps> = ({
     packData,
     isEditable,
-    //isDisable,
     handleInputChange,
     handleSelectChange,
     handleOpenRarityEditorModal,
     handleSave,
+    
+    onPackCustomFieldChange,
+    customFieldSettings,
+    onCustomFieldSettingChange,
 }) => {
 
     // isEditableを使って、disabled状態を統一的に管理
@@ -129,7 +151,7 @@ const PackInfoForm: React.FC<PackInfoFormProps> = ({
                 {/* 7. カード裏面画像URL */}
                 <TextField
                     label="カード裏面画像URL"
-                    name="cardBackUrl"
+                    name="cardBackImageUrl"
                     value={packData.cardBackImageUrl || ''} 
                     onChange={handleInputChange}
                     fullWidth
@@ -150,6 +172,31 @@ const PackInfoForm: React.FC<PackInfoFormProps> = ({
                     rows={3}
                     disabled={isDisabled} 
                 />
+                
+                
+                {/* --------------------------------------------------- */}
+                {/* パックのカスタムフィールドエリアの追加 */}
+                <Box sx={{ mt: 4, mb: 2 }}>
+                    <Divider sx={{ my: 2 }} />
+                    <Typography variant="h6" gutterBottom>カスタムフィールド</Typography>
+                    
+                    <CustomFieldManager
+                        // 編集対象のデータ（Packオブジェクト全体）
+                        itemData={packData as unknown as Card} // 💡 修正7: Card型をインポートしたため、エラーは解消する
+                        // カスタムフィールドの設定情報 (packFieldSettings)
+                        customFieldSettings={customFieldSettings}
+                        // 編集対象のアイテムタイプ（Pack）
+                        itemType="Pack"
+                        // フォームの入力変更ハンドラ
+                        onFieldChange={onPackCustomFieldChange}
+                        // 設定の変更ハンドラ（PackEditorから渡す）
+                        onSettingChange={onCustomFieldSettingChange} 
+                        // 編集モード
+                        isReadOnly={isDisabled}
+                    />
+                </Box>
+                {/* --------------------------------------------------- */}
+                
                 
                 {/* 9. アクションボタン */}
                 <Box sx={{ mt: 3, display: 'flex', justifyContent: 'space-between' }}>

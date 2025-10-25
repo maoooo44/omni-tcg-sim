@@ -6,8 +6,8 @@
  * JSON互換の構造（Recordやプリミティブ型のみ）に変換したデータ構造を定義します。
  */
 
-import type { PackType, RarityConfig, AdvancedRarityConfig } from "./pack"; // Cardの型定義は別ファイルからインポート
-import type { DeckType } from "./deck"; // Cardの型定義は別ファイルからインポート
+import type { PackType, RarityConfig, AdvancedRarityConfig, PackFieldSettings, CardFieldSettings } from "./pack"; // Cardの型定義は別ファイルからインポート
+import type { DeckType, DeckFieldSettings} from "./deck"; // Cardの型定義は別ファイルからインポート
 import type { ArchiveCollectionKey } from "./archive"; 
 
 
@@ -21,45 +21,27 @@ export interface DBCard {
     imageUrl: string; // カード画像の参照URL
     imageColor?: string; //プレースホルダーの色プリセットキー
     rarity: string; // 収録されているレアリティ名（Pack.rarityConfig.rarityNameに対応）
+    text: string;
+    subtext: string;
     isFavorite: boolean;
     createdAt: string; // ISO 8601形式の作成日時
     updatedAt: string; // ISO 8601形式の最終更新日時
 
-    // ブール値カスタムインデックス (10枠)
-    custom_1_bool?: boolean;
-    custom_2_bool?: boolean;
-    custom_3_bool?: boolean;
-    custom_4_bool?: boolean;
-    custom_5_bool?: boolean;
-    custom_6_bool?: boolean;
-    custom_7_bool?: boolean;
-    custom_8_bool?: boolean;
-    custom_9_bool?: boolean;
-    custom_10_bool?: boolean;
-    
-    // 数値カスタムインデックス (10枠)
-    custom_1_num?: number;
-    custom_2_num?: number;
-    custom_3_num?: number;
-    custom_4_num?: number;
-    custom_5_num?: number;
-    custom_6_num?: number;
-    custom_7_num?: number;
-    custom_8_num?: number;
-    custom_9_num?: number;
-    custom_10_num?: number;
+    num_1?: number | null; 
+    num_2?: number | null;
+    num_3?: number | null; 
+    num_4?: number | null; 
+    num_5?: number | null; 
+    num_6?: number | null; 
+    str_1?: string; 
+    str_2?: string; 
+    str_3?: string; 
+    str_4?: string; 
+    str_5?: string;
+    str_6?: string;
 
-    // 文字列カスタムインデックス (10枠)
-    custom_1_str?: string;
-    custom_2_str?: string;
-    custom_3_str?: string;
-    custom_4_str?: string;
-    custom_5_str?: string;
-    custom_6_str?: string;
-    custom_7_str?: string;
-    custom_8_str?: string;
-    custom_9_str?: string;
-    custom_10_str?: string;
+    tag?: Record<string, string>;
+    searchText?: string;
 }
 
 // Pack Data (DBに保存される JSON 互換の構造) (変更なし)
@@ -79,48 +61,22 @@ export interface DBPack {
     price: number; // ゲーム内通貨での価格
     totalCards: number; // 収録カード総数 (自動集計)
     series: string; // TCGシリーズ名
-    releaseDate: string; // ISO 8601形式の発売日
     description: string;
     isOpened: boolean; // 開封済みフラグ
     isFavorite: boolean;
     createdAt: string;
     updatedAt: string; // ISO 8601形式の最終更新日時
 
-    // ブール値カスタムインデックス (10枠)
-    custom_1_bool?: boolean;
-    custom_2_bool?: boolean;
-    custom_3_bool?: boolean;
-    custom_4_bool?: boolean;
-    custom_5_bool?: boolean;
-    custom_6_bool?: boolean;
-    custom_7_bool?: boolean;
-    custom_8_bool?: boolean;
-    custom_9_bool?: boolean;
-    custom_10_bool?: boolean;
+    cardPresetId?: string;
+    num_1?: number | null;
+    num_2?: number | null; 
+    str_1?: string;
+    str_2?: string;
+    packFieldSettings?: PackFieldSettings;
+    cardFieldSettings?: CardFieldSettings;
+    tag?: Record<string, string>;
+    searchText?: string;
     
-    // 数値カスタムインデックス (10枠)
-    custom_1_num?: number;
-    custom_2_num?: number;
-    custom_3_num?: number;
-    custom_4_num?: number;
-    custom_5_num?: number;
-    custom_6_num?: number;
-    custom_7_num?: number;
-    custom_8_num?: number;
-    custom_9_num?: number;
-    custom_10_num?: number;
-
-    // 文字列カスタムインデックス (10枠)
-    custom_1_str?: string;
-    custom_2_str?: string;
-    custom_3_str?: string;
-    custom_4_str?: string;
-    custom_5_str?: string;
-    custom_6_str?: string;
-    custom_7_str?: string;
-    custom_8_str?: string;
-    custom_9_str?: string;
-    custom_10_str?: string;
 }
 
 // Deck Data (DBに保存される JSON 互換の構造) (変更なし)
@@ -135,6 +91,9 @@ export interface DBDeck {
     totalCards: number;
     series: string; // デッキが属するTCGシリーズ名
     description: string;
+    keycard_1?: string; //キーカードのcardId
+    keycard_2?: string;
+    keycard_3?: string;
     isLegal: boolean; // 準拠するruleSetに基づき、デッキが形式的に有効か
     hasUnownedCards: boolean;     // デッキに未所有カードが含まれているかどうかの状態
     isFavorite: boolean;
@@ -147,41 +106,17 @@ export interface DBDeck {
     sideDeck: Record<string, number>; 
     extraDeck: Record<string, number>;  // TCGによってはエクストラデッキ
 
-    // ブール値カスタムインデックス (10枠)
-    custom_1_bool?: boolean;
-    custom_2_bool?: boolean;
-    custom_3_bool?: boolean;
-    custom_4_bool?: boolean;
-    custom_5_bool?: boolean;
-    custom_6_bool?: boolean;
-    custom_7_bool?: boolean;
-    custom_8_bool?: boolean;
-    custom_9_bool?: boolean;
-    custom_10_bool?: boolean;
-    
-    // 数値カスタムインデックス (10枠)
-    custom_1_num?: number;
-    custom_2_num?: number;
-    custom_3_num?: number;
-    custom_4_num?: number;
-    custom_5_num?: number;
-    custom_6_num?: number;
-    custom_7_num?: number;
-    custom_8_num?: number;
-    custom_9_num?: number;
-    custom_10_num?: number;
-
-    // 文字列カスタムインデックス (10枠)
-    custom_1_str?: string;
-    custom_2_str?: string;
-    custom_3_str?: string;
-    custom_4_str?: string;
-    custom_5_str?: string;
-    custom_6_str?: string;
-    custom_7_str?: string;
-    custom_8_str?: string;
-    custom_9_str?: string;
-    custom_10_str?: string;
+    num_1?: number | null; 
+    num_2?: number | null;
+    num_3?: number | null; 
+    num_4?: number | null; 
+    str_1?: string; 
+    str_2?: string; 
+    str_3?: string; 
+    str_4?: string; 
+    fieldSettings?: DeckFieldSettings;
+    tag?: Record<string, string>;
+    searchText?: string;
 }
 
 // Card Pool (変更なし)

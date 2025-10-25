@@ -17,10 +17,7 @@ import { useCardData } from '../../hooks/useCardData';
 import type { Pack } from '../../models/pack';
 // Cardモデルの型をインポート
 import type { Card } from '../../models/card';
-import type { OpenedResultState } from '../../models/pack-opener';
-
-// PackOpeningAnimationとOpenerCardで共通利用される型を切り出す
-import type { OpenerCardData } from '../../models/pack-opener'; 
+import type { OpenedResultState, OpenerCardData } from '../../models/packOpener';
 
 // UIコンポーネントのパスを修正（相対パスを維持）
 import PackOpeningAnimation from './components/PackOpenerAnimation';
@@ -33,6 +30,8 @@ import {
     DEFAULT_CARD_PREVIEW_WIDTH,
     DEFAULT_CARD_PREVIEW_HEIGHT
 } from '../../utils/imageUtils';
+
+import { PackOpenerGridSettings } from '../../configs/gridDefaults';
 
 
 // 定数: カードプレースホルダーオプション (変更なし)
@@ -50,7 +49,7 @@ interface PackOpenerHandlerProps {
     setLastOpenedResults: React.Dispatch<React.SetStateAction<OpenedResultState>>;
 }
 
-// 💡 プレースホルダーの生成を分離 (変更なし)
+// 💡 プレースホルダーの生成を分離
 const generatePlaceholders = (selectedPack: Pack): OpenerCardData[] => {
     const placeholders: OpenerCardData[] = [];
     for (let i = 0; i < selectedPack.cardsPerPack; i++) {
@@ -139,6 +138,7 @@ const PackOpenerHandler: React.FC<PackOpenerHandlerProps> = ({
                     name: cardDetails.name,
                     imageUrl: finalImageUrl, // プレースホルダーまたは実画像URL
                     rarity: cardDetails.rarity,
+                    cardBackImageUrl: selectedPack.cardBackImageUrl, // 💡 追加: パックの裏面画像URLを含める
                 });
             }
             return acc.concat(cardArray);
@@ -160,12 +160,16 @@ const PackOpenerHandler: React.FC<PackOpenerHandlerProps> = ({
         
         if (hasNewResults) {
             // 3-B. 開封結果が確定したら、カードリストを切り替え
+            console.log('[PackOpenerHandler] Opening animation: switching to actual cards');
             setDisplayedCards(flattenedOpenedCards);
             
-            // 0ms後に isRevealed を true にしてフリップを開始
-            setTimeout(() => {
-                setIsRevealed(true); 
-            }, 0); 
+            // 二重RAFでブラウザの描画フレームを待ち、CSSの初期状態が確実に適用されてからアニメーション開始
+            requestAnimationFrame(() => {
+                requestAnimationFrame(() => {
+                    console.log('[PackOpenerHandler] Starting flip animation');
+                    setIsRevealed(true);
+                });
+            }); 
 
         } else if (isInitialState || (!isInitialState && !hasNewResults)) {
             // 3-A. 初回ロード時 (isInitialState) および 再開封時のリセット (!hasNewResults)
@@ -182,10 +186,10 @@ const PackOpenerHandler: React.FC<PackOpenerHandlerProps> = ({
             }
         }
         
-    }, [lastOpenedResults.id, lastOpenedResults.results.length, selectedPack, flattenedOpenedCards]); // selectedPack と flattenedOpenedCards を依存に追加
+    }, [lastOpenedResults.id, lastOpenedResults.results.length, selectedPack]); // flattenedOpenedCardsを除外して無限ループを防止
 
-    // cardBackUrlはPackOpeningAnimationに渡す (ロジックは変更なし)
-    const cardBackUrl = selectedPack?.cardBackImageUrl || getDisplayImageUrl(null, { ...CARD_PLACEHOLDER_OPTIONS, text: 'BACK' });
+    // cardBackImageUrlはPackOpeningAnimationに渡す(生のURLをそのまま渡す。OpenerCardでgetDisplayImageUrlを使用)
+    const cardBackImageUrl = selectedPack?.cardBackImageUrl || '';
     
     // 【新規追加】CardModalの操作ハンドラ
     const handleModalClose = useCallback(() => {
@@ -235,13 +239,13 @@ const PackOpenerHandler: React.FC<PackOpenerHandlerProps> = ({
     }
 
     return (
-        <Box sx={{ mt: 3, width: '100%', display: 'flex', flexDirection: 'column', alignItems: 'center' }}>
+        <Box sx={{ mt: 3, width: '100%', display: 'flex', flexDirection: 'column' }}>
             <PackOpeningAnimation
                 openedCards={displayedCards}
                 isRevealed={isRevealed}
-                cardBackUrl={cardBackUrl}
-                // 【必須追加】カードクリック時のハンドラを渡す
-                onCardClick={handleCardClick} 
+                cardBackImageUrl={cardBackImageUrl}
+                onCardClick={handleCardClick}
+                gridSettings={PackOpenerGridSettings}
             />
             
             {/* CardViewModalをコンポーネントツリーに追加し、必須propsを渡す */}

@@ -74,7 +74,7 @@ export const createDefaultDeck = (id?: string): Deck => {
         updatedAt: now,
         mainDeck: new Map(), // Map<cardId, count>
         sideDeck: new Map(),
-        extraDeck: new Map(),       
+        extraDeck: new Map(),  
     };
 }
 
@@ -103,7 +103,6 @@ export const createDefaultPack = (id?: string): Pack => {
         cardsPerPack: 5, 
         totalCards: 0,
         series: '',
-        releaseDate: new Date().toISOString().split('T')[0], 
         description: '', 
         isOpened: false,
         isFavorite: false,
@@ -131,6 +130,8 @@ export const createDefaultCard = (packId: string): Card => {
         number: undefined, 
         imageUrl: '',
         rarity: '',
+        text: '',
+        subtext: '',
         isFavorite: false,
         createdAt: now,
         updatedAt: now,

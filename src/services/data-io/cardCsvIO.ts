@@ -10,8 +10,9 @@ import { formatCardsToCsv } from '../../utils/csvFormatter';
 import { parseCSV } from '../..//utils/csvParser';
 import { generateId, createDefaultCard } from '../../utils/dataUtils'; 
 // 💡 修正: 新しいユーティリティファイルから型をインポート
-import type { CustomFieldDefinition } from './dataIOUtils'; 
-import type { CustomFieldType } from '../../models/custom-field'; 
+import type { CustomFieldDefinition } from './dataIOUtils';
+// models/customField は削除されたため、CSV 用に簡易な型をここに定義する
+type CsvCustomFieldType = 'bool' | 'num' | 'str';
 
 // =========================================================================
 // 定数定義 (カスタムインデックスフィールドの扱いを修正)
@@ -103,7 +104,7 @@ export const importCardsFromCsv = async (
 
     // 3. ヘッダーを分類し、インデックスを保持
     const fixedHeaderIndices: { [key: string]: number } = {};
-    const customHeaderIndices: { header: keyof Card, index: number, type: CustomFieldType }[] = [];
+    const customHeaderIndices: { header: keyof Card, index: number, type: CsvCustomFieldType }[] = [];
     
     headers.forEach((header, index) => {
         const lowerCaseHeader = header.toLowerCase().trim();
@@ -135,7 +136,7 @@ export const importCardsFromCsv = async (
         // ユーザーがCSVヘッダーに物理名 (例: custom_1_str) を直接記述した場合
         if (lowerCaseHeader.startsWith('custom_') && lowerCaseHeader.match(/_(bool|num|str)$/)) {
             const typeMatch = lowerCaseHeader.match(/_(bool|num|str)$/);
-            const type = typeMatch ? (typeMatch[1] as CustomFieldType) : 'str';
+            const type = typeMatch ? (typeMatch[1] as CsvCustomFieldType) : 'str';
             
             customHeaderIndices.push({ 
                 header: lowerCaseHeader as keyof Card, 

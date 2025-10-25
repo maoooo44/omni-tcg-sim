@@ -1,7 +1,7 @@
 import type { Pack, PackBundle } from '../../../models/pack';
 import type { ArchivePack, ArchivePackBundle } from '../../../models/archive'; 
 import type { DBPack, DBPackBundle, DBArchive } from '../../../models/db-types'; 
-import { mapCustomIndexes,cardToDBCard, dbCardToCard } from '../dbMappers';
+import { cardToDBCard, dbCardToCard } from '../dbMappers';
 
 // =========================================================================
 // 2. Pack <-> DBPack マッピング (カスタムインデックス30枠をヘルパー関数に置き換え)
@@ -27,16 +27,20 @@ export const packToDBPack = (pack: Pack): DBPack => {
         // DBPackのその他のフィールド
         totalCards: pack.totalCards, 
         series: pack.series, 
-        releaseDate: pack.releaseDate, 
         description: pack.description, 
         isOpened: pack.isOpened, 
         isFavorite: pack.isFavorite,
         createdAt: pack.createdAt,
         updatedAt: pack.updatedAt, 
-    } as DBPack; // 一時的な型アサーション
 
-    // 💡 修正: カスタムインデックスの30行をヘルパー関数に置き換え
-    return mapCustomIndexes<Pack, DBPack>(pack, dbPack);
+        num_1: pack.num_1, num_2: pack.num_2, 
+        str_1: pack.str_1, str_2: pack.str_2,
+        packFieldSettings: pack.packFieldSettings,
+        cardFieldSettings: pack.cardFieldSettings,
+        tag:pack.tag,
+        searchText:pack.searchText,
+    }
+    return dbPack;
 };
 
 export const dbPackToPack = (dbPack: DBPack): Pack => {
@@ -54,7 +58,6 @@ export const dbPackToPack = (dbPack: DBPack): Pack => {
         cardsPerPack: dbPack.cardsPerPack,
         totalCards: dbPack.totalCards,
         series: dbPack.series,
-        releaseDate: dbPack.releaseDate,
         description: dbPack.description,
         isOpened: dbPack.isOpened,
         isFavorite: dbPack.isFavorite,
@@ -69,10 +72,15 @@ export const dbPackToPack = (dbPack: DBPack): Pack => {
             : undefined,
         specialProbabilitySlots: dbPack.specialProbabilitySlots,
         isAdvancedRulesEnabled: dbPack.isAdvancedRulesEnabled,
-    } as Pack; // 一時的な型アサーション
 
-    // 💡 修正: カスタムインデックスの30行をヘルパー関数に置き換え
-    return mapCustomIndexes<DBPack, Pack>(dbPack, pack);
+        num_1: dbPack.num_1, num_2: dbPack.num_2,
+        str_1: dbPack.str_1, str_2: dbPack.str_2,
+        packFieldSettings: dbPack.packFieldSettings,
+        cardFieldSettings: dbPack.cardFieldSettings,
+        tag:dbPack.tag,
+        searchText:dbPack.searchText,
+    }
+    return pack;
 };
 
 /**

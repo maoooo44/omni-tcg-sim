@@ -5,6 +5,7 @@
  * この型は、パックに収録され、ユーザーがデッキ構築やプール管理を行う対象となる
  * 個々のカードデータを表現します。
  */
+
 export interface Card {
     cardId: string; // カードの一意な識別子
     packId: string; // 収録されているパックのID
@@ -13,43 +14,27 @@ export interface Card {
     imageUrl: string; // カード画像の参照URL
     imageColor?: string; //プレースホルダーの色プリセットキー
     rarity: string; // 収録されているレアリティ名（Pack.rarityConfig.rarityNameに対応）
+    text: string;
+    subtext: string;
     isFavorite: boolean;
     createdAt: string; // ISO 8601形式の作成日時
     updatedAt: string; // ISO 8601形式の最終更新日時
 
-    // ブール値カスタムインデックス (10枠)
-    custom_1_bool?: boolean;
-    custom_2_bool?: boolean;
-    custom_3_bool?: boolean;
-    custom_4_bool?: boolean;
-    custom_5_bool?: boolean;
-    custom_6_bool?: boolean;
-    custom_7_bool?: boolean;
-    custom_8_bool?: boolean;
-    custom_9_bool?: boolean;
-    custom_10_bool?: boolean;
+    num_1?: number | null; 
+    num_2?: number | null;
+    num_3?: number | null; 
+    num_4?: number | null; 
+    num_5?: number | null; 
+    num_6?: number | null; 
+    str_1?: string; 
+    str_2?: string; 
+    str_3?: string; 
+    str_4?: string; 
+    str_5?: string;
+    str_6?: string;
     
-    // 数値カスタムインデックス (10枠)
-    custom_1_num?: number;
-    custom_2_num?: number;
-    custom_3_num?: number;
-    custom_4_num?: number;
-    custom_5_num?: number;
-    custom_6_num?: number;
-    custom_7_num?: number;
-    custom_8_num?: number;
-    custom_9_num?: number;
-    custom_10_num?: number;
-
-    // 文字列カスタムインデックス (10枠)
-    custom_1_str?: string;
-    custom_2_str?: string;
-    custom_3_str?: string;
-    custom_4_str?: string;
-    custom_5_str?: string;
-    custom_6_str?: string;
-    custom_7_str?: string;
-    custom_8_str?: string;
-    custom_9_str?: string;
-    custom_10_str?: string;
+    /** ユーザー定義のタグ/その他の属性。カスタムフィールドの代わり。 */
+    tag?: Record<string, string>;
+    /** 全文検索用の連結文字列（tagを結合） */
+    searchText?: string;
 }

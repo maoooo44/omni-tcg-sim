@@ -6,7 +6,6 @@
  */
 import type { Pack, PackType } from '../../models/pack';
 import { type SortField } from '../../utils/sortingUtils'; 
-import { type SortOption } from '../../components/controls/SortAndFilterControls';
 /**
  * Packオブジェクトから指定されたフィールドの値を取得するアクセサ関数
  */
@@ -29,12 +28,7 @@ export const packFieldAccessor = (item: Pack, field: SortField): string | number
 /**
  * パック管理フィーチャーで使用されるソートオプションを定義する。
  */
-export const PACK_SORT_OPTIONS: SortOption[] = [
-    { label: '図鑑 No. (デフォルト)', value: 'number' },
-    { label: 'パック名', value: 'name' },
-    { label: 'ID', value: 'packId' },
-    { label: 'シリーズ', value: 'series' },
-];
+// PACK_SORT_OPTIONS is defined in configs/filterDefaults.ts
 
 /**
  * パック種別 (PackType) の選択肢リスト

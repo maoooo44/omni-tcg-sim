@@ -11,7 +11,7 @@ import {
     Typography, Box, Grid
 } from '@mui/material';
 
-import type { CustomFieldIndex, CustomFieldType, FieldSetting } from '../../models/custom-field';
+import type { DisplaySetting } from '../../models/pack';
 
 // ----------------------------------------
 // Props 定義
@@ -26,22 +26,20 @@ export interface CustomFieldModalProps {
     /** 編集対象アイテムの種別 ('Card', 'Deck', 'Pack'など) */
     itemType: 'Card' | 'Deck' | 'Pack';
     /** 編集対象フィールドの型 ('bool', 'num', 'str') */
-    type: CustomFieldType;
-    /** 編集対象フィールドのインデックス (1-10) */
-    index: CustomFieldIndex;
+    type: 'num' | 'str';
+    index: number;
     
     /** 現在の設定の初期値 */
-    initialSetting: FieldSetting;
+    initialSetting: DisplaySetting;
 
     /**
-     * カスタムフィールド設定 (displayName, isEnabled, description) の変更をユーザー設定ストアに伝える
-     * 💡 このアクションが永続化も担当する
+    /** カスタムフィールド設定 (displayName, isVisible, description) の変更を親に伝える
      */
     onSettingChange: (
         itemType: 'Card' | 'Deck' | 'Pack',
-        type: CustomFieldType, 
-        index: CustomFieldIndex, 
-        settingUpdates: Partial<FieldSetting>
+        type: 'num' | 'str',
+        index: number,
+        settingUpdates: Partial<DisplaySetting>
     ) => void;
 }
 
@@ -59,7 +57,7 @@ const CustomFieldModal: React.FC<CustomFieldModalProps> = ({
     onSettingChange 
 }) => {
     // フォームのローカル状態管理
-    const [localSetting, setLocalSetting] = useState<FieldSetting>(initialSetting);
+    const [localSetting, setLocalSetting] = useState<DisplaySetting>(initialSetting);
 
     // initialSetting が変更されたとき（モーダルが開いたときなど）に状態をリセット
     useEffect(() => {
@@ -67,8 +65,9 @@ const CustomFieldModal: React.FC<CustomFieldModalProps> = ({
     }, [initialSetting]);
 
     // 入力値変更ハンドラ (Text / Checkbox)
-    const handleChange = (field: keyof FieldSetting, value: any) => {
-        setLocalSetting(prev => ({
+    const handleChange = (field: keyof DisplaySetting, value: any) => {
+        // 💡 修正2: TS7006 エラー解消のため、prev に明示的に FieldSetting 型を指定
+        setLocalSetting((prev: DisplaySetting) => ({
             ...prev,
             [field]: value
         }));
@@ -83,15 +82,14 @@ const CustomFieldModal: React.FC<CustomFieldModalProps> = ({
         }
 
         // 変更された部分のみを抽出して onSettingChange を呼び出す
-        const updates: Partial<FieldSetting> = {};
+        const updates: Partial<DisplaySetting> = {};
         if (localSetting.displayName !== initialSetting.displayName) {
             updates.displayName = localSetting.displayName;
         }
-        if (localSetting.description !== initialSetting.description) {
-            updates.description = localSetting.description;
-        }
-        if (localSetting.isEnabled !== initialSetting.isEnabled) {
-            updates.isEnabled = localSetting.isEnabled;
+        // description が undefined から '' に変わる可能性も考慮
+        // DisplaySetting uses isVisible for visibility toggle
+        if ((localSetting as any).isVisible !== (initialSetting as any).isVisible) {
+            (updates as any).isVisible = (localSetting as any).isVisible;
         }
 
         // 実際に更新があった場合のみストアアクションを呼び出す
@@ -104,7 +102,7 @@ const CustomFieldModal: React.FC<CustomFieldModalProps> = ({
 
     // キャンセル処理
     const handleCancel = () => {
-        // 状態を初期値に戻す（モーダルが閉じる際に useEffect が実行されるため厳密には不要だが念のため）
+        // 状態を初期値に戻す（useEffectが実行されるため厳密には不要だが念のため）
         setLocalSetting(initialSetting);
         onClose();
     };
@@ -136,37 +134,26 @@ const CustomFieldModal: React.FC<CustomFieldModalProps> = ({
                             fullWidth
                             required
                             label="表示名"
-                            value={localSetting.displayName}
+                            // localSetting.displayName は useEffect で初期化されるため、! が不要
+                            value={localSetting.displayName} 
                             onChange={(e) => handleChange('displayName', e.target.value)}
                             helperText="カードの入力フォームに表示される名前です。"
                             inputProps={{ maxLength: 50 }}
                         />
                     </Grid>
 
-                    {/* 説明 (任意) */}
-                    <Grid size={{ xs: 12 }}>
-                        <TextField
-                            fullWidth
-                            label="説明/ヒント"
-                            value={localSetting.description ?? ''}
-                            onChange={(e) => handleChange('description', e.target.value)}
-                            multiline
-                            rows={2}
-                            helperText="入力時に表示されるオプションのヒントです。"
-                            inputProps={{ maxLength: 200 }}
-                        />
-                    </Grid>
+                    {/* 説明フィールドは DisplaySetting に含まれないため削除（シンプル化） */}
 
                     {/* 有効/無効の切り替え */}
                     <Grid size={{ xs: 12 }}>
                         <FormControlLabel
                             control={
                                 <Checkbox
-                                    checked={localSetting.isEnabled}
-                                    onChange={(e) => handleChange('isEnabled', e.target.checked)}
+                                    checked={(localSetting as any).isVisible}
+                                    onChange={(e) => handleChange('isVisible' as any, e.target.checked)}
                                 />
                             }
-                            label="このカスタムフィールドを有効にする"
+                            label="このカスタムフィールドを表示する"
                         />
                         <Typography variant="caption" color="textSecondary" sx={{ display: 'block' }}>
                             無効にすると、このフィールドはUIに表示されなくなりますが、既存の値は保持されます。

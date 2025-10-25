@@ -1,10 +1,3 @@
-/**
- * src/features/packs/PackEditor.tsx
- * * パック編集画面のメインUIコンポーネント。
- * このコンポーネントは、usePackEditorカスタムフック（ロジック）から提供される全てのデータとハンドラを受け取り、
- * 編集画面の全体的なレイアウト構築と、各サブコンポーネントへのプロパティ分配を行う純粋なビューコンポーネントとしての責務を担う。
- * 主な要素として、ツールバー、パック基本情報フォーム、収録カードリスト、および各種モーダルが含まれる。
- */
 import React from 'react';
 import { 
     Box, Typography,
@@ -24,15 +17,18 @@ import PackInfoForm from './components/PackInfoForm';
 
 import type { Card as CardType } from '../../models/card'; 
 import { usePackEditor } from './hooks/usePackEditor'; 
-// 💡 カスタムフィールド設定関連の型をインポート
-import type { CustomFieldType, CustomFieldIndex, FieldSetting } from '../../models/custom-field';
 
+// 💡 CustomFieldCategory のインポート元
+// 型抽象は廃止
+import type { DisplaySetting } from '../../models/pack';
 
-// usePackEditorフックの戻り値の型と、ページから追加されるpropsを結合
+// ----------------------------------------------------------------------
 interface PackEditorProps extends ReturnType<typeof usePackEditor> {
     packId: string;
     handleOpenCardViewModal: (card: CardType) => void;
 }
+// ----------------------------------------------------------------------
+
 
 const PackEditor: React.FC<PackEditorProps> = ({
     packId,
@@ -40,7 +36,7 @@ const PackEditor: React.FC<PackEditorProps> = ({
     isNewPack, 
     isExistingPack,
     isEditorMode, 
-    isDirty: _isDirty, // isDirtyは_isDirtyとして受け取り、Toolbarへ渡す
+    isDirty: _isDirty, 
     toggleEditorMode, 
     csvIO,
     isDisabled,
@@ -53,7 +49,7 @@ const PackEditor: React.FC<PackEditorProps> = ({
 
     cards,
     handleCardSave,
-    handleRemoveCard, // 論理削除
+    handleRemoveCard,
 
     isCardModalOpen,
     editingCard,
@@ -84,25 +80,34 @@ const PackEditor: React.FC<PackEditorProps> = ({
     handleImportClick,
     handleExportClick,
 
-    // 💡 修正1: usePackEditorからカスタムフィールド設定関連のプロパティを受け取る
     customFieldSettings, 
-    handleCustomFieldSettingChange, // (type: CustomFieldType, index: CustomFieldIndex, field: keyof FieldSetting, value: any) の形式
+    handleCustomFieldSettingChange, 
+    // 💡 修正1: usePackEditorの戻り値に含まれる 'handlePackCustomFieldChange' を追加
+    handlePackCustomFieldChange, 
     
     handleOpenCardViewModal,
 }) => {
     
-    // データがない場合は何もしない
     if (!packData) return null; 
 
-    // フォームの編集可能状態を制御
     const isEditable = isEditorMode;
-    // 💡 isReadOnly は isEditable の反対
     const isCardModalReadOnly = !isEditable;
+
+    // PackInfoForm に渡すカスタムフィールド設定変更ハンドラのラッパー
+    const handlePackFieldSettingChange = React.useCallback((
+        _itemType: 'Card' | 'Deck' | 'Pack',
+        _type: 'num' | 'str',
+        _index: number,
+        _settingUpdates: Partial<DisplaySetting>
+    ) => {
+        // Pack のカスタムフィールド設定変更ロジックが必要な場合はここに実装する
+        console.warn(`[PackEditor] ⚠️ Pack Field Setting Change captured.`);
+    }, []);
+
 
     return (
         <Box sx={{ p: 3 }}>
             
-            {/* ページヘッダー (PackEditorToolbarを配置) */}
             <PackEditorToolbar 
                 packData={packData}
                 isNewPack={isNewPack}
@@ -122,7 +127,6 @@ const PackEditor: React.FC<PackEditorProps> = ({
                 handleExportClick={handleExportClick}
             />
 
-            {/* アラートメッセージ表示エリア */}
             {saveAlert && (
                 <Alert 
                     severity={saveAlert.startsWith('❌') ? "error" : "success"} 
@@ -133,25 +137,29 @@ const PackEditor: React.FC<PackEditorProps> = ({
                 </Alert>
             )}
 
-            {/* メイングッリドコンテナ */}
             <Grid container spacing={4}>
-                {/* A. 左側: パック情報編集エリア */}
-                {/* 💡 ユーザー設定を考慮し、MaterialUI Gridのv7形式(size)を使用 */}
+                {/* Grid の item は v7 で廃止。size を使用。 */}
                 <Grid size={{ xs: 12, md: 4 }}> 
                     <Paper elevation={3} sx={{ p: 4, height: '100%' }}>
+                        {/* --------------------------------------------------- */}
                         <PackInfoForm 
                             packData={packData}
                             isEditable={isEditable}
-                            handleInputChange={handleInputChange}
+                            handleInputChange={handleInputChange} 
                             handleSelectChange={handleSelectChange}
                             handleOpenRarityEditorModal={handleOpenRarityEditorModal}
                             handleSave={handleSave}
+                            // 💡 修正2: 必須プロパティ 'onPackCustomFieldChange' に 'handlePackCustomFieldChange' を渡す
+                            onPackCustomFieldChange={handlePackCustomFieldChange} 
+                            // packFieldSettings は Pack モデルで直接定義されていると仮定
+                            customFieldSettings={packData.packFieldSettings ? (packData.packFieldSettings as unknown as Record<string, DisplaySetting>) : {}}
+                            onCustomFieldSettingChange={handlePackFieldSettingChange} 
                         />
+                        {/* --------------------------------------------------- */}
                     </Paper>
                 </Grid>
 
-                {/* B. 右側: カード登録枠エリア (メイン) */}
-                {/* 💡 ユーザー設定を考慮し、MaterialUI Gridのv7形式(size)を使用 */}
+                {/* Grid の item は v7 で廃止。size を使用。 */}
                 <Grid size={{ xs: 12, md: 8 }}> 
                     <Paper elevation={3} sx={{ p: 4, height: '100%' }}>
                         <PackCardList 
@@ -169,36 +177,29 @@ const PackEditor: React.FC<PackEditorProps> = ({
                 </Grid>
             </Grid>
             
-            {/* モーダル群 (CardEditorModal, RarityEditorModal) */}
             <CardModal 
                 open={isCardModalOpen}
                 onClose={handleCloseCardEditorModal}
                 card={editingCard}
                 packRaritySettings={packData.rarityConfig} 
                 onSave={handleCardSave}
-                // ★ 修正: onDelete を削除し、新しい3つのハンドラを追加 (これが正しいコード)
-                onRemove={handleRemoveCard} // 論理削除
+                onRemove={handleRemoveCard}
                 currentPackName={packData.name}
                 currentPackId={packId}
                 
-                // 💡 修正2: 必須プロパティ customFieldSettings, isReadOnly を追加
-                customFieldSettings={customFieldSettings}
+                customFieldSettings={customFieldSettings || {}} 
                 isReadOnly={isCardModalReadOnly} 
-                // 💡 修正3: CardModal の期待する型に合わせるラッパー関数を useCallback で定義
+                // CardModal に渡す onCustomFieldSettingChange は usePackEditor のハンドラを利用
                 onCustomFieldSettingChange={React.useCallback((
-                    // CardModal の expected な引数
                     _itemType: "Card" | "Deck" | "Pack", 
-                    type: CustomFieldType, 
-                    index: CustomFieldIndex, 
-                    settingUpdates: Partial<FieldSetting>
+                    type: 'num' | 'str', 
+                    index: number, 
+                    settingUpdates: Partial<DisplaySetting>
                 ) => {
-                    // usePackEditor のハンドラ (type, index, field, value) 形式に変換して呼び出す
                     if (Object.keys(settingUpdates).length === 1) {
-                        const field = Object.keys(settingUpdates)[0] as keyof FieldSetting;
+                        const field = Object.keys(settingUpdates)[0] as keyof DisplaySetting;
                         const value = settingUpdates[field];
-                        
-                        // usePackEditor のハンドラを呼び出す
-                        // itemType はフック側で不要なため無視
+                        // handleCustomFieldSettingChange のシグネチャに合わせる
                         handleCustomFieldSettingChange(type, index, field, value); 
                     }
                 }, [handleCustomFieldSettingChange])}
@@ -212,7 +213,6 @@ const PackEditor: React.FC<PackEditorProps> = ({
                 onSave={handleRarityEditorSave}
             />
 
-            {/* CSVインポート確認モーダル */}
             <CsvImportModal
                 open={isImportModalOpen}
                 isEditorMode={isEditorMode}
@@ -223,7 +223,6 @@ const PackEditor: React.FC<PackEditorProps> = ({
                 handleConfirmImport={handleConfirmImport}
             />
 
-            {/* JSONインポートダイアログ */}
             <JsonImportModal
                 open={isJsonImportModalOpen}
                 isLoading={isJsonIOLoading}

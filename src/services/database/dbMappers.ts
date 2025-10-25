@@ -32,7 +32,7 @@ export * from './mappers/dbDeckMappers';
  * @param source - 変換元のモデル (Card/Pack/Deck)
  * @param target - 変換先のモデル (DBCard/DBPack/DBDeck)
  * @returns target - カスタムインデックスがマッピングされた変換先のモデル
- */
+ *
 export const mapCustomIndexes = <T extends Record<string, any>, K extends Record<string, any>>(
     source: T,
     target: K
@@ -57,7 +57,7 @@ export const mapCustomIndexes = <T extends Record<string, any>, K extends Record
         }
     }
     return target;
-};
+};*/
 
 // ----------------------------------------------------
 // 💡 追加: Archive Display/Item Data へのユニオン型マッパー

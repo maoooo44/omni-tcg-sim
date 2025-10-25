@@ -1,5 +1,5 @@
 /**
- * src/models/custom-field.ts
+ * src/models/customField.ts
  *
  * Pack, Card, Deckエンティティに存在する汎用カスタムフィールド (custom_*_*) の
  * 用途と表示名を定義する設定データ構造の基本型と、その初期値を定義します。

@@ -4,39 +4,40 @@
  * 特定のパックに収録されているカードの一覧（リストまたはグリッド）を表示するコンポーネントです。
  * `useSortAndFilter` カスタムフックを使用し、カードデータに対するソート、フィルタリング、およびその状態管理を抽象化しています。
  * 編集権限（isEditable）に応じて、カードの編集モーダル（新規追加または既存カード）または閲覧モーダルを開くコールバック関数を提供します。
- * Material UI Gridには、ユーザー定義のv7構文（item廃止、size使用）が適用されています。
- * 💡 修正: isInStoreとisAllViewModeの廃止に伴い、関連ロジック（FadedOverlayの使用、isFaded判定、ポインターイベント制限）を削除。
+ * ReusableItemGridを使用して統一されたグリッドレイアウトを実現します。
  */
 
 import React from 'react';
-import { Button, Grid, Box, Typography, Card, CardContent, CardActionArea, CardMedia, Alert } from '@mui/material';
+import { Button, Box, Typography, Alert } from '@mui/material';
 import AddIcon from '@mui/icons-material/Add';
 
 import type { Card as CardType } from '../../../models/card';
 import { createDefaultCard } from '../../../utils/dataUtils';
 
 import { useSortAndFilter } from '../../../hooks/useSortAndFilter';
+import { useGridDisplay } from '../../../hooks/useGridDisplay';
 import { type SortField } from '../../../utils/sortingUtils';
 import SortAndFilterControls, { type SortOption } from '../../../components/controls/SortAndFilterControls';
+import ReusableItemGrid from '../../../components/common/ReusableItemGrid';
+import PackCardItem from './PackCardItem';
 
-// 💡 FadedOverlayのインポートを削除
-// import { FadedOverlay } from '../../../components/common/FadedOverlay';
+import { DEFAULT_PACK_DECK_WIDTH, DEFAULT_PACK_DECK_HEIGHT } from '../../../utils/imageUtils';
+import type { GridSettings } from '../../../models/grid';
 
-// 共通画像ユーティリティと定数
-import {
-    getDisplayImageUrl,
-    DEFAULT_PACK_DECK_WIDTH as PREVIEW_W,
-    DEFAULT_PACK_DECK_HEIGHT as PREVIEW_H 
-} from '../../../utils/imageUtils';
-
-// カードグリッドのサイズを共通定数に合わせる
-const CARD_GRID_WIDTH = PREVIEW_W; 
-
-// 定義: カードリスト内のプレースホルダーオプション
-const CARD_PLACEHOLDER_OPTIONS = {
-    width: PREVIEW_W,
-    height: PREVIEW_H,
-    bgColor: '2c3e50', 
+// パック編集画面のカードリスト用グリッド設定
+const PACK_CARD_LIST_GRID_SETTINGS: GridSettings = {
+    minColumns: 2,
+    maxColumns: 10,
+    defaultColumns: {
+        xs: 2,
+        sm: 3,
+        md: 4,
+        lg: 5,
+        xl: 6,
+    },
+    aspectRatio: DEFAULT_PACK_DECK_WIDTH / DEFAULT_PACK_DECK_HEIGHT,
+    defaultSpacing: 16,
+    baseColumns: 5,
 };
 
 
@@ -107,6 +108,20 @@ const PackCardList: React.FC<PackCardListProps> = ({
         defaultSortField: 'number', // numberによるデフォルトソートを適用
         defaultSortOrder: 'asc'
     });
+
+    // グリッド表示設定
+    const gridDisplayProps = useGridDisplay({
+        settings: PACK_CARD_LIST_GRID_SETTINGS,
+        storageKey: 'packCardList',
+        userGlobalDefault: {
+            isUserDefaultEnabled: false,
+            globalColumns: null,
+            advancedResponsive: {
+                isEnabled: false,
+                columns: {},
+            }
+        },
+    });
     
     // propsで受け取ったリストをそのまま使用 (フック適用前の元のリスト)
     const cardsInPack = cards;
@@ -170,87 +185,33 @@ const PackCardList: React.FC<PackCardListProps> = ({
                     borderRadius: 1
                 }}
             >
-                {/* 収録カードのグリッド表示 */}
-                <Grid container spacing={2}>
-                    
-                    {/* 検索結果が0件の場合のメッセージ */}
-                    {isSearchActive && !hasFilteredResults && (
-                        <Grid size={{xs:12}}>
-                            <Alert severity="info" sx={{ m: 1 }}>
-                                "{searchTerm}" に一致するカードが見つかりませんでした。
-                            </Alert>
-                        </Grid>
-                    )}
-                    
-                    {/* カードリストの描画 (ソート・フィルタ後のデータを使用) */}
-                    {hasFilteredResults ? (
-                        displayedCards.map(card => {
-                            // 💡 変更: 論理削除済みフラグ (isInStore) の判定と関連ロジックを削除
-                            // const isFaded = !card.isInStore; // 削除
-                            
-                            // 💡 変更: Cardコンポーネントを FadedOverlay でラップするロジックを削除
-                            const cardContent = (
-                                <Card
-                                    sx={{
-                                        width: CARD_GRID_WIDTH,
-                                        cursor: 'pointer',
-                                        boxShadow: 1,
-                                        // 💡 変更: フェードロジック削除により pointerEvents の条件分岐も削除
-                                        // pointerEvents: isFaded ? 'none' : 'auto', // 削除
-                                    }}
-                                    onClick={() => handleSelectCard(card)}
-                                >
-                                    <CardActionArea>
-                                        <CardMedia
-                                            component="img"
-                                            image={getDisplayImageUrl(
-                                                card.imageUrl,
-                                                {
-                                                    ...CARD_PLACEHOLDER_OPTIONS,
-                                                    text: card.name
-                                                }
-                                            )}
-                                            alt={card.name}
-                                            sx={{ height: CARD_PLACEHOLDER_OPTIONS.height, objectFit: 'cover' }}
-                                        />
-                                        <CardContent sx={{ p: 1, '&:last-child': { pb: 1 } }}>
-                                            {/* No. の表示 */}
-                                            {card.number !== null && (
-                                                <Typography variant="overline" color="text.primary" sx={{ display: 'block', lineHeight: 1.2 }}>
-                                                    No. {card.number}
-                                                </Typography>
-                                            )}
-                                            <Typography variant="subtitle2" noWrap>
-                                                {card.name}
-                                                {/* 💡 変更: 論理削除済みを示すテキストを削除 */}
-                                            </Typography>
-                                            <Typography variant="caption" color="text.secondary">{card.rarity}</Typography>
-                                        </CardContent>
-                                    </CardActionArea>
-                                </Card>
-                            );
+                {/* 検索結果が0件の場合のメッセージ */}
+                {isSearchActive && !hasFilteredResults && (
+                    <Alert severity="info" sx={{ m: 1 }}>
+                        "{searchTerm}" に一致するカードが見つかりませんでした。
+                    </Alert>
+                )}
 
-                            return (
-                                // MaterialUI Grid の構文は保持 (sizeを使用)
-                                <Grid size={{xs:6,sm:4,md:3,lg:2}} key={card.cardId}>
-                                    {/* 💡 変更: FadedOverlayによるラップを削除し、cardContentを直接表示 */}
-                                    {cardContent}
-                                </Grid>
-                            );
-                        })
-                    ) : (
-                        // カードが元々1枚もなく、検索もされていない場合のメッセージ
-                        !isSearchActive && (
-                            <Grid size={{xs:12}}>
-                                <Box sx={{ p: 2, m: 1, border: '1px dashed grey', borderRadius: 1, width: '100%' }}>
-                                    <Typography variant="body2" color="text.secondary">
-                                        カードはまだ登録されていません。
-                                    </Typography>
-                                </Box>
-                            </Grid>
-                        )
-                    )}
-                </Grid>
+                {/* カードが元々1枚もなく、検索もされていない場合のメッセージ */}
+                {!hasFilteredResults && !isSearchActive && (
+                    <Box sx={{ p: 2, m: 1, border: '1px dashed grey', borderRadius: 1 }}>
+                        <Typography variant="body2" color="text.secondary">
+                            カードはまだ登録されていません。
+                        </Typography>
+                    </Box>
+                )}
+
+                {/* カードリストの描画 (ソート・フィルタ後のデータを使用) */}
+                {hasFilteredResults && (
+                    <ReusableItemGrid
+                        items={displayedCards as any}
+                        ItemComponent={PackCardItem as any}
+                        itemProps={{
+                            onSelectCard: handleSelectCard,
+                        }}
+                        {...gridDisplayProps}
+                    />
+                )}
             </Box>
         </Box>
     );

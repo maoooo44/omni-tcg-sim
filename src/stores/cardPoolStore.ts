@@ -9,7 +9,7 @@
  */
 
 import { create } from 'zustand';
-import { cardPoolDataService } from '../services/card-pool/cardPoolDataService';
+import { cardPoolService } from '../services/card-pool/cardPoolService';
 
 // ユーザーのカード資産の状態
 export interface CardPoolState {
@@ -45,8 +45,9 @@ export const useCardPoolStore = create<CardPoolState>((set, _get) => ({
         set({ isLoading: true }); 
         try {
             // サービス層のキャッシュロードアクションを呼び出す
-            // 💡 修正: cardPoolDataServiceが Map<string, number> を返すことを保証し、そのままセットする
-            const ownedCards = cardPoolDataService.getAllCardPoolFromCache();
+            // 💡 修正: cardPoolDataService.loadAllCardPoolFromCache() を実行し、DBからのロードとキャッシュの構築を保証
+            await cardPoolService.loadAllCardPoolFromCache(); // 👈 修正点
+            const ownedCards = cardPoolService.getAllCardPoolFromCache();
 
             
             // 総枚数を計算
@@ -94,7 +95,7 @@ export const useCardPoolStore = create<CardPoolState>((set, _get) => ({
         // DBへ変更を保存 (非同期)
         try {
             // cardPoolDataServiceのbulkSaveCardPoolEntriesを呼び出す
-            await cardPoolDataService.bulkSaveCardPoolEntries(countsToUpdate); 
+            await cardPoolService.bulkSaveCardPoolEntries(countsToUpdate); 
             console.log('[CardPoolStore] Bulk update saved to DB.');
         } catch (error) {
             console.error('Failed to save card pool after adding cards:', error);
@@ -127,7 +128,7 @@ export const useCardPoolStore = create<CardPoolState>((set, _get) => ({
         // DBへ変更を保存 (非同期)
         try {
             // cardPoolDataServiceのsaveCardPoolEntryを呼び出す
-            await cardPoolDataService.saveCardPoolEntry(cardId, newCount); 
+            await cardPoolService.saveCardPoolEntry(cardId, newCount); 
             console.log(`[CardPoolStore] Card count for ${cardId} saved to DB.`);
         } catch (error) {
             console.error('Failed to save card pool after setting count:', error);
@@ -137,7 +138,7 @@ export const useCardPoolStore = create<CardPoolState>((set, _get) => ({
     // カードプール全体を削除する
     deleteCardPool: async () => {
         // cardPoolDataServiceのdeleteCardPoolを呼び出す
-        await cardPoolDataService.deleteCardPool(); 
+        await cardPoolService.deleteCardPool(); 
         set(initialState);
         console.log("Card pool delete completed.");
     },
@@ -148,8 +149,8 @@ export const useCardPoolStore = create<CardPoolState>((set, _get) => ({
         // 1. DBを完全に上書き (クリアしてから新しいデータをセット)
         try {
             // cardPoolDataServiceのdeleteCardPoolとbulkSaveCardPoolEntriesを呼び出す
-            await cardPoolDataService.deleteCardPool(); 
-            await cardPoolDataService.bulkSaveCardPoolEntries(importedOwnedCards); 
+            await cardPoolService.deleteCardPool(); 
+            await cardPoolService.bulkSaveCardPoolEntries(importedOwnedCards); 
         } catch (error) {
             console.error("Failed to overwrite card pool in DB:", error);
             throw new Error("カードプールのDB上書きに失敗しました。");

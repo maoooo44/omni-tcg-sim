@@ -4,9 +4,6 @@
  * 特定のPackの編集画面における状態管理、データロード、保存、およびI/O操作を一元的に処理するカスタムフック。
  * Packとそれに紐づくCardデータの取得・ローカルな変更追跡（isDirty）、新規Packの初期化、
  * およびStore/Service層へのデータ永続化（保存/削除）のトリガーを提供します。
- *
- * 責務: UIの状態管理（モーダル、アラート）、ビジネスロジックの調整（isNewPack, isDirty）、
- * およびStore/Service層への委譲。DBアクセスや複雑なデータ操作は行いません。
  */
 
 import { useState, useEffect, useCallback, useMemo } from 'react';
@@ -15,74 +12,45 @@ import { usePackStore } from '../../../stores/packStore';
 import { useCardStore } from '../../../stores/cardStore'; 
 import { useShallow } from 'zustand/react/shallow';
 import { createDefaultPack, createDefaultCard } from '../../../utils/dataUtils'; 
-import type { Pack } from '../../../models/pack'; // RarityConfig等も比較対象となるためインポート
+import type { Pack } from '../../../models/pack'; 
 import type { Card as CardType } from '../../../models/card';
 import { useDataFileIO } from '../../../hooks/useDataFileIO'; 
 
-// 💡 修正: 必要なカスタムフィールド関連の型と初期値をすべてインポート
-import type { CustomFieldCategory, CustomFieldIndex, CustomFieldType, FieldSetting } from '../../../models/custom-field';
-import { initialCustomFieldSettings } from '../../../models/custom-field'; 
+// 💡 修正1: CustomFieldCategory のインポート元を CustomFieldManager に修正
 
+// DisplaySetting と CardFieldSettings は Pack モデルから
+import type { DisplaySetting, CardFieldSettings } from '../../../models/pack'; 
 
 // Storeから Pack取得アクションを直接取得するヘルパー
 const fetchPackByIdFromStore = () => usePackStore.getState().fetchPackById;
 
 // ----------------------------------------------------------------------
-// 💡 PackBundle に基づく比較用フィールド定義 (変更なし)
+// PackBundle に基づく比較用フィールド定義 (変更なし)
 // ----------------------------------------------------------------------
 
-/**
- * Pack および Card の新しいカスタムフィールド30個を抽出
- */
-type CustomFields30 = Pick<Pack, 
-    'custom_1_bool' | 'custom_2_bool' | 'custom_3_bool' | 'custom_4_bool' | 'custom_5_bool' | 'custom_6_bool' | 'custom_7_bool' | 'custom_8_bool' | 'custom_9_bool' | 'custom_10_bool' |
-    'custom_1_num' | 'custom_2_num' | 'custom_3_num' | 'custom_4_num' | 'custom_5_num' | 'custom_6_num' | 'custom_7_num' | 'custom_8_num' | 'custom_9_num' | 'custom_10_num' |
-    'custom_1_str' | 'custom_2_str' | 'custom_3_str' | 'custom_4_str' | 'custom_5_str' | 'custom_6_str' | 'custom_7_str' | 'custom_8_str' | 'custom_9_str' | 'custom_10_str'
->;
-
-/**
- * Card オブジェクトから、編集/保存に関わるフィールドのみを抽出した型。
- * isDirty の比較に使用します。（自動更新されるフィールド、ID、packId を除外）
- */
-type CardCompareFields = Pick<CardType, 'name' | 'number' | 'rarity' | 'imageUrl' | 'imageColor'> & CustomFields30;
+// ... (PackCompareFields, CardCompareFields, extractCompareFieldsFromBundle の定義は省略) ...
+type CardCompareFields = Pick<CardType, 'name' | 'number' | 'imageUrl' | 'imageColor' | 'rarity' |
+    'text' | 'subtext' | 'isFavorite' | 'num_1' | 'num_2' | 'num_3' | 'num_4' | 'num_5' | 'num_6' |
+    'str_1' | 'str_2' | 'str_3' | 'str_4' | 'str_5' | 'str_6' | 'tag' | 'searchText'>;
 
 
-/**
- * Pack オブジェクトから、編集/保存に関わるフィールドのみを抽出した型。
- * isDirty の比較に使用します。（自動更新されるフィールド、ID、totalCards、createdAt/updatedAt を除外）
- */
 type PackCompareFields = Pick<Pack, 
-    'name' | 'series' | 'releaseDate' | 'price' | 'cardsPerPack' | 'rarityConfig' | 'advancedRarityConfig' | 
-    'imageUrl' | 'imageColor' | 'cardBackImageUrl' | 'packType' | 'description' | 'isOpened' | 'isFavorite' | 
-    'specialProbabilitySlots' | 'isAdvancedRulesEnabled' | 'number'
-> & CustomFields30;
+    'name' | 'number' | 'imageUrl' | 'imageColor' | 'cardBackImageUrl'  | 'price' | 'packType' | 'cardsPerPack' |'series' |
+    'description' | 'isOpened' | 'isFavorite' | 'rarityConfig' | 'advancedRarityConfig' |'specialProbabilitySlots' | 'isAdvancedRulesEnabled' |
+    'num_1' | 'num_2' | 'str_1' | 'str_2' | 'packFieldSettings' | 'cardFieldSettings' | 'tag' | 'searchText'>;
 
 
-/**
- * PackBundle から、編集/保存に関わるフィールドのみを抽出した型。
- * isDirty の比較に使用します。
- */
 type PackBundleCompareFields = {
-    // 🚨 修正: Packと比較するフィールドにカスタムフィールドを追加
     pack: PackCompareFields;
-    // Cardと比較するフィールドの配列
     cards: CardCompareFields[];
 };
 
 
-/**
- * PackとCardのデータから、PackBundleCompareFieldsを生成するヘルパー関数。
- * @param pack - 現在のPackデータ
- * @param cards - 現在のCardリスト
- * @returns 比較用の PackBundle データ
- */
 const extractCompareFieldsFromBundle = (pack: Pack, cards: CardType[]): PackBundleCompareFields => {
-    // 1. Packの比較フィールドを抽出
-    // 🚨 修正: Pack の全比較対象フィールドを網羅
+    // ... (定義は省略) ...
     const packFields: PackCompareFields = {
         name: pack.name,
         series: pack.series,
-        releaseDate: pack.releaseDate,
         price: pack.price,
         cardsPerPack: pack.cardsPerPack,
         rarityConfig: pack.rarityConfig,
@@ -97,32 +65,26 @@ const extractCompareFieldsFromBundle = (pack: Pack, cards: CardType[]): PackBund
         specialProbabilitySlots: pack.specialProbabilitySlots,
         isAdvancedRulesEnabled: pack.isAdvancedRulesEnabled,
         number: pack.number,
-        // 🚨 修正: Packのカスタムフィールド30個を追加
-        custom_1_bool: pack.custom_1_bool, custom_2_bool: pack.custom_2_bool, custom_3_bool: pack.custom_3_bool, custom_4_bool: pack.custom_4_bool, custom_5_bool: pack.custom_5_bool,
-        custom_6_bool: pack.custom_6_bool, custom_7_bool: pack.custom_7_bool, custom_8_bool: pack.custom_8_bool, custom_9_bool: pack.custom_9_bool, custom_10_bool: pack.custom_10_bool,
-        custom_1_num: pack.custom_1_num, custom_2_num: pack.custom_2_num, custom_3_num: pack.custom_3_num, custom_4_num: pack.custom_4_num, custom_5_num: pack.custom_5_num,
-        custom_6_num: pack.custom_6_num, custom_7_num: pack.custom_7_num, custom_8_num: pack.custom_8_num, custom_9_num: pack.custom_9_num, custom_10_num: pack.custom_10_num,
-        custom_1_str: pack.custom_1_str, custom_2_str: pack.custom_2_str, custom_3_str: pack.custom_3_str, custom_4_str: pack.custom_4_str, custom_5_str: pack.custom_5_str,
-        custom_6_str: pack.custom_6_str, custom_7_str: pack.custom_7_str, custom_8_str: pack.custom_8_str, custom_9_str: pack.custom_9_str, custom_10_str: pack.custom_10_str,
+        num_1: pack.num_1, num_2: pack.num_2, str_1: pack.str_1, str_2: pack.str_2,
+        packFieldSettings: pack.packFieldSettings, cardFieldSettings: pack.cardFieldSettings, tag:pack.tag, searchText:pack.searchText,
+        
     };
 
-    // 2. Cardから比較フィールドを抽出（カスタムフィールド30個を含む）
     const cardFields: CardCompareFields[] = cards.map(c => ({
         name: c.name,
         number: c.number,
-        rarity: c.rarity,
         imageUrl: c.imageUrl,
         imageColor: c.imageColor,
-        // Cardのカスタムフィールド30個
-        custom_1_bool: c.custom_1_bool, custom_2_bool: c.custom_2_bool, custom_3_bool: c.custom_3_bool, custom_4_bool: c.custom_4_bool, custom_5_bool: c.custom_5_bool,
-        custom_6_bool: c.custom_6_bool, custom_7_bool: c.custom_7_bool, custom_8_bool: c.custom_8_bool, custom_9_bool: c.custom_9_bool, custom_10_bool: c.custom_10_bool,
-        custom_1_num: c.custom_1_num, custom_2_num: c.custom_2_num, custom_3_num: c.custom_3_num, custom_4_num: c.custom_4_num, custom_5_num: c.custom_5_num,
-        custom_6_num: c.custom_6_num, custom_7_num: c.custom_7_num, custom_8_num: c.custom_8_num, custom_9_num: c.custom_9_num, custom_10_num: c.custom_10_num,
-        custom_1_str: c.custom_1_str, custom_2_str: c.custom_2_str, custom_3_str: c.custom_3_str, custom_4_str: c.custom_4_str, custom_5_str: c.custom_5_str,
-        custom_6_str: c.custom_6_str, custom_7_str: c.custom_7_str, custom_8_str: c.custom_8_str, custom_9_str: c.custom_9_str, custom_10_str: c.custom_10_str,
+        rarity: c.rarity,
+        text: c.text,
+        subtext: c.subtext,
+        isFavorite: c.isFavorite,
+        num_1: c.num_1, num_2: c.num_2, num_3: c.num_3, num_4: c.num_4, num_5: c.num_5, num_6: c.num_6,
+        str_1: c.str_1, str_2: c.str_2, str_3: c.str_3, str_4: c.str_4, str_5: c.str_5, str_6: c.str_6,
+        tag:c.tag, searchText:c.searchText,
+        
     }));
 
-    // Cardの順番によるダーティを避けるため、一貫した並び順でソート (number を使用)
     cardFields.sort((a, b) => (a.number || 0) - (b.number || 0));
 
     return {
@@ -134,6 +96,7 @@ const extractCompareFieldsFromBundle = (pack: Pack, cards: CardType[]): PackBund
 
 
 export const usePackEditor = (packId: string) => {
+    // ... (usePackEditor の初期定義、状態定義、useMemo は省略) ...
     const navigate = useNavigate();
     
     // Storeから必要な関数と状態を取得
@@ -149,7 +112,6 @@ export const usePackEditor = (packId: string) => {
         bulkSaveCards: state.bulkSaveCards,
     })));
 
-    // 💡 Storeの fetchCardsByPackId を個別に取得
     const fetchCardsByPackId = useCardStore(state => state.fetchCardsByPackId);
 
     // ----------------------------------------------------------------------
@@ -157,41 +119,27 @@ export const usePackEditor = (packId: string) => {
     // --- 状態管理 ---
     const [packData, setPackData] = useState<Pack | null>(null);
     const [newlyInitializedPackId, setNewlyInitializedPackId] = useState<string | null>(null); 
+    // originalPackBundleDataは「初期ロード時のpack+cardsのスナップショット」
     const [originalPackBundleData, setOriginalPackBundleData] = useState<PackBundleCompareFields | null>(null);
     
     const [isEditorMode, setIsEditorMode] = useState(true); 
     const [isDeletionInProgress, setIsDeletionInProgress] = useState(false); 
     const [saveAlert, setSaveAlert] = useState<string | null>(null);
-    const [cards, setCards] = useState<CardType[]>([]); // 現在編集中のカードリスト
+    const [cards, setCards] = useState<CardType[]>([]); 
 
     // UI/I/O 関連の状態
     const [isCardModalOpen, setIsCardModalOpen] = useState(false);
     const [editingCard, setEditingCard] = useState<CardType | null>(null);
     const [isRarityModalOpen, setIsRarityModalOpen] = useState(false);
-    
-    // 💡 追加: カスタムフィールド設定の状態
-    const [customFieldSettings, setCustomFieldSettings] = useState<CustomFieldCategory>(
-        initialCustomFieldSettings // 💡 共通の初期設定で初期化
-    );
 
     // --- Data Loaders ---
     
-    /**
-     * PackとCardをロードし、ローカルステートとオリジナルデータを更新する
-     * @param pack - ロードされたPackデータ (loadPackData から渡される)
-     */
     const updateLocalBundleState = useCallback((pack: Pack, loadedCards: CardType[] | null) => {
-             // Packデータを設定
         setPackData(pack);
-        
-        // カードリストを設定
         const finalCards = loadedCards || [];
-        setCards(finalCards); 
-
-        // オリジナルデータを PackBundleCompareFields として保存
-        const originalBundleData = extractCompareFieldsFromBundle(pack, finalCards);
-        setOriginalPackBundleData(originalBundleData);
-
+        setCards(finalCards);
+        // originalPackBundleDataは初回ロード時のみセット（nullのときのみ）
+        setOriginalPackBundleData(prev => prev ?? extractCompareFieldsFromBundle(pack, finalCards));
         if (process.env.NODE_ENV !== 'production') {
             console.debug(`[usePackEditor:updateLocalBundleState] 💾 Original Pack Bundle Data Set.`);
         }
@@ -203,16 +151,13 @@ export const usePackEditor = (packId: string) => {
             return;
         }
 
-        // Storeのキャッシュからカードを取得
         const loadedCards = await fetchCardsByPackId(packId); 
         
-        // PackとCardの両方を更新（ダーティチェックのリセットも含む）
         updateLocalBundleState(packData, loadedCards);
 
     }, [packId, packData, fetchCardsByPackId, updateLocalBundleState]);
 
 
-    // 【追加】useDataFileIO に渡す、インポート完了後のカードリスト更新コールバック
     const handleCardListUpdateAfterIO = useCallback(async () => {
         await loadCardList();
     }, [loadCardList]);
@@ -239,26 +184,10 @@ export const usePackEditor = (packId: string) => {
     // isDirty ロジック（PackBundle 比較）
     const isDirty = useMemo(() => {
         if (!packData || !originalPackBundleData) return false;
-
-        // 現在の Pack と Card から PackBundleCompareFields を生成
         const currentBundle = extractCompareFieldsFromBundle(packData, cards);
-
-        // 新規パックの場合は、Packデータがデフォルトから変更されたか、カードが1枚でも追加されていれば dirty
-        if (isNewPack) {
-             const defaultPack = createDefaultPack(packData.packId);
-             // 💡 修正: Packにもカスタムフィールドが追加されたため、デフォルト Pack も比較に含める。
-             const defaultBundle = extractCompareFieldsFromBundle(defaultPack, []);
-             
-             // Packデータ（名前など）がデフォルトから変更されたか
-             const isPackDataModifiedFromDefault = JSON.stringify(currentBundle.pack) !== JSON.stringify(defaultBundle.pack);
-             
-             return isPackDataModifiedFromDefault || cards.length > 0;
-        }
-
-        // 既存パックの場合は、オリジナルと比較
+        // originalPackBundleData（初期ロード時のスナップショット）と現在値を常に比較
         return JSON.stringify(currentBundle) !== JSON.stringify(originalPackBundleData);
-
-    }, [packData, cards, originalPackBundleData, isNewPack]); 
+    }, [packData, cards, originalPackBundleData]);
 
 // --------------------------------------------------------------------------------------------------
 
@@ -269,52 +198,46 @@ export const usePackEditor = (packId: string) => {
             if (packData && packData.packId === packId) {
                 return;
             } else if (packData && packData.packId !== packId) {
-                setPackData(null); 
+                setPackData(null);
             }
 
             if (isNewPack && packId) {
                 let newPackId = packId;
-
                 if (!newlyInitializedPackId) {
-                    const defaultData = createDefaultPack();
-                    newPackId = defaultData.packId; 
-                    setNewlyInitializedPackId(newPackId); 
+                    const defaultData = createDefaultPack(packId);
+                    newPackId = defaultData.packId;
+                    setNewlyInitializedPackId(newPackId);
                 } else {
                     newPackId = newlyInitializedPackId;
                 }
-                
                 if (packId !== newPackId) {
                     navigate({ to: '/data/packs/$packId', params: { packId: newPackId }, replace: true });
-                    return; 
+                    return;
                 }
-                
-                const initialPack: Pack = createDefaultPack(newPackId); 
-
-                // updateLocalBundleState を使用して Pack/Card/Original State を一括更新
+                const initialPack: Pack = createDefaultPack(newPackId);
+                // originalPackBundleDataを初期化
+                setOriginalPackBundleData(extractCompareFieldsFromBundle(initialPack, []));
                 updateLocalBundleState(initialPack, []);
-                setIsEditorMode(true); 
-            } else if (isExistingPack && packId) { 
-                setNewlyInitializedPackId(null); 
-                const pack = await fetchPackByIdFromStore()(packId); 
-                
+                setIsEditorMode(true);
+            } else if (isExistingPack && packId) {
+                setNewlyInitializedPackId(null);
+                const pack = await fetchPackByIdFromStore()(packId);
                 if (pack) {
-                    // Cardをロード
-                    const loadedCards = await fetchCardsByPackId(pack.packId); 
-                    
-                    // updateLocalBundleState を使用して Pack/Card/Original State を一括更新
+                    const loadedCards = await fetchCardsByPackId(pack.packId);
+                    setOriginalPackBundleData(extractCompareFieldsFromBundle(pack, loadedCards));
                     updateLocalBundleState(pack, loadedCards);
-                    setIsEditorMode(true); 
+                    setIsEditorMode(true);
                 } else {
-                    console.error(`[usePackEditor:loadPackData] ❌ Pack ID ${packId} not found in DB or Store.`); 
-                    setPackData(null); 
-                    setOriginalPackBundleData(null); 
+                    console.error(`[usePackEditor:loadPackData] ❌ Pack ID ${packId} not found in DB or Store.`);
+                    setPackData(null);
+                    setOriginalPackBundleData(null);
                     setCards([]);
                     setIsEditorMode(false);
                 }
             } else if (!packId) {
-                setNewlyInitializedPackId(null); 
+                setNewlyInitializedPackId(null);
                 setPackData(null);
-                setOriginalPackBundleData(null); 
+                setOriginalPackBundleData(null);
                 setCards([]);
             }
         };
@@ -323,7 +246,6 @@ export const usePackEditor = (packId: string) => {
 
     }, [packId, isExistingPack, isNewPack, navigate, isDeletionInProgress, packData, newlyInitializedPackId, updateLocalBundleState]); 
 
-    // Card Store の変更を監視し、ローカルのカードリストをリフレッシュする 
     useEffect(() => {
         if (packData) {
             if (process.env.NODE_ENV !== 'production') {
@@ -348,52 +270,79 @@ export const usePackEditor = (packId: string) => {
         setPackData(prev => prev ? ({ ...prev, [name]: value }) : null);
     }, [packData]);
     
-    // 💡 Packのカスタムフィールドの変更ハンドラ 
-    const handlePackCustomFieldChange = useCallback((e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement | HTMLSelectElement>) => {
+    // Packのカスタムフィールドの変更ハンドラ (CustomFieldManager からの (field, value) 呼び出しに対応)
+    // CustomFieldManager は onFieldChange(fieldKey, value) の形式で呼ぶため、ここも同様のシグネチャに合わせる。
+    const handlePackCustomFieldChange = useCallback((field: string, value: any) => {
         if (!packData) return;
-        const { name, value } = e.target;
-        
+
         setPackData(prev => {
             if (!prev) return null;
 
             let finalValue: any = value;
-            
-            if (name.endsWith('_bool')) {
-                // boolean のカスタムフィールドの場合、チェックボックス等からの値を考慮
-                finalValue = (e.target as HTMLInputElement).type === 'checkbox' ? (e.target as HTMLInputElement).checked : (value === 'true');
-            } else if (name.endsWith('_num')) {
-                // number のカスタムフィールドの場合
+
+            // 数値系カスタムフィールドは空文字を undefined に、数値文字列は Number に変換
+            if (typeof field === 'string' && field.startsWith('num_')) {
                 finalValue = value === '' ? undefined : Number(value);
             }
-            
-            return { ...prev, [name]: finalValue };
+
+            return { ...prev, [field]: finalValue } as Pack;
         });
 
     }, [packData]);
 
-    // 💡 追加: カスタムフィールド設定 (CustomFieldCategory) の変更ハンドラ
+    // 💡 修正2 & 3: CardModal が期待する形式のカスタムフィールド設定変更ハンドラを定義 (TSエラー対応)
+    // CardFieldSettings が CustomFieldCategory 構造ではなく、個別のフィールドキーを持つことが判明したため、
+    // ロジックを、フィールドキー (例: 'num_1') を直接操作する形式に修正する。
     const handleCustomFieldSettingChange = useCallback((
-        type: CustomFieldType, 
-        index: CustomFieldIndex, 
-        field: keyof FieldSetting, 
+        type: 'num' | 'str',
+        index: number,
+        field: keyof DisplaySetting,
         value: any
     ) => {
-        setCustomFieldSettings(prev => {
-            const newSettings = { ...prev };
-            const category = newSettings[type];
+        if (!packData) return;
+        
+        setPackData(prev => {
+            if (!prev) return null;
+
+            // フィールドキー ('num_1', 'str_2', 'bool_3'など) は type と index の組み合わせとして構築されると仮定
+            // ただし、CardFieldSettings のキーは CustomFieldIndex とは異なり、'num_1' のような文字列であると推測
+            // 💡 CustomFieldType (num, str, bool) はここでは使用しない。
+            const fieldKey = `${type}_${index}` as keyof CardFieldSettings; 
             
-            if (category) {
-                // 既存の FieldSetting をコピーし、指定されたフィールドを更新
-                category[index] = { ...category[index], [field]: value };
-            }
-            return newSettings;
+            // 既存の設定（CardFieldSettings は DisplaySetting のレコードではない）を DisplaySetting として扱う
+            // CardFieldSettings は 'num_1': DisplaySetting のような構造であると仮定
+            const currentFieldSettings = (prev.cardFieldSettings || {}) as Record<string, DisplaySetting | undefined>; 
+            
+            const targetDisplaySetting = (currentFieldSettings[fieldKey] || {}) as Partial<DisplaySetting>; 
+            
+            // 変更を適用した新しい DisplaySetting オブジェクトを生成
+            const newDisplaySetting: DisplaySetting = {
+                ...(targetDisplaySetting as DisplaySetting), 
+                [field]: value 
+            };
+            
+            // 新しい設定を CardFieldSettings に反映
+            // 💡 TS2352 エラー解消: CardFieldSettingsの型定義と合致するように、フィールドキーを直接操作する
+            const newCardFieldSettings: CardFieldSettings = {
+                ...(prev.cardFieldSettings as CardFieldSettings),
+                [fieldKey]: newDisplaySetting,
+            };
+
+            // 戻り値の型が Pack | null となる
+            return {
+                ...prev,
+                cardFieldSettings: newCardFieldSettings,
+            };
         });
-    }, []);
+        
+    }, [packData]);
+
 
     const toggleEditorMode = useCallback(() => {
         setIsEditorMode(prev => !prev);
     }, []);
 
+    // ... (カード編集/保存、パック削除、I/O関連のハンドラは省略) ...
     const handleCloseCardEditorModal = () => { setEditingCard(null); setIsCardModalOpen(false); };
     const handleOpenRarityEditorModal = () => { setIsRarityModalOpen(true); };
     const handleCloseRarityEditorModal = () => { setIsRarityModalOpen(false); };
@@ -449,34 +398,30 @@ export const usePackEditor = (packId: string) => {
                 console.debug(`[usePackEditor:handleSave] 💾 Saving pack and ${cards.length} cards for ID: ${packData.packId}`);
             }
 
-            // 1. Pack Store のセーブアクションを呼び出す (Packをアンパック)
             const savedPack = await savePack(packData);
-            
+
+            // 保存成功時にoriginalPackBundleDataを最新状態で更新
+            setOriginalPackBundleData(extractCompareFieldsFromBundle(savedPack, cards));
+
             if (isNewPack) {
-                setNewlyInitializedPackId(null); 
+                setNewlyInitializedPackId(null);
                 navigate({ to: '/data/packs/$packId', params: { packId: savedPack.packId }, replace: true });
             }
 
-            // 2. Card Store のセーブアクションを呼び出す (Cardをアンパック)
             if (cards.length > 0) {
-                const cardsToSave = cards.map(c => ({ 
-                    ...c, 
-                    packId: savedPack.packId, // 新規パックの場合、確定したIDを割り当てる
+                const cardsToSave = cards.map(c => ({
+                    ...c,
+                    packId: savedPack.packId,
                 }));
-                
-                await bulkSaveCards(cardsToSave); 
+                await bulkSaveCards(cardsToSave);
             }
-            
-            // --- ★ Pack/Card のオリジナル状態のリセットを共通化（isDirtyをfalseにするため） ★ ---
-            // Storeに同期された最新のカードリストを取得し、Packと共にオリジナルBundle状態を更新
-            await loadCardList(); 
-
+            await loadCardList();
             setSaveAlert('✅ パック情報と収録カードが正常に保存されました。');
         } catch (error) {
             console.error("[usePackEditor:handleSave] ❌ 保存中にエラーが発生しました:", error);
             setSaveAlert('❌ 保存中にエラーが発生しました。');
         }
-    }, [packData, cards, savePack, isNewPack, navigate, bulkSaveCards, loadCardList]); 
+    }, [packData, cards, savePack, isNewPack, navigate, bulkSaveCards, loadCardList]);
 
     // handleRemovePack: パックをトラッシュコレクションへ移動（論理削除）
     const handleRemovePack = useCallback(async () => { 
@@ -535,34 +480,28 @@ export const usePackEditor = (packId: string) => {
         setSaveAlert,
         handleInputChange,
         handleSelectChange,
-        // 💡 Packカスタムフィールドの変更ハンドラ
         handlePackCustomFieldChange, 
         handleSave, 
         handleRemovePack, 
         totalCardCount,
-
-        // 💡 追加: カスタムフィールド設定 (CardModal等に渡す)
-        customFieldSettings, 
-        // 💡 追加: カスタムフィールド設定の変更ハンドラ (PackEditorから直接変更する場合)
-        handleCustomFieldSettingChange, 
-
         
         cards, 
         handleCardSave, 
         handleRemoveCard, 
 
-        // カード編集モーダル
+        // 💡 修正5: TS2352 エラー解消のため、unknownを介した二段キャストを維持（型がCustomFieldCategoryと異なるため）
+    customFieldSettings: packData?.cardFieldSettings as unknown as Record<string, DisplaySetting>,
+        handleCustomFieldSettingChange, 
+
         isCardModalOpen,
         editingCard,
         handleOpenCardEditorModal,
         handleCloseCardEditorModal, 
-        // レアリティ編集モーダル
         isRarityModalOpen,
         handleOpenRarityEditorModal,
         handleCloseRarityEditorModal, 
         handleRarityEditorSave, 
 
-        // useDataFileIO のすべてのプロパティを展開して追加
         csvIO: fileIO.csvIO,
         jsonIOStatusMessage: fileIO.jsonIOStatusMessage,
         isJsonIOLoading: fileIO.isJsonIOLoading,

@@ -4,30 +4,24 @@
  * ユーザーの設定（DTCG/Free/God Mode）および、それに関連するメタデータ（チート回数）の
  * グローバルな状態を管理するZustandストア。
  * 責務は、モード間の複雑なロジック処理と、userDataServiceを介した設定の永続化である。
- * 💡 修正: カスタムフィールド設定 (customFieldConfig) の更新と永続化アクションを追加。
+ * 💡 修正: カスタムフィールド設定 (customFieldConfig) の更新と永続化アクションを削除。
+ * 📌 修正: gridSettings の状態とロジックを追加。
  */
 
 import { create } from 'zustand';
 // userDataService から PersistedUserSettings と DEFAULT_SETTINGS をインポート
-import { userDataService, type PersistedUserSettings, DEFAULT_SETTINGS } from '../services/user-data/userDataService'; 
+import { userDataService, DEFAULT_SETTINGS } from '../services/user-data/userDataService'; 
 // models/userData から必要な型をインポート
-import { 
-    type CurrentGameMode, 
-    type UserDataState, 
-    type CustomFieldConfig,
-
-} from '../models/userData'; 
-import type { CustomFieldType, CustomFieldIndex, FieldSetting } from '../models/custom-field';
+import type{ CurrentGameMode, UserDataState, GridDisplayDefault, PersistedUserSettings, } from '../models/userData'; 
+// 💡 削除: CustomFieldType, CustomFieldIndex, FieldSetting のインポートを削除
 
 
 // ----------------------------------------
 // 💡 UserDataStore インターフェースの定義 (状態 + アクション)
 // ----------------------------------------
 
-/**
- * @description ユーザーデータのZustandストア全体（状態 + アクション）のインターフェース
- * 💡 UserDataState を継承し、アクションを追加する
- */
+// ... (UserDataStore インターフェースの定義は変更なし) ...
+
 export interface UserDataStore extends UserDataState {
     // 💡 状態に依存するセレクター
     getCurrentMode: () => CurrentGameMode;
@@ -40,15 +34,13 @@ export interface UserDataStore extends UserDataState {
     /** 外部データ（インポート）でユーザーデータを更新する */
     importUserData: (data: Omit<UserDataState & { coins: number }, 'coins'>) => Promise<void>;
 
-    /** * 💡 新規追加: カスタムフィールドの設定 (displayName, isEnabled, description) を更新し永続化する 
-     * itemType: 'Card', 'Deck', 'Pack'
-     */
-    onSettingChange: (
-        itemType: 'Card' | 'Deck' | 'Pack',
-        type: CustomFieldType, 
-        index: CustomFieldIndex, 
-        settingUpdates: Partial<FieldSetting>
-    ) => Promise<void>; // 永続化を伴うため Promise<void>
+    /** * 💡 削除: カスタムフィールドの設定 (displayName, isEnabled, description) を更新し永続化するアクションを削除 */
+
+    // 📌 新規追加: GridDisplayDefault の設定を更新するアクション
+    setGridDisplayDefault: (
+        componentKey: 'cardPool', // 現時点では cardPool のみ
+        updates: Partial<GridDisplayDefault>
+    ) => Promise<void>;
 }
 
 
@@ -56,23 +48,23 @@ export interface UserDataStore extends UserDataState {
 // 初期値設定
 // ----------------------------------------
 
-// 💡 customFieldConfig の初期値を追加 (DEFAULT_SETTINGSから取得)
-const initialCustomFieldConfig: CustomFieldConfig = { 
-    Pack: DEFAULT_SETTINGS.customFieldConfig.Pack,
-    Card: DEFAULT_SETTINGS.customFieldConfig.Card,
-    Deck: DEFAULT_SETTINGS.customFieldConfig.Deck,
-};
+// 💡 削除: customFieldConfig の初期値設定を削除
+
+// 📌 既存: gridSettings の初期値
+const initialGridSettings = DEFAULT_SETTINGS.gridSettings;
 
 // ユーザーデータの初期値 (状態部分のみ)
 const initialState: UserDataState = {
     isDTCGEnabled: true, 
     isGodMode: false,
     cheatCount: 0,
-    isAllViewMode: false, 
     
     gcSettings: DEFAULT_SETTINGS.gcSettings,
     
-    customFieldConfig: initialCustomFieldConfig, 
+    // 💡 削除: customFieldConfig を削除
+
+    // 📌 既存: gridSettings の初期値を設定
+    gridSettings: initialGridSettings,
 };
 
 
@@ -81,16 +73,17 @@ const initialState: UserDataState = {
 // ----------------------------------------
 
 // DB保存のための永続化可能な状態を抽出するヘルパー関数
-// PersistedUserSettings に customFieldConfig が含まれる前提で実装
 const getPersistableState = (state: UserDataStore): PersistedUserSettings => ({
     isDTCGEnabled: state.isDTCGEnabled,
     isGodMode: state.isGodMode,
     cheatCount: state.cheatCount,
-    isAllViewMode: state.isAllViewMode, 
     
     gcSettings: state.gcSettings,
     
-    customFieldConfig: state.customFieldConfig, 
+    // 💡 削除: customFieldConfig を削除
+
+    // 📌 gridSettings を永続化対象に追加
+    gridSettings: state.gridSettings,
 });
 
 
@@ -117,12 +110,13 @@ export const useUserDataStore = create<UserDataStore>((set, get) => ({
                     isDTCGEnabled: settings.isDTCGEnabled,
                     isGodMode: settings.isGodMode,
                     cheatCount: settings.cheatCount,
-                    isAllViewMode: settings.isAllViewMode ?? initialState.isAllViewMode,
                     
                     gcSettings: settings.gcSettings,
                     
-                    // customFieldConfig をロード（未設定の場合は初期値）
-                    customFieldConfig: settings.customFieldConfig ?? initialState.customFieldConfig,
+                    // 💡 削除: customFieldConfig のロードを削除
+
+                    // 📌 gridSettings をロード
+                    gridSettings: settings.gridSettings,
                 });
             }
             console.log("✅ User data initialized.");
@@ -167,46 +161,46 @@ export const useUserDataStore = create<UserDataStore>((set, get) => ({
             isDTCGEnabled: data.isDTCGEnabled,
             isGodMode: data.isGodMode,
             cheatCount: data.cheatCount,
-            isAllViewMode: data.isAllViewMode,
             
             gcSettings: data.gcSettings, 
             
-            customFieldConfig: data.customFieldConfig,
+            // 💡 削除: customFieldConfig のインポートを削除
+
+            // 📌 gridSettings をインポート
+            gridSettings: data.gridSettings,
         });
         await userDataService.saveSettings(getPersistableState(get()));
         console.log("User data imported and saved.");
     },
 
     // ----------------------------------------
-    // 💡 新規実装: onSettingChange
+    // 💡 削除: onSettingChange アクションの実装を削除
     // ----------------------------------------
-    onSettingChange: async (itemType, type, index, settingUpdates) => {
-        set((state) => {
-            // customFieldConfig 全体をシャローコピー
-            const newConfig = { ...state.customFieldConfig };
-            
-            // 該当する itemType の設定をシャローコピー
-            const newCategory = { ...newConfig[itemType] };
-            
-            // 該当する CustomFieldType の設定をシャローコピー
-            const newTypeFields = { ...newCategory[type] };
-            
-            // 該当フィールドの現在の設定を取得し、更新内容をマージ
-            const currentSetting = newTypeFields[index];
-            newTypeFields[index] = { 
-                ...currentSetting,
-                ...settingUpdates 
-            } as FieldSetting; // FieldSettingとしてキャスト
-            
-            // 階層を遡って新しい設定オブジェクトを構築
-            newCategory[type] = newTypeFields;
-            newConfig[itemType] = newCategory;
 
-            return { customFieldConfig: newConfig };
+    // ----------------------------------------
+    // 📌 既存実装: setGridDisplayDefault
+    // ----------------------------------------
+    setGridDisplayDefault: async (componentKey, updates) => {
+        set((state) => {
+            // 階層のシャローコピー
+            const newGridSettings = { ...state.gridSettings };
+            const currentSettings = newGridSettings[componentKey];
+            
+            // 該当するコンポーネントの設定を更新
+            newGridSettings[componentKey] = {
+                ...currentSettings,
+                ...updates,
+                // advancedResponsive のネストされたオブジェクトも更新対象にある可能性
+                advancedResponsive: {
+                    ...currentSettings.advancedResponsive,
+                    ...updates.advancedResponsive,
+                }
+            };
+            return { gridSettings: newGridSettings };
         });
-        
+
         // 永続化を実行
         await userDataService.saveSettings(getPersistableState(get()));
-        console.log(`✅ Custom Field Setting updated for ${itemType} ${type}${index}`);
-    },
+        console.log(`✅ Grid Display Default updated for ${componentKey}.`);
+    }
 }));

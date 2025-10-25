@@ -184,7 +184,7 @@ const PackEditorToolbar: React.FC<PackEditorToolbarProps> = ({
                         // 論理削除されたパックではないため、ここでは isCurrentEditorMode のチェックは不要だが、既存コードに合わせて残す
                         disabled={!isCurrentEditorMode} 
                     >
-                        ストアから除外
+                        ゴミ箱に入れる
                     </Button>
                 )}
             </Box>

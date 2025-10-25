@@ -101,12 +101,12 @@ export const useModeSwitcher = (coins: number): ModeSwitcher => {
         if (!targetMode) return;
         const mode = targetMode;
 
-        // 破壊的な変更の実行 (DTCG -> FREE)
-        if (currentMode === 'dtcg' && mode === 'free') {
+        // 破壊的な変更の実行 (FREE -> DTCG)
+        if (currentMode === 'free' && mode === 'dtcg') {
             await clearCardPool();
             console.log('カードプール内の所有カード情報を全て削除しました。');
         }
-        
+
         // モードの切り替え実行
         if (mode === 'dtcg') {
             await setDTCGMode(true);
@@ -129,9 +129,15 @@ export const useModeSwitcher = (coins: number): ModeSwitcher => {
 
         if (newMode === currentMode) return;
 
+
         // FREE -> GOD の禁止ロジック
         if (currentMode === 'free' && newMode === 'god') {
             alert('フリーモードからゴッドモードへの切り替えは禁止されています。');
+            return;
+        }
+        // GOD -> FREE の禁止ロジック
+        if (currentMode === 'god' && newMode === 'free') {
+            alert('ゴッドモードからフリーモードへの直接切り替えは禁止されています。');
             return;
         }
 

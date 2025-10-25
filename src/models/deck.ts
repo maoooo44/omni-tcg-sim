@@ -7,6 +7,28 @@
 
 export type DeckType = 'MainOnly' | 'MainSide' | 'MainSideExtra';
 
+export interface DisplaySetting {
+    /** ユーザーフレンドリーな表示名 (例: 'マナコスト', '逃げるエネルギー') */
+    displayName: string;
+    /** 詳細画面などでこのフィールドを表示するかどうか */
+    isVisible: boolean;
+    /** 表示順序 (オプション) */
+    order?: number; 
+}
+
+/** カードの標準フィールドの表示設定を定義する型 */
+export interface DeckFieldSettings {
+    num_1: DisplaySetting;
+    num_2: DisplaySetting;
+    num_3: DisplaySetting;
+    num_4: DisplaySetting;
+    str_1: DisplaySetting;
+    str_2: DisplaySetting;
+    str_3: DisplaySetting;
+    str_4: DisplaySetting;
+}
+
+
 
 export interface Deck {
     deckId: string;
@@ -19,6 +41,9 @@ export interface Deck {
     totalCards: number;
     series: string; // デッキが属するTCGシリーズ名
     description: string;
+    keycard_1?: string; //キーカードのcardId
+    keycard_2?: string;
+    keycard_3?: string;
     isLegal: boolean; // 準拠するruleSetに基づき、デッキが形式的に有効か
     hasUnownedCards: boolean;     // デッキに未所有カードが含まれているかどうかの状態
     isFavorite: boolean;
@@ -31,41 +56,21 @@ export interface Deck {
     sideDeck: Map<string, number>;
     extraDeck: Map<string, number>; // TCGによってはエクストラデッキ
 
-    // ブール値カスタムインデックス (10枠)
-    custom_1_bool?: boolean;
-    custom_2_bool?: boolean;
-    custom_3_bool?: boolean;
-    custom_4_bool?: boolean;
-    custom_5_bool?: boolean;
-    custom_6_bool?: boolean;
-    custom_7_bool?: boolean;
-    custom_8_bool?: boolean;
-    custom_9_bool?: boolean;
-    custom_10_bool?: boolean;
-    
-    // 数値カスタムインデックス (10枠)
-    custom_1_num?: number;
-    custom_2_num?: number;
-    custom_3_num?: number;
-    custom_4_num?: number;
-    custom_5_num?: number;
-    custom_6_num?: number;
-    custom_7_num?: number;
-    custom_8_num?: number;
-    custom_9_num?: number;
-    custom_10_num?: number;
+    num_1?: number | null; 
+    num_2?: number | null;
+    num_3?: number | null; 
+    num_4?: number | null; 
+    str_1?: string; 
+    str_2?: string; 
+    str_3?: string; 
+    str_4?: string; 
 
-    // 文字列カスタムインデックス (10枠)
-    custom_1_str?: string;
-    custom_2_str?: string;
-    custom_3_str?: string;
-    custom_4_str?: string;
-    custom_5_str?: string;
-    custom_6_str?: string;
-    custom_7_str?: string;
-    custom_8_str?: string;
-    custom_9_str?: string;
-    custom_10_str?: string;
+    fieldSettings?: DeckFieldSettings;
+
+    /** ユーザー定義のタグ/その他の属性。カスタムフィールドの代わり。 */
+    tag?: Record<string, string>;
+    /** 全文検索用の連結文字列（tagを結合） */
+    searchText?: string;
 }
 
 export interface DeckCard {

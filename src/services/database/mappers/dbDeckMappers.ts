@@ -2,7 +2,7 @@
 import type { Deck } from '../../../models/deck';
 import type { ArchiveDeck } from '../../../models/archive'; 
 import type { DBDeck,  DBArchive } from '../../../models/db-types'; 
-import { mapCustomIndexes } from '../dbMappers';
+//import { mapCustomIndexes } from '../dbMappers';
 
 // =========================================================================
 // 3. Deck <-> DBDeck マッピング (カスタムインデックス30枠をヘルパー関数に置き換え)
@@ -50,11 +50,17 @@ export const deckToDBDeck = (deck: Deck): DBDeck => {
         // MapをRecordに変換
         mainDeck: mapToRecord(deck.mainDeck), 
         sideDeck: mapToRecord(deck.sideDeck),
-        extraDeck: mapToRecord(deck.extraDeck), 
-    } as DBDeck; // 一時的な型アサーション
-
-    // 💡 修正: カスタムインデックスの30行をヘルパー関数に置き換え
-    return mapCustomIndexes<Deck, DBDeck>(deck, dbDeck);
+        extraDeck: mapToRecord(deck.extraDeck),
+        
+        num_1: deck.num_1, num_2: deck.num_2, num_3: deck.num_3,
+        num_4: deck.num_4,
+        str_1: deck.str_1, str_2: deck.str_2, str_3: deck.str_3,
+        str_4: deck.str_4,
+        fieldSettings: deck.fieldSettings,
+        tag:deck.tag,
+        searchText:deck.searchText,
+    }
+    return dbDeck;
 };
 
 export const dbDeckToDeck = (dbDeck: DBDeck): Deck => {
@@ -81,10 +87,16 @@ export const dbDeckToDeck = (dbDeck: DBDeck): Deck => {
         mainDeck: recordToMap(dbDeck.mainDeck), 
         sideDeck: recordToMap(dbDeck.sideDeck),
         extraDeck: recordToMap(dbDeck.extraDeck), 
-    } as Deck; // 一時的な型アサーション
 
-    // 💡 修正: カスタムインデックスの30行をヘルパー関数に置き換え
-    return mapCustomIndexes<DBDeck, Deck>(dbDeck, deck);
+        num_1: dbDeck.num_1, num_2: dbDeck.num_2, num_3: dbDeck.num_3,
+        num_4: dbDeck.num_4,
+        str_1: dbDeck.str_1, str_2: dbDeck.str_2, str_3: dbDeck.str_3,
+        str_4: dbDeck.str_4,
+        fieldSettings: dbDeck.fieldSettings,
+        tag:dbDeck.tag,
+        searchText:dbDeck.searchText,
+    }
+    return deck;
 };
 
 /**

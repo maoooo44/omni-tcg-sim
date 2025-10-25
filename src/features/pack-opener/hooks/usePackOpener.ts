@@ -1,5 +1,5 @@
 /**
-* src/features/pack-opening/hooks/usePackOpener.ts
+* src/features/pack-opener/hooks/usePackOpener.ts
 *
 * パック開封機能のロジックと状態管理（カスタムフック）を提供するファイルです。
 * 複数のZustandストア（PackStore, CurrencyStore, CardPoolStore, UserDataStore）を統合し、
@@ -26,11 +26,11 @@ import { useUserDataStore } from '../../../stores/userDataStore'; 
 import { useCooldownTimer } from '../../../hooks/useCooldownTimer'; 
 
 // 型定義を専用ファイルに切り出し、ユニークな名前でインポート
-import type { SimulationResult, OpenedResultState } from '../../../models/pack-opener'; 
+import type { SimulationResult, OpenedResultState } from '../../../models/packOpener'; 
 
 
 // 定数: 開封のクールダウン時間 (5秒)
-const PACK_OPEN_COOLDOWN_SECONDS = 5;
+const PACK_OPEN_COOLDOWN_SECONDS = 3;
 
 // 【修正の痕跡を削除】古い型定義を完全に削除
 

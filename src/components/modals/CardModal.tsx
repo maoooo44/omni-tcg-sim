@@ -10,9 +10,13 @@ import {
     Button, TextField, Box, Typography, Grid, Select, MenuItem,
     InputLabel, FormControl, Paper, Divider, type SelectChangeEvent
 } from '@mui/material';
-import type { Card } from '../../models/card';
+// 💡 修正1: Card と RarityConfig のインポートを補完
+import type { Card } from '../../models/card'; 
 import type { RarityConfig } from '../../models/pack'; 
-import type { CustomFieldCategory, CustomFieldIndex, CustomFieldType, FieldSetting } from '../../models/custom-field';
+
+// 💡 修正2: CustomFieldManager の代わりに CustomFieldModal から型をインポートしているため、
+// CustomFieldModal へのパスが正しく、そこから型をインポートしていることを確認します。
+import type { DisplaySetting } from '../../models/pack';
 
 // CustomFieldManager をインポート
 import CustomFieldManager from '../controls/CustomFieldManager'; 
@@ -32,16 +36,17 @@ export interface CardModalProps {
     packRaritySettings: RarityConfig[];
     currentPackName: string;
     currentPackId: string;
-    customFieldSettings: CustomFieldCategory;
+    // 💡 CustomFieldCategory は必須です
+    customFieldSettings: Record<string, DisplaySetting>;
     
     /** 💡 新規追加: 閲覧モード (true) か編集モード/新規作成 (false) か */
     isReadOnly: boolean; 
     
     onCustomFieldSettingChange: (
         itemType: 'Card' | 'Deck' | 'Pack',
-        type: CustomFieldType, 
-        index: CustomFieldIndex, 
-        settingUpdates: Partial<FieldSetting>
+        type: 'num' | 'str',
+        index: number,
+        settingUpdates: Partial<DisplaySetting>
     ) => void;
 }
 
@@ -53,7 +58,7 @@ export interface CardModalProps {
 const CardModal: React.FC<CardModalProps> = ({ 
     open, onClose, card, onSave, 
     onRemove,
-    packRaritySettings,  currentPackId,
+    packRaritySettings,  currentPackId,
     customFieldSettings,
     onCustomFieldSettingChange,
     isReadOnly, // 💡 isReadOnly を受け取る
@@ -65,12 +70,9 @@ const CardModal: React.FC<CardModalProps> = ({
         return packRaritySettings.map(c => c.rarityName);
     }, [packRaritySettings]);
 
-    // 💡 isNew (新規作成) の場合は、isReadOnly の設定に関わらず編集モードと見なすことが多いが、
-    // ここでは isReadOnly の Props を尊重し、新規作成でない場合にのみ削除/保存ボタンを表示するロジックを維持。
-    // ※ 新規作成時は isReadOnly=true の渡し方は通常しないが、一応 isNew と isReadOnly を分離して扱う
     const isNew = !card;
 
-    // モーダル開閉時の初期化ロジック
+    // モーダル開閉時の初期化ロジック (変更なし)
     useEffect(() => {
         if (open) {
             const baseCard: Card = card || createDefaultCard(currentPackId);
@@ -82,6 +84,7 @@ const CardModal: React.FC<CardModalProps> = ({
                 number: (baseCard.number === undefined || baseCard.number === null) ? null : baseCard.number,
                 packId: baseCard.packId || currentPackId,
                 rarity: baseCard.rarity || defaultRarityName,
+                // Card のカスタムフィールド (str_1-6, num_1-6) は baseCard に含まれることを想定
             };
             
             setLocalCard(finalCard);
@@ -95,7 +98,7 @@ const CardModal: React.FC<CardModalProps> = ({
         onClose();
     }, [onClose]);
 
-    // 💡 汎用的な変更ハンドラ。カスタムフィールドの型変換ロジックを維持。
+    // 💡 汎用的な変更ハンドラ。カスタムフィールドの型変換ロジックを修正。
     const handleChange = useCallback(<F extends keyof Card>(field: F, rawValue: any) => {
         if (!localCard) return;
         
@@ -104,15 +107,17 @@ const CardModal: React.FC<CardModalProps> = ({
 
         let value: any = rawValue;
 
-        // number 型のフィールド ('number', '*_num') の値変換
-        if (field === 'number' || String(field).endsWith('_num')) {
+        // number 型のフィールド ('number', 'num_*') の値変換
+        if (field === 'number' || String(field).startsWith('num_')) {
             const numValue = rawValue === null || rawValue === '' ? null : Number(rawValue);
             value = isNaN(numValue as number) ? null : numValue;
         } 
-        // boolean 型のフィールド ('*_bool') の値変換
+        // 💡 修正2: bool 型のフィールド ('*_bool') の値変換ロジックを削除
+        /*
         else if (String(field).endsWith('_bool')) {
             value = (rawValue === 'true' || rawValue === true || rawValue === 1);
         }
+        */
 
         setLocalCard(prev => prev ? {
             ...prev,
@@ -120,9 +125,9 @@ const CardModal: React.FC<CardModalProps> = ({
         } : null);
     }, [localCard, isReadOnly]);
 
-    // 保存ロジック
+    // 保存ロジック (変更なし)
     const handleSave = async () => { 
-        if (isReadOnly) return; // 💡 閲覧モードでは保存不可
+        if (isReadOnly) return;
         
         if (!localCard || !localCard.name || !localCard.packId) { 
             alert('カード名と収録パックは必須です。');
@@ -142,7 +147,6 @@ const CardModal: React.FC<CardModalProps> = ({
         
         const now = new Date().toISOString();
 
-        // カスタムフィールドは localCard にそのまま含まれているため、そのまま保存
         const cardToSave: Card = { 
             ...localCard, 
             number: finalNumber,
@@ -159,9 +163,9 @@ const CardModal: React.FC<CardModalProps> = ({
         }
     };
 
-    // 削除ロジック
+    // 削除ロジック (変更なし)
     const handleRemove = async () => { 
-        if (isReadOnly || isNew) return; // 💡 閲覧モードまたは新規作成では削除不可
+        if (isReadOnly || isNew) return;
 
         if (!localCard || !localCard.cardId) {
             return;
@@ -191,13 +195,13 @@ const CardModal: React.FC<CardModalProps> = ({
                 {isNew 
                     ? '新規カードの作成' 
                     : isReadOnly 
-                        ? `カード「${localCard.name}」の閲覧` // 💡 閲覧モードタイトル
-                        : `カード「${localCard.name}」の編集` // 💡 編集モードタイトル
+                        ? `カード「${localCard.name}」の閲覧` 
+                        : `カード「${localCard.name}」の編集` 
                 }
             </DialogTitle>
             <DialogContent dividers>
                 <Grid container spacing={4}>
-                    {/* 左側: プレビュー */}
+                    {/* 左側: プレビュー (Grid size は v7形式) */}
                     <Grid size={{xs:12,md:5}}>
                         <Paper elevation={3} sx={{ p: 2, textAlign: 'center' }}>
                             <Typography variant="subtitle1" gutterBottom>カードプレビュー</Typography>
@@ -223,9 +227,9 @@ const CardModal: React.FC<CardModalProps> = ({
                         </Paper>
                     </Grid>
 
-                    {/* 右側: フォーム入力 */}
+                    {/* 右側: フォーム入力 (Grid size は v7形式) */}
                     <Grid size={{xs:12,md:7}}>
-                        {/* 基本情報入力 */}
+                        {/* 基本情報入力 (Grid size は v7形式) */}
                         <Grid container spacing={2}>
                             <Grid size={{xs:12}}>
                                 {/* カード名 - 💡 isReadOnly で無効化 */}
@@ -261,7 +265,6 @@ const CardModal: React.FC<CardModalProps> = ({
                                         value={localCard.rarity || ''}
                                         label="レアリティ"
                                         onChange={(e: SelectChangeEvent) => handleChange('rarity', e.target.value)}
-                                        // Select の disabled は FormControl で制御
                                     >
                                         {rarityOptions.map(r => (
                                             <MenuItem key={r} value={r}>{r}</MenuItem>
@@ -275,12 +278,12 @@ const CardModal: React.FC<CardModalProps> = ({
 
                         {/* 💡 CustomFieldManager コンポーネントを使用し、isReadOnly を渡す */}
                         <CustomFieldManager
-                            categorySettings={customFieldSettings} 
-                            item={localCard} 
-                            onValueChange={handleChange}
-                            itemType="Card" 
+                            customFieldSettings={customFieldSettings}
+                            itemData={localCard}
+                            onFieldChange={handleChange}
+                            itemType="Card"
                             onSettingChange={onCustomFieldSettingChange}
-                            isReadOnly={isReadOnly} // 💡 isReadOnly を渡す
+                            isReadOnly={isReadOnly}
                         />
                         
                     </Grid>
@@ -297,7 +300,7 @@ const CardModal: React.FC<CardModalProps> = ({
                 
                 {/* キャンセル/閉じるボタン */}
                 <Button onClick={handleClose} variant="outlined">
-                    {isReadOnly ? '閉じる' : 'キャンセル'} {/* 💡 isReadOnly でテキスト変更 */}
+                    {isReadOnly ? '閉じる' : 'キャンセル'} 
                 </Button>
                 
                 {/* 💡 保存ボタン: 閲覧モードでない 場合のみ表示 */}

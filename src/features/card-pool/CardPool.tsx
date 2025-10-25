@@ -18,18 +18,34 @@ import SortIcon from '@mui/icons-material/Sort';
 import ViewModuleIcon from '@mui/icons-material/ViewModule';
 import ViewListIcon from '@mui/icons-material/ViewList';
 
-// 💡 修正: useCardPoolDisplay のインポートを更新
+// 💡 共通ロジックと設定をインポート 
+import { useGridDisplay } from '../../hooks/useGridDisplay'; 
+import { CardPoolGridSettings } from '../../configs/defaults'; 
+import GridColumnToggle from '../../components/controls/GridColumnToggle'; 
+import ReusableItemGrid from '../../components/common/ReusableItemGrid'; 
+
+// 💡 既存のインポート
 import { useCardPoolDisplay, CARDS_PER_PAGE, type ViewMode } from './hooks/useCardPoolDisplay'; 
 import type { CardPoolFilters } from './hooks/useCardPoolDisplay'; 
-import { type SortField } from '../../utils/sortingUtils'; // SortFieldの型をインポート
-
-// 💡 修正: OwnedCardItem を切り出してインポート
+import { type SortField } from '../../utils/sortingUtils'; 
 import OwnedCardItem from './components/OwnedCard'; 
+// 💡 仮のUser Dataフック (本来はDB/Contextから取得)
+const useUserData = () => ({
+    // UserDataState.gridSettings.cardPool の仮のデータ構造
+    cardPoolGridSettings: {
+        isUserDefaultEnabled: false,
+        globalColumns: null,
+        advancedResponsive: {
+            isEnabled: false,
+            columns: {}
+        }
+    }
+});
 
 
 const CardPool: React.FC = () => {
     
-    // useCardPoolDisplay から必要な状態とハンドラを取得
+    // 従来のロジックフックから状態とハンドラを取得
     const {
         isLoading,
         error,
@@ -45,25 +61,33 @@ const CardPool: React.FC = () => {
         toggleSortOrder,
         viewMode, 
         setViewMode, 
-        columns, 
-        resetCollection,
         isDTCGEnabled,
         availablePacks,
     } = useCardPoolDisplay();
     
+    // DBから永続化されたユーザー設定を取得 (仮)
+    const { cardPoolGridSettings } = useUserData();
+
+    // 1. 💡 修正: グリッド表示のロジックと設定をフックから取得
+    const { 
+        columns, 
+        setColumns, 
+        minColumns, 
+        maxColumns,
+        sxOverride, 
+        aspectRatio,
+        gap, // 💡 変更: spacingではなくgap（px単位、小数点対応）
+    } = useGridDisplay({ 
+        settings: CardPoolGridSettings, 
+        storageKey: 'card-pool-list-cols', 
+        userGlobalDefault: cardPoolGridSettings 
+    }); 
+
     const totalCount = useMemo(() => filteredCards.length, [filteredCards]);
     const startIndex = (currentPage - 1) * CARDS_PER_PAGE;
     const endIndex = startIndex + CARDS_PER_PAGE;
     const cardsOnPage = useMemo(() => filteredCards.slice(startIndex, endIndex), [filteredCards, startIndex, endIndex]);
 
-    // Material UI Grid size を動的に計算
-    // Grid v7 の size prop (xs, sm, md, ...) に対応
-    const gridSize = useMemo(() => {
-        const size = Math.floor(12 / columns);
-        // xs: 6 (2列), sm: size (4列、6列など), md: size, lg: size, xl: size
-        return { xs: 6, sm: size < 4 ? 4 : size, md: size, lg: size, xl: size };
-    }, [columns]);
-    
     const handleViewModeChange = (
         _event: React.MouseEvent<HTMLElement>,
         newMode: ViewMode | null,
@@ -134,7 +158,7 @@ const CardPool: React.FC = () => {
     return (
         <Box sx={{ flexGrow: 1, p: 2 }}>
             <Typography variant="h4" gutterBottom>
-                カードコレクション管理
+                カードプール
             </Typography>
             <Divider sx={{ mb: 3 }} />
 
@@ -143,8 +167,8 @@ const CardPool: React.FC = () => {
                 
                 <Grid container spacing={2}>
                     
-                    {/* 検索フィールド */}
-                    <Grid size={{ xs: 12, md: 4 }}> 
+                    {/* 検索フィールド - 💡 修正: size => xs/md */}
+                    <Grid size={{xs:12,md:4}}> 
                         <Box sx={{ display: 'flex', alignItems: 'flex-end', gap: 1 }}>
                             <SearchIcon color="action" sx={{ mb: 1.5 }} />
                             <TextField 
@@ -161,8 +185,8 @@ const CardPool: React.FC = () => {
                         </Box>
                     </Grid>
                     
-                    {/* パックフィルター */}
-                    <Grid size={{ xs: 6, md: 2 }}>
+                    {/* パックフィルター - 💡 修正: size => xs/md */}
+                    <Grid size={{xs:6,md:2}}>
                         <FormControl fullWidth>
                             <InputLabel>パック</InputLabel>
                             <Select
@@ -180,8 +204,8 @@ const CardPool: React.FC = () => {
                         </FormControl>
                     </Grid>
                     
-                    {/* レアリティフィルター */}
-                    <Grid size={{ xs: 6, md: 2 }}>
+                    {/* レアリティフィルター - 💡 修正: size => xs/md */}
+                    <Grid size={{xs:6,md:2}}>
                         <FormControl fullWidth>
                             <InputLabel>レアリティ</InputLabel>
                             <Select
@@ -197,73 +221,75 @@ const CardPool: React.FC = () => {
                         </FormControl>
                     </Grid>
                     
-                    {/* 並び替えボタン */}
-                    <Grid size={{ xs: 12, md: 4 }}>
-                           <Box sx={{ display: 'flex', alignItems: 'center', height: '100%', gap: 1 }}>
-                                <SortIcon color="action" sx={{ mb: 0.5 }} />
-                                <ToggleButtonGroup
-                                    value={sortField}
-                                    exclusive
-                                    onChange={handleSortChange}
-                                    size="small"
-                                    aria-label="card sort"
-                                    sx={{ flexGrow: 1 }}
-                                >
-                                    {sortOptions.map(opt => (
-                                        <ToggleButton key={opt.value} value={opt.value} aria-label={opt.label}>
-                                            {opt.label}
-                                        </ToggleButton>
-                                    ))}
-                                </ToggleButtonGroup>
-                                
-                                {sortField && (
-                                    <Button 
-                                        onClick={toggleSortOrder} 
+                    {/* 並び替えボタン - 💡 修正: size => xs/md */}
+                    <Grid size={{xs:12,md:4}}>
+                               <Box sx={{ display: 'flex', alignItems: 'center', height: '100%', gap: 1 }}>
+                                    <SortIcon color="action" sx={{ mb: 0.5 }} />
+                                    <ToggleButtonGroup
+                                        value={sortField}
+                                        exclusive
+                                        onChange={handleSortChange}
                                         size="small"
-                                        variant="outlined"
+                                        aria-label="card sort"
+                                        sx={{ flexGrow: 1 }}
                                     >
-                                        {sortOrder === 'asc' ? '昇順 ▲' : '降順 ▼'}
-                                    </Button>
-                                )}
-                           </Box>
+                                        {sortOptions.map(opt => (
+                                            <ToggleButton key={opt.value} value={opt.value} aria-label={opt.label}>
+                                                {opt.label}
+                                            </ToggleButton>
+                                        ))}
+                                    </ToggleButtonGroup>
+                                    
+                                    {sortField && (
+                                        <Button 
+                                            onClick={toggleSortOrder} 
+                                            size="small"
+                                            variant="outlined"
+                                        >
+                                            {sortOrder === 'asc' ? '昇順 ▲' : '降順 ▼'}
+                                        </Button>
+                                    )}
+                               </Box>
                     </Grid>
                     
-                    {/* 表示モード切り替えとリセットボタン */}
-                    <Grid size={12} sx={{ mt: 2, display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                           <ToggleButtonGroup
-                                value={viewMode}
-                                exclusive
-                                onChange={handleViewModeChange}
-                                size="small"
-                                aria-label="view mode"
-                           >
-                                <Tooltip title="所有カードリスト">
-                                    <ToggleButton value="list" aria-label="list">
-                                        <ViewListIcon /> リスト
-                                    </ToggleButton>
-                                </Tooltip>
-                                <Tooltip title="図鑑表示 (全カード)">
-                                    <ToggleButton value="collection" aria-label="collection">
-                                        <ViewModuleIcon /> 図鑑
-                                    </ToggleButton>
-                                </Tooltip>
-                           </ToggleButtonGroup>
+                    {/* 表示モード切り替えと列数トグルボタン - 💡 修正: size => xs */}
+                    <Grid size={{xs:12}} sx={{ mt: 2, display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                                <ToggleButtonGroup
+                                    value={viewMode}
+                                    exclusive
+                                    onChange={handleViewModeChange}
+                                    size="small"
+                                    aria-label="view mode"
+                                >
+                                    <Tooltip title="所有カードリスト">
+                                        <ToggleButton value="list" aria-label="list">
+                                            <ViewListIcon /> リスト
+                                        </ToggleButton>
+                                    </Tooltip>
+                                    <Tooltip title="図鑑表示 (全カード)">
+                                        <ToggleButton value="collection" aria-label="collection">
+                                            <ViewModuleIcon /> 図鑑
+                                        </ToggleButton>
+                                    </Tooltip>
+                                </ToggleButtonGroup>
 
-                           <Button 
-                                variant="outlined" 
-                                color="error" 
-                                onClick={resetCollection} 
-                                size="small"
-                           >
-                                コレクションをリセット
-                           </Button>
+                                {/* 💡 修正: viewModeの条件を削除し、常に表示 */}
+                                <GridColumnToggle 
+                                    currentColumns={columns} 
+                                    setColumns={setColumns} 
+                                    minColumns={minColumns} 
+                                    maxColumns={maxColumns} 
+                                    label={`列数:`}
+                                />
+                                
                     </Grid>
 
                 </Grid>
             </Paper>
 
             <Typography variant="h6" sx={{ mt: 3 }}>
-                合計 {totalCount} 件のカードを表示中 ({viewMode === 'collection' ? '図鑑モード' : 'リストモード'})
+                {/* 💡 修正: (1行 X 枚) の表示を削除 */}
+                合計 {totalCount} 件のカードを表示中
             </Typography>
 
             {/* カード表示エリア */}
@@ -274,20 +300,15 @@ const CardPool: React.FC = () => {
                     </Alert>
                 ) : (
                     <>
-                        <Grid container spacing={2} justifyContent="flex-start">
-                            {cardsOnPage.map((card) => (
-                                <Grid 
-                                    size={gridSize} 
-                                    key={card.cardId} 
-                                    sx={{ display: 'flex', justifyContent: 'center' }}
-                                >
-                                    {/* 💡 修正: 切り出したコンポーネントを使用 */}
-                                    <OwnedCardItem card={card} isDTCGEnabled={isDTCGEnabled} />
-                                </Grid>
-                            ))}
-                        </Grid>
-
-
+                        {/* 💡 修正: ReusableItemGridへのpropsを更新 (gapを追加) */}
+                        <ReusableItemGrid
+                            items={cardsOnPage}
+                            ItemComponent={OwnedCardItem}
+                            sxOverride={sxOverride}
+                            aspectRatio={aspectRatio}
+                            gap={gap}
+                        />
+                        
                         {/* Pagination */}
                         {totalPages > 1 && (
                             <Box sx={{ display: 'flex', justifyContent: 'center', mt: 4 }}>

@@ -1,5 +1,5 @@
 /**
- * src/services/card-pools/CardPoolDataService.ts
+ * src/services/card-pools/CardPoolService.ts
  *
  * CardPool（所有カード資産）データに関する**ドメインロジック**と**データ永続化（IndexedDB）**を担うサービス層。
  * 責務は以下の通り：
@@ -19,21 +19,21 @@ let cardPoolCache: Map<string, number> | null = null; // Map<cardId, count>
 // ----------------------------------------------------
 // 責務: DB/キャッシュ操作と更新ロジック
 // ----------------------------------------------------
-export const cardPoolDataService = {
+export const cardPoolService = {
 
     /**
      * [Service Logic] DBから全カードプールをロードし、キャッシュを構築する。
      */
     async loadAllCardPoolFromCache(): Promise<boolean> {
-        console.log(`[CardPoolDataService] 🚀 START loading all card pool data.`);
+        console.log(`[CardPoolService] 🚀 START loading all card pool data.`);
         try {
             // SearchService経由でDBから取得
             // (SearchServiceがDBから取得し、Map形式に変換する責務を持つと想定)
             cardPoolCache = await cardPoolSearchService.getOwnedCardsMap();
-            console.log(`[CardPoolDataService] ✅ Loaded ${cardPoolCache.size} unique cards.`);
+            console.log(`[CardPoolService] ✅ Loaded ${cardPoolCache.size} unique cards.`);
             return true;
         } catch (error) {
-            console.error("[CardPoolDataService] ❌ Failed to load card pool:", error);
+            console.error("[CardPoolService] ❌ Failed to load card pool:", error);
             cardPoolCache = new Map();
             return false;
         }
@@ -115,7 +115,7 @@ export const cardPoolDataService = {
         try {
             await db.cardPool.clear(); 
             cardPoolCache = new Map(); // キャッシュもクリア
-            console.log("[CardPoolDataService] IndexedDB cardPool cleared.");
+            console.log("[CardPoolService] IndexedDB cardPool cleared.");
         } catch (error) {
             console.error("Failed to clear card pool in DB:", error);
             throw new Error("カードプールのDBクリアに失敗しました。");
@@ -128,6 +128,6 @@ export const cardPoolDataService = {
      */
     async bulkDeleteCardPoolEntriesByDeckId(_deckId: string): Promise<void> {
         // DeckServiceからの呼び出しに備え、アクション名は定義。
-        console.warn(`[CardPoolDataService] bulkDeleteCardPoolEntriesByDeckId: The logic for deleting/adjusting owned cards based on deck removal is complex and currently unimplemented.`);
+        console.warn(`[CardPoolService] bulkDeleteCardPoolEntriesByDeckId: The logic for deleting/adjusting owned cards based on deck removal is complex and currently unimplemented.`);
     }
 };

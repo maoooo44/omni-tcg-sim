@@ -7,86 +7,21 @@
 
 import { db } from '../database/db';
 import type { DBSetting } from '../../models/db-types'; 
-// import { ARCHIVE_GC_DEFAULTS } from '../../config/gcDefaults'; // ★ 削除: コンフィグへの依存をなくす
+// 💡 既存: DEFAULT_SETTINGS のみインポート
+import { DEFAULT_SETTINGS } from '../../configs/defaults';
 
-// ✅ 修正1: CustomFieldConfig をインポート
-import type { CustomFieldConfig } from '../../models/userData';
+// 💡 修正: CustomFieldConfig のインポートを削除
+import type { 
+    GridDisplayDefault, 
+    PersistedUserSettings,
+    GCSetting,
+    ItemGcSettings
+} from '../../models/userData'; 
 
 const SETTINGS_KEY = 'userSettings'; 
 
-// ★ 削除: getArchiveGcSetting でしか使われないため
-// export type ArchiveCollectionKey = 'trash' | 'history'; 
-// ★ ArchiveCollectionKey は archiveService.ts に戻す
+export { DEFAULT_SETTINGS };
 
-
-// 🗑️ GC (Garbage Collection) 設定の型定義 🗑️
-
-// ✅ 修正2: ItemGcSettings の定義を明確な位置に移動し、参照可能にする
-// 各アイテムタイプ（Pack, Card, Deck）の保持設定
-export interface ItemGcSettings {
-    /** 削除までの期間 (日数)。 null/undefined の場合はサービスデフォルト値を使用。 */
-    timeLimit: number | null | undefined; 
-    /** 最大アイテム数。null/undefined の場合はサービスデフォルト値を使用。 */
-    maxSize: number | null | undefined; 
-}
-
-// コレクション（Trash, History）ごとの GC 設定
-export interface GCSetting {
-    trash: {
-        packBundle: ItemGcSettings;
-        deck: ItemGcSettings;
-    };
-    history: {
-        packBundle: ItemGcSettings;
-        deck: ItemGcSettings;
-    };
-}
-
-/**
- * DBに保存するユーザー設定の具体的な型
- */
-export interface PersistedUserSettings {
-    isDTCGEnabled: boolean;
-    isGodMode: boolean;
-    cheatCount: number;
-    isAllViewMode: boolean; 
-    
-    gcSettings: GCSetting; // 新しくネストした設定オブジェクト
-    
-    // ✅ 修正3: customFieldConfig を永続化対象に追加 (前回の修正)
-    customFieldConfig: CustomFieldConfig; 
-}
-
-// サービスのデフォルト設定 (DBにデータがない場合に使用される)
-
-// 💡 CustomFieldConfig の簡易的なデフォルト構造
-const DEFAULT_CUSTOM_FIELD_CONFIG: CustomFieldConfig = {
-    Pack: { bool: {}, num: {}, str: {} } as any, 
-    Card: { bool: {}, num: {}, str: {} } as any,
-    Deck: { bool: {}, num: {}, str: {} } as any,
-};
-
-
-export const DEFAULT_SETTINGS: PersistedUserSettings = {
-    isDTCGEnabled: true,
-    isGodMode: false,
-    cheatCount: 0,
-    isAllViewMode: false, 
-    
-    gcSettings: {
-        trash: {
-            packBundle: { timeLimit: 30, maxSize: 100 },
-            deck: { timeLimit: 30, maxSize: 100 },
-        },
-        history: {
-            packBundle: { timeLimit: 90, maxSize: 500 },
-            deck: { timeLimit: 90, maxSize: 500 },
-        },
-    },
-    
-    // ✅ 修正4: customFieldConfig のデフォルト値を追加 (前回の修正)
-    customFieldConfig: DEFAULT_CUSTOM_FIELD_CONFIG,
-};
 
 /**
  * IndexedDB (Dexie) の 'userSettings' テーブルに対するユーザー設定の操作を扱うサービス。
@@ -102,34 +37,62 @@ export const userDataService = {
             const entry = await db.userSettings.get(SETTINGS_KEY);
             
             if (entry) {
-                // ロードした設定をベースに、不足しているプロパティはDEFAULT_SETTINGSで補完
                 const loadedSettings = entry.value as Partial<PersistedUserSettings>;
                 
                 // ネストされたオブジェクトも安全に結合する (ディープマージの簡易版)
-                const mergedGcSettings = {
-                    ...DEFAULT_SETTINGS.gcSettings,
+
+                const mergedGcSettings: GCSetting = { // GCSettingに型注釈
+                    ...DEFAULT_SETTINGS.gcSettings, 
                     ...loadedSettings.gcSettings,
                     trash: {
                         ...DEFAULT_SETTINGS.gcSettings.trash,
                         ...loadedSettings.gcSettings?.trash,
+                        // 💡 ItemGcSettings のプロパティに型注釈を追加することで、使用を明確化できる
+                        packBundle: {
+                            ...(DEFAULT_SETTINGS.gcSettings.trash.packBundle as ItemGcSettings),
+                            ...(loadedSettings.gcSettings?.trash.packBundle as Partial<ItemGcSettings>),
+                        },
+                        deck: {
+                            ...(DEFAULT_SETTINGS.gcSettings.trash.deck as ItemGcSettings),
+                            ...(loadedSettings.gcSettings?.trash.deck as Partial<ItemGcSettings>),
+                        },
                     },
                     history: {
                         ...DEFAULT_SETTINGS.gcSettings.history,
                         ...loadedSettings.gcSettings?.history,
+                        // 💡 ItemGcSettings のプロパティに型注釈を追加
+                        packBundle: {
+                            ...(DEFAULT_SETTINGS.gcSettings.history.packBundle as ItemGcSettings),
+                            ...(loadedSettings.gcSettings?.history.packBundle as Partial<ItemGcSettings>),
+                        },
+                        deck: {
+                            ...(DEFAULT_SETTINGS.gcSettings.history.deck as ItemGcSettings),
+                            ...(loadedSettings.gcSettings?.history.deck as Partial<ItemGcSettings>),
+                        },
                     },
                 };
 
-                // ✅ 修正5: customFieldConfig をマージする (前回の修正)
-                const mergedCustomFieldConfig: CustomFieldConfig = {
-                    ...DEFAULT_SETTINGS.customFieldConfig,
-                    ...loadedSettings.customFieldConfig,
-                } as CustomFieldConfig;
+                // 💡 削除: mergedCustomFieldConfig のマージロジックを削除
+
+                const mergedGridSettings = {
+                    ...DEFAULT_SETTINGS.gridSettings, 
+                    ...loadedSettings.gridSettings,
+                    cardPool: { // GridDisplayDefault に型注釈を追加
+                        ...(DEFAULT_SETTINGS.gridSettings.cardPool as GridDisplayDefault),
+                        ...(loadedSettings.gridSettings?.cardPool as Partial<GridDisplayDefault>),
+                        advancedResponsive: {
+                            ...DEFAULT_SETTINGS.gridSettings.cardPool.advancedResponsive,
+                            ...loadedSettings.gridSettings?.cardPool.advancedResponsive,
+                        }
+                    }
+                }
 
                 return {
                     ...DEFAULT_SETTINGS,
                     ...loadedSettings,
                     gcSettings: mergedGcSettings,
-                    customFieldConfig: mergedCustomFieldConfig,
+                    // 💡 削除: customFieldConfig のマージ結果を削除
+                    gridSettings: mergedGridSettings,
                 } as PersistedUserSettings;
             }
             return DEFAULT_SETTINGS; 
@@ -144,7 +107,6 @@ export const userDataService = {
      * @param settings - 保存する設定オブジェクト
      */
     async saveSettings(settings: PersistedUserSettings): Promise<void> {
-        // ... (省略) ...
         try {
             const settingEntry: DBSetting = {
                 key: SETTINGS_KEY,

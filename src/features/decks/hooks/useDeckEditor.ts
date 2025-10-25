@@ -29,23 +29,14 @@ import {
 // ----------------------------------------------------------------------
 // 💡 Deckのダーティチェック用フィールド定義 (変更なし)
 
-/**
- * Deck の新しいカスタムフィールド30個を抽出
- */
-type CustomFields30 = Pick<Deck, 
-    'custom_1_bool' | 'custom_2_bool' | 'custom_3_bool' | 'custom_4_bool' | 'custom_5_bool' | 'custom_6_bool' | 'custom_7_bool' | 'custom_8_bool' | 'custom_9_bool' | 'custom_10_bool' |
-    'custom_1_num' | 'custom_2_num' | 'custom_3_num' | 'custom_4_num' | 'custom_5_num' | 'custom_6_num' | 'custom_7_num' | 'custom_8_num' | 'custom_9_num' | 'custom_10_num' |
-    'custom_1_str' | 'custom_2_str' | 'custom_3_str' | 'custom_4_str' | 'custom_5_str' | 'custom_6_str' | 'custom_7_str' | 'custom_8_str' | 'custom_9_str' | 'custom_10_str'
->;
 
 /**
  * Deck オブジェクトから、編集/保存に関わるフィールドのみを抽出した型。
  */
 type DeckCompareFields = Pick<Deck, 
-    'name' | 'description' | 'imageUrl' | 'imageColor' | 'mainDeck' | 'sideDeck' | 'extraDeck' | 'isFavorite' | 'isLegal' | 'hasUnownedCards' |
-    'number' | 'ruleId' | 'deckType' | 'series'
-> & CustomFields30;
-
+    'name' | 'number' | 'imageUrl' | 'imageColor' | 'ruleId' | 'deckType' | 'series' | 'description' |
+    'keycard_1' | 'keycard_2' | 'keycard_3' | 'isLegal' | 'hasUnownedCards' | 'isFavorite' | 'mainDeck' | 'sideDeck' | 'extraDeck' | 
+    'num_1' | 'num_2' | 'num_3' | 'num_4' | 'str_1' | 'str_2' | 'str_3' | 'str_4' | 'fieldSettings' | 'tag' | 'searchText'>;
 
 /**
  * Deckデータから、DeckCompareFieldsを生成するヘルパー関数。
@@ -56,30 +47,29 @@ const extractCompareFieldsFromDeck = (deck: Deck): DeckCompareFields => {
 
     const deckFields: DeckCompareFields = {
         name: deck.name,
-        description: deck.description,
+        number: deck.number || null,
         imageUrl: deck.imageUrl,
         imageColor: deck.imageColor,
-        isFavorite: deck.isFavorite,
-        isLegal: deck.isLegal,
-        hasUnownedCards: deck.hasUnownedCards,
-        
-        number: deck.number || null,
         ruleId: deck.ruleId || undefined,
         deckType: deck.deckType,
         series: deck.series,
-        
+        description: deck.description,
+        keycard_1: deck.keycard_1,
+        keycard_2: deck.keycard_2,
+        keycard_3: deck.keycard_3,
+        isLegal: deck.isLegal,
+        hasUnownedCards: deck.hasUnownedCards,
+        isFavorite: deck.isFavorite,
+                
         // Map型のゾーンを比較可能な配列に変換
         mainDeck: mapToArrayAndSort(deck.mainDeck) as any,
         sideDeck: mapToArrayAndSort(deck.sideDeck) as any,
         extraDeck: mapToArrayAndSort(deck.extraDeck) as any,
         
         // カスタムフィールド30個
-        custom_1_bool: deck.custom_1_bool, custom_2_bool: deck.custom_2_bool, custom_3_bool: deck.custom_3_bool, custom_4_bool: deck.custom_4_bool, custom_5_bool: deck.custom_5_bool,
-        custom_6_bool: deck.custom_6_bool, custom_7_bool: deck.custom_7_bool, custom_8_bool: deck.custom_8_bool, custom_9_bool: deck.custom_9_bool, custom_10_bool: deck.custom_10_bool,
-        custom_1_num: deck.custom_1_num, custom_2_num: deck.custom_2_num, custom_3_num: deck.custom_3_num, custom_4_num: deck.custom_4_num, custom_5_num: deck.custom_5_num,
-        custom_6_num: deck.custom_6_num, custom_7_num: deck.custom_7_num, custom_8_num: deck.custom_8_num, custom_9_num: deck.custom_9_num, custom_10_num: deck.custom_10_num,
-        custom_1_str: deck.custom_1_str, custom_2_str: deck.custom_2_str, custom_3_str: deck.custom_3_str, custom_4_str: deck.custom_4_str, custom_5_str: deck.custom_5_str,
-        custom_6_str: deck.custom_6_str, custom_7_str: deck.custom_7_str, custom_8_str: deck.custom_8_str, custom_9_str: deck.custom_9_str, custom_10_str: deck.custom_10_str,
+        num_1: deck.num_1, num_2: deck.num_2, num_3: deck.num_3, num_4: deck.num_4,
+        str_1: deck.str_1, str_2: deck.str_2, str_3: deck.str_3, str_4: deck.str_4,
+        fieldSettings: deck.fieldSettings, tag:deck.tag, searchText:deck.searchText,
     };
     
     return deckFields;
@@ -116,8 +106,9 @@ export const useDeckEditor = (deckId: string) => {
     
 
     // --- 派生状態 ---
+    // DB/Storeに存在しなければ新規作成とみなす
     const isNewDeck = useMemo(() => {
-        return deckId === 'new' || !decks.some(d => d.deckId === deckId);
+        return deckId && !decks.some(d => d.deckId === deckId);
     }, [deckId, decks]);
     
     /**
@@ -158,15 +149,13 @@ export const useDeckEditor = (deckId: string) => {
     useEffect(() => {
         const loadDeck = async () => {
             setIsLoading(true);
-            
-            if (deckId === 'new') {
-                const newDeck = createDefaultDeck();
+            // DB/Storeに存在しなければ新規作成
+            if (isNewDeck && deckId) {
+                const newDeck = createDefaultDeck(deckId);
                 updateLocalState(newDeck);
                 return;
             }
-
-            const deck = await fetchDeckById(deckId); 
-            
+            const deck = await fetchDeckById(deckId);
             if (deck) {
                 updateLocalState(deck);
             } else {
@@ -176,12 +165,10 @@ export const useDeckEditor = (deckId: string) => {
                 setIsLoading(false);
             }
         };
-          
         if (!deckData || deckData.deckId !== deckId) {
             loadDeck();
         }
-
-    }, [deckId, fetchDeckById]);
+    }, [deckId, fetchDeckById, isNewDeck]);
 
     // --- UI/データ更新ハンドラ (変更なし) ---
     
