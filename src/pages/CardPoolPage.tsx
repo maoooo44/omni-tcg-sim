@@ -5,12 +5,13 @@
  * 実際のロジック（フィルタリング、ソート、表示）は CardPoolManager コンポーネントに委譲しています。
  */
 import React from 'react';
-import { Box } from '@mui/material';
+import { Box, Typography} from '@mui/material';
 import CardPoolManager from '../features/card-pool/CardPool'; 
 
 const CardPoolPage: React.FC = () => {
     return (
-        <Box sx={{ p: 1, flexGrow: 1 }}>
+        <Box sx={{ p: 3, flexGrow: 1 }}>
+            <Typography variant="h4" gutterBottom>カードプール</Typography>
             
             {/* カードプール管理コンポーネントの埋め込み (ロジックはfeaturesに分離) */}
             <CardPoolManager />

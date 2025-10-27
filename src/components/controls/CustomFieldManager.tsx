@@ -7,206 +7,202 @@ import React, { useMemo, useState } from 'react';
 import { 
     Box, Typography, Grid, Paper, Divider, 
     TextField, Select, MenuItem, 
-    FormControl, InputLabel, Button, IconButton, 
+    FormControl, InputLabel, IconButton, Button, 
     type SelectChangeEvent,
 } from '@mui/material';
 import DeleteIcon from '@mui/icons-material/Delete'; 
-import EditIcon from '@mui/icons-material/Edit'; 
-import AddIcon from '@mui/icons-material/Add'; 
+import SettingsIcon from '@mui/icons-material/Settings'; 
 
+// 既存の型定義をインポート
 import type { Card } from '../../models/card';
-// CustomFieldModal のパスが正しいことを前提とする
+import type { Pack } from '../../models/pack';
+
 import CustomFieldModal from '../modals/CustomFieldModal'; 
-import type { DisplaySetting } from '../../models/pack';
+import type { CustomFieldType } from '../../models/customField';
+import type { FieldSetting } from '../../models/customField'; 
 
-// ----------------------------------------
-// 共通 Props 定義
-// ----------------------------------------
 
-// Card型をベースに、将来PackやDeck型も入る可能性があるため、汎用的な名前を維持
-type ItemWithCustomFields = Card;
+export type CustomFieldKeys = 'num_1' | 'num_2' | 'str_1' | 'str_2' | 'num_3' | 'num_4' | 'str_3' | 'str_4' | 'num_5' | 'num_6' | 'str_5' | 'str_6';
+type ItemWithCustomFields = Card | Pack; 
 
-// CustomFieldType に基づくマップ型に変更し、将来的な型変更に追随しやすくする
-// 型抽象を廃止し、DisplaySetting[] の配列や Record<string, DisplaySetting> などに整理可能
+const FIELD_LIMITS: Record<'Card' | 'Deck' | 'Pack', number> = {
+    'Card': 6,
+    'Deck': 4,
+    'Pack': 2,
+};
+
+// 💡 復活: アイテムタイプごとの Grid 列サイズ設定
+interface GridSizeProps {
+    xs: number;
+    sm: number;
+    md?: number;
+    lg?: number;
+}
+
+const GRID_SETTINGS: Record<'Card' | 'Deck' | 'Pack', GridSizeProps> = {
+    // Card (最大12フィールド): PCでは4列表示 (サイズ3)
+    'Card': { xs: 12, sm: 6, md: 6 }, 
+    // Deck (最大8フィールド): PCでは3列表示 (サイズ4)
+    'Deck': { xs: 12, sm: 6, md: 6 }, 
+    // Pack (最大4フィールド): PCでは2列表示 (サイズ6)
+    'Pack': { xs: 12, sm: 6, md: 6 }, 
+};
+
+// 💡 復活: アイテムタイプごとの 固定高さ設定 (px)
+const FIXED_HEIGHTS: Record<'Card' | 'Deck' | 'Pack', number> = {
+    // 1行あたり約70px-80pxを想定。Cardはスペース節約のためやや低めに設定しスクロールを促す
+    'Card': 300, 
+    'Deck': 280, 
+    'Pack': 140, 
+};
 
 
 export interface CustomFieldManagerProps {
-    /** 編集対象のアイテムのカスタムフィールド設定 (Card, Deck, Packのいずれか) */
-    customFieldSettings: Record<string, DisplaySetting>;
-    /** 編集対象のアイテムオブジェクト全体 (localCard, localDeck, localPackなど) */
-    itemData: ItemWithCustomFields; // 💡 修正: item -> itemData
-    /** アイテムの値の変更ハンドラ (PackInfoForm の handlePackCustomFieldChangeに相当) */
-    onFieldChange: <F extends keyof ItemWithCustomFields>(field: F, value: any) => void; // 💡 修正: onValueChange -> onFieldChange
-    /** 編集対象のアイテムの種別 ('Card', 'Deck', 'Pack'など) */
+    customFieldSettings: Record<CustomFieldKeys, FieldSetting> | undefined; 
+    itemData: ItemWithCustomFields; 
+    onFieldChange: <F extends keyof ItemWithCustomFields>(field: F, value: any) => void; 
     itemType: 'Card' | 'Deck' | 'Pack';
     
-    /** カスタムフィールド設定 (displayName, isVisible) の変更をユーザー設定ストアに伝える */
     onSettingChange: (
         itemType: 'Card' | 'Deck' | 'Pack',
-        type: 'num' | 'str',
+        type: CustomFieldType, 
         index: number,
-        settingUpdates: Partial<DisplaySetting>
+        settingUpdates: Partial<FieldSetting>
     ) => void;
 
-    /** 💡 新規追加: 閲覧モード (true) か編集モード (false) か */
     isReadOnly: boolean; 
 }
 
-// ----------------------------------------
-// ヘルパー: 全カスタムフィールドのキーと情報を取得
-// ----------------------------------------
-
-interface CustomFieldInfo {
-    fieldKey: keyof ItemWithCustomFields;
-    type: 'num' | 'str';
+export interface CustomFieldInfo { 
+    fieldKey: CustomFieldKeys;
+    type: CustomFieldType; 
     index: number;
-    setting?: DisplaySetting;
+    setting?: FieldSetting; 
 }
 
-const ALL_CUSTOM_FIELDS: CustomFieldInfo[] = (() => {
+const getCustomFieldInfo = (itemType: 'Card' | 'Deck' | 'Pack', settings: Record<CustomFieldKeys, FieldSetting> | undefined): CustomFieldInfo[] => {
     const fields: CustomFieldInfo[] = [];
-    const types: Array<'num' | 'str'> = ['num', 'str'];
-    const indices: number[] = [1, 2, 3, 4, 5, 6];
+    const limit = FIELD_LIMITS[itemType];
+    const types: CustomFieldType[] = ['num', 'str'];
+    
     for (const type of types) {
-        for (const index of indices) {
-            const fieldKey = `${type}_${index}` as keyof ItemWithCustomFields;
-            fields.push({ fieldKey, type, index });
+        for (let i = 1; i <= limit; i++) {
+            const index = i; 
+            const fieldKey = `${type}_${i}` as CustomFieldKeys;
+            fields.push({ fieldKey, type: type as CustomFieldType, index, setting: settings?.[fieldKey] }); 
         }
     }
     return fields;
-})();
+};
 
 // ----------------------------------------
 // コンポーネント本体
 // ----------------------------------------
 
 const CustomFieldManager: React.FC<CustomFieldManagerProps> = ({ 
-    customFieldSettings, // 💡 修正: customFieldSettings を使用
-    itemData,          // 💡 修正: itemData を使用
-    onFieldChange,     // 💡 修正: onFieldChange を使用
+    customFieldSettings, 
+    itemData, 
+    onFieldChange, 
     itemType,
     onSettingChange, 
     isReadOnly,
 }) => {
     
-    // ----------------------------------------
-    // CustomFieldModal の状態管理
-    // ----------------------------------------
+    const allCustomFields = useMemo(() => getCustomFieldInfo(itemType, customFieldSettings), [itemType, customFieldSettings]);
+
     const [isModalOpen, setIsModalOpen] = useState(false);
-    const [selectedField, setSelectedField] = useState<{ 
-        fieldInfo: CustomFieldInfo; 
-    setting: DisplaySetting;
-    } | null>(null);
-
-    // 💡 カスタムフィールドの選択（有効化されている/値が設定されている）リストを計算
-    const activeFields = useMemo(() => {
-        return ALL_CUSTOM_FIELDS
-            .map(field => {
-                // 💡 修正4: customFieldSettings を使用し、存在チェックを強化
-                const setting = customFieldSettings[`${field.type}_${field.index}`];
-                
-                // 設定が存在しない、または無効なインデックスの場合はスキップ
-                if (!setting) return null;
-
-                const itemValue = itemData[field.fieldKey]; // 💡 修正: item -> itemData
-
-                const isVisibleInSetting = setting?.isVisible;
-
-                // 値が設定されているかの判定ロジックを再整理
-                let hasValue = false;
-                
-                // 💡 修正5: bool 型のロジックを削除
-                if (field.type === 'str') {
-                    hasValue = (itemValue as string)?.trim() !== '';
-                } else if (field.type === 'num') {
-                    // 数値型の場合、null, undefined, 0 は値がないとみなす
-                    hasValue = (itemValue !== undefined && itemValue !== null && itemValue !== 0); 
-                }
-                
-                // 編集モードでは、設定で非表示でも値があるものを表示する
-                if (isVisibleInSetting || (!isReadOnly && hasValue)) {
-                    return { ...field, setting };
-                }
-                // 閲覧モードでは、値が設定されているものも表示する (設定が無効でも)
-                if (isReadOnly && hasValue) {
-                    return { ...field, setting };
-                }
-
-                return null;
-            })
-            // 💡 修正6: setting の存在チェックはマップ内で実施済みだが、型を絞り込むため filter は維持
-            .filter((f): f is CustomFieldInfo & { setting: DisplaySetting } => f !== null)
-            .sort((a, b) => a.setting.displayName.localeCompare(b.setting.displayName));
-    }, [customFieldSettings, itemData, isReadOnly]); // 💡 修正: itemData を依存配列に追加
-
-    // 💡 未使用で有効化されていないフィールド (新規追加用)
-    const availableFields = useMemo(() => {
-        return ALL_CUSTOM_FIELDS
-            .filter(field => {
-                const setting = customFieldSettings[`${field.type}_${field.index}`];
-                // 設定が存在しないか、設定が存在しつつ表示中のフィールドを除外
-                if (!setting || setting.isVisible) return false;
-                return !activeFields.some(f => f.fieldKey === field.fieldKey);
-            })
-            .map(field => ({ 
-                ...field, 
-                displayName: `${field.type.toUpperCase()}${field.index}`,
-                // 💡 修正7: customFieldSettings を使用
-                setting: customFieldSettings[`${field.type}_${field.index}`]! // 上で存在チェックしているので ! を使用
-            }));
-    }, [customFieldSettings, activeFields]);
-
 
     // ----------------------------------------
     // UI ロジック
     // ----------------------------------------
 
-    const openSettingModal = React.useCallback((fieldInfo: CustomFieldInfo, currentSetting: DisplaySetting) => {
-        if (isReadOnly) return;
-        
-        setSelectedField({ fieldInfo, setting: currentSetting });
-        setIsModalOpen(true);
-    }, [isReadOnly]);
+    const handleOpenModal = () => setIsModalOpen(true);
+    const handleCloseModal = () => setIsModalOpen(false);
 
-    const handleCloseModal = React.useCallback(() => {
-        setIsModalOpen(false);
-        setSelectedField(null);
-    }, []);
-    
+
+    /**
+     * activeFields:
+     * 1. 設定が存在する (settingがある)
+     * 2. かつ、表示が有効になっている (isVisible: true)
+     */
+    const activeFields = useMemo(() => {
+        return allCustomFields
+            .filter((f): f is CustomFieldInfo & { setting: FieldSetting } => {
+                // setting が存在しないか、isVisible が true でない場合は除外
+                if (!f.setting || f.setting.isVisible !== true) return false;
+                
+                return true;
+            })
+            // order があれば order 順、なければ fieldKey 順
+            .sort((a, b) => {
+                const aOrder = a.setting.order ?? Infinity;
+                const bOrder = b.setting.order ?? Infinity;
+                if (aOrder !== bOrder) {
+                    return aOrder - bOrder;
+                }
+                return a.fieldKey.localeCompare(b.fieldKey);
+            });
+    }, [allCustomFields]); 
+
+    /**
+     * availableFields: (変更なし)
+     * 1. 設定が存在しない (真の未使用枠)
+     * 2. または、設定は存在するが、isVisible: false になっているフィールド (非表示/再利用待ちの枠)
+     */
+    const availableFields = useMemo(() => {
+        return allCustomFields.filter(field => {
+            const hasSetting = !!field.setting;
+            
+            // 1. 設定が存在しない場合 (真の未使用)
+            if (!hasSetting) return true;
+
+            // 2. 設定は存在するが、isVisible: false の場合
+            if (field.setting?.isVisible === false) return true;
+
+            return false;
+        });
+    }, [allCustomFields]); 
+
+
+    /**
+     * ゴミ箱ボタン (フィールドを非表示にする - 値はクリアしない) (変更なし)
+     */
     const handleRemoveField = React.useCallback((field: CustomFieldInfo) => {
         if (isReadOnly) return;
+        if (!field.setting) return; 
 
-    const setting = customFieldSettings[`${field.type}_${field.index}`]; // 💡 修正: customFieldSettings を使用
-        if (!setting) return; 
-
-        if (setting.isVisible) {
-            alert('このフィールドは設定で有効化されているため、削除できません。設定で無効化してください。');
-            return;
-        }
+        // 値をクリアせず、設定の isVisible を false にする
+        onSettingChange(itemType, field.type, field.index, { isVisible: false });
         
-        // localItem から値をクリア (null/'' をセット)
-        let clearValue: any = null;
-        // 💡 修正8: bool 型のロジックを削除
-        if (field.type === 'str') clearValue = '';
-        if (field.type === 'num') clearValue = null; 
-        onFieldChange(field.fieldKey, clearValue); // 💡 修正: onValueChange -> onFieldChange
-    }, [isReadOnly, customFieldSettings, onFieldChange]); // 💡 修正: onValueChange -> onFieldChange
+    }, [isReadOnly, onSettingChange, itemType]); 
 
+    /**
+     * ドロップダウンで選択されたフィールドを直ちに有効化する (表示する) (変更なし)
+     */
     const handleActivateField = React.useCallback((e: SelectChangeEvent) => {
-        const key = e.target.value as keyof ItemWithCustomFields;
-        const fieldToActivate = availableFields.find(f => f.fieldKey === key);
+        const key = e.target.value as CustomFieldKeys;
+        const fieldToActivate = allCustomFields.find(f => f.fieldKey === key);
 
         if (!fieldToActivate) return;
 
-        const { fieldKey, type, index } = fieldToActivate;
+        const { type, index } = fieldToActivate;
 
-        // 1. 値を初期値で初期化 (item 値の更新)
-        const initialValue = fieldKey.startsWith('str') ? '' : null;
-        onFieldChange(fieldKey, initialValue); // 💡 修正: onValueChange -> onFieldChange
+        // onSettingChange を呼び出して、isVisible を true に設定する
+        const settingUpdates: Partial<FieldSetting> = { isVisible: true };
+        
+        // 真の未使用フィールドの場合 (settingがない場合) は、displayName も設定する
+        if (!fieldToActivate.setting) {
+             settingUpdates.displayName = `${type.toUpperCase()} ${index}`;
+        }
+       
+        onSettingChange(itemType, type, index, settingUpdates);
 
-        // 2. 設定を表示状態に変更 (global 設定の更新)
-        onSettingChange(itemType, type, index, { isVisible: true });
-    }, [availableFields, onFieldChange, onSettingChange, itemType]); // 💡 修正: onValueChange -> onFieldChange
+    }, [allCustomFields, onSettingChange, itemType]);
+
+    // 💡 復活: 選択されたアイテムタイプに基づいて Grid のサイズを取得
+    const gridSize = GRID_SETTINGS[itemType];
+    // 💡 復活: 選択されたアイテムタイプに基づいて 固定の高さを取得
+    const fixedHeight = FIXED_HEIGHTS[itemType];
 
     // ----------------------------------------
     // メイン描画
@@ -217,9 +213,21 @@ const CustomFieldManager: React.FC<CustomFieldManagerProps> = ({
             <Typography variant="h6" gutterBottom>
                 {itemType} カスタムフィールド {isReadOnly && <Typography component="span" variant="caption" color="textSecondary">(閲覧モード)</Typography>}
             </Typography>
-            <Paper elevation={1} sx={{ p: 2, mb: 2 }}>
-                
-                <Grid container spacing={2}>
+            {/* 💡 修正: Paper に固定の高さとスクロール設定を適用 */}
+            <Paper 
+                elevation={1} 
+                sx={{ 
+                    p: 2, 
+                    mb: 2, 
+                    height: `${fixedHeight}px`, // 💡 固定の高さ
+                    overflowY: 'auto', // 💡 固定の高さを超えたらスクロール
+                }}
+            >
+                {/* Grid コンテナ: スクロールエリア内 */}
+                {/* activeFields.length > 0 の場合のみ Grid の marginBottom を削除 */}
+                <Grid container spacing={2} sx={{ mb: activeFields.length > 0 ? 0 : 2 }}>
+                    
+                    {/* 💡 修正: activeFields.length === 0 の場合に、isReadOnlyに関わらずメッセージを表示するように戻す */}
                     {activeFields.length === 0 ? (
                         <Grid size={{xs:12}}> 
                              <Typography color="textSecondary">カスタムフィールドが設定されていません。</Typography>
@@ -227,20 +235,21 @@ const CustomFieldManager: React.FC<CustomFieldManagerProps> = ({
                     ) : (
                         activeFields.map((activeField) => {
                             const { fieldKey, type, setting } = activeField; 
-                            const value = itemData[fieldKey]; // 💡 修正: item -> itemData
+                            
+                            const value = itemData[fieldKey as keyof ItemWithCustomFields]; 
                             
                             let inputControl = null;
                             
-                            // num/str 型
-                                    inputControl = (
+                            inputControl = (
                                 <TextField
                                     fullWidth
-                                    label={setting.displayName}
+                                    // ラベルは setting.displayName があればそれを使用、なければ物理名
+                                    label={setting?.displayName || `${type.toUpperCase()} ${activeField.index}`} 
                                     type={type === 'num' ? 'number' : 'text'}
+                                    // 値は変更されていないので、そのまま表示
                                     value={(value ?? '') as string | number}
-                                    onChange={(e) => onFieldChange(fieldKey, e.target.value)} // 💡 修正: onValueChange -> onFieldChange
+                                    onChange={(e) => onFieldChange(fieldKey as keyof ItemWithCustomFields, e.target.value)} 
                                     size="small"
-                                            // DisplaySetting に description はないためヘルパーテキストは表示しない
                                     InputLabelProps={{ shrink: true }}
                                     
                                     disabled={isReadOnly} 
@@ -250,33 +259,22 @@ const CustomFieldManager: React.FC<CustomFieldManagerProps> = ({
                                 />
                             );
                             
-                            // 閲覧モードでのみ、値が空の場合は非表示にする (boolを削除したためロジック簡素化)
-                            const isValueEmptyInReadOnly = isReadOnly && (value === undefined || value === null || value === '' || value === 0);
-                            if (isValueEmptyInReadOnly) return null;
-
-
                             return (
-                                <Grid size={{xs:12, sm:6}} key={fieldKey} sx={{ display: 'flex', alignItems: 'center' }}>
-                                    <Box sx={{ flexGrow: 1, minWidth: 0 }}>
+                                /* 💡 修正: Grid の size プロパティを itemType に基づいて動的に設定 */
+                                <Grid size={gridSize} key={fieldKey} sx={{ display: 'flex', alignItems: 'flex-start', mb: 0 }}>
+                                    <Box sx={{ flexGrow: 1, minWidth: 0, mr: 1 }}>
                                         {inputControl}
                                     </Box>
                                     
-                                    {/* 設定変更ボタン (編集モードでのみ表示) */}
+                                    {/* 削除ボタン (編集モードでのみ表示) */}
                                     {!isReadOnly && (
                                         <IconButton 
-                                            onClick={() => openSettingModal(activeField, setting)} 
-                                            size="small"
-                                        >
-                                            <EditIcon fontSize="small" />
-                                        </IconButton>
-                                    )}
-                                    
-                                    {/* 削除ボタン (設定で無効かつ編集モードでのみ表示) */}
-                                    {!setting.isVisible && !isReadOnly && (
-                                        <IconButton 
+                                            // 値をクリアせず、isVisible: false にして非表示にする
                                             onClick={() => handleRemoveField(activeField)} 
                                             size="small"
                                             color="error"
+                                            // TextField の高さに合わせて位置を調整
+                                            sx={{ mt: 0, alignSelf: 'center' }} 
                                         >
                                             <DeleteIcon fontSize="small" />
                                         </IconButton>
@@ -287,51 +285,62 @@ const CustomFieldManager: React.FC<CustomFieldManagerProps> = ({
                     )}
                 </Grid>
                 
-                {/* カスタムフィールドの追加ドロップダウン (編集モードでのみ表示) */}
-                {!isReadOnly && (
-                    <>
-                        <Divider sx={{ my: 2 }} /> 
-                        <Box sx={{ display: 'flex', gap: 1, alignItems: 'center' }}>
-                            <FormControl size="small" sx={{ minWidth: 200 }} disabled={availableFields.length === 0}>
-                                <InputLabel>未使用フィールドを有効化</InputLabel>
-                                <Select
-                                    value=""
-                                    label="未使用フィールドを有効化"
-                                    onChange={handleActivateField} 
-                                >
-                                    {availableFields.map((f) => (
-                                        <MenuItem key={f.fieldKey} value={f.fieldKey}>
-                                            {`${f.displayName} (${f.fieldKey})`}
-                                        </MenuItem>
-                                    ))}
-                                </Select>
-                            </FormControl>
-                            <Button 
-                                variant="outlined" 
-                                startIcon={<AddIcon />} 
-                                disabled={availableFields.length === 0}
-                                sx={{ minWidth: 100 }}
-                            >
-                                追加
-                            </Button>
-                            <Typography variant="caption" color="textSecondary">
-                                {availableFields.length} 枠が利用可能です。
-                            </Typography>
-                        </Box>
-                    </>
-                )}
             </Paper>
 
+            {/* カスタムフィールドの追加ドロップダウン (編集モードでのみ表示) */}
+            {!isReadOnly && (
+                <>
+                    <Divider sx={{ my: 2 }} /> 
+                    <Box sx={{ display: 'flex', gap: 1, alignItems: 'center' }}>
+                        {/* availableFields.length が 0 でない限り Select は有効になる */}
+                        <FormControl size="small" sx={{ minWidth: 250 }} disabled={availableFields.length === 0}>
+                            <InputLabel>未使用フィールドを有効化/再表示</InputLabel>
+                            <Select
+                                value=""
+                                label="未使用フィールドを有効化/再表示"
+                                onChange={handleActivateField} 
+                            >
+                                <MenuItem value="" disabled>
+                                    フィールドを選択してください
+                                </MenuItem>
+                                {availableFields.map((f) => (
+                                    <MenuItem key={f.fieldKey} value={f.fieldKey}>
+                                        {/* 設定があればその表示名を、なければ物理フィールド名を表示 */}
+                                        {f.setting?.displayName ? `${f.setting.displayName} (${f.fieldKey})` : `${f.type.toUpperCase()} ${f.index} (${f.fieldKey})`} 
+                                    </MenuItem>
+                                ))}
+                            </Select>
+                        </FormControl>
+                        
+                        {/* 💡 フィールド設定モーダルを開くボタン */}
+                        <Button
+                            variant="outlined"
+                            onClick={handleOpenModal}
+                            startIcon={<SettingsIcon />}
+                            size="small"
+                        >
+                            フィールド設定
+                        </Button>
+
+                        <Typography variant="caption" color="textSecondary">
+                            ({availableFields.length} 枠が利用可能です。)
+                        </Typography>
+                    </Box>
+                </>
+            )}
+
             {/* CustomFieldModal の表示 */}
-            {selectedField && (
+            {!isReadOnly && (
                 <CustomFieldModal
                     isOpen={isModalOpen}
                     onClose={handleCloseModal}
                     itemType={itemType}
-                    type={selectedField.fieldInfo.type}
-                    index={selectedField.fieldInfo.index}
-                    initialSetting={selectedField.setting}
                     onSettingChange={onSettingChange}
+                    // 💡 全フィールドの情報を渡す
+                    allFieldInfo={allCustomFields.map(f => ({ 
+                        ...f, 
+                        setting: customFieldSettings?.[f.fieldKey] 
+                    }))}
                 />
             )}
         </Box>

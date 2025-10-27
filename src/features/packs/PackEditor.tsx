@@ -15,17 +15,15 @@ import CardModal from '../../components/modals/CardModal';
 import RarityEditorModal from '../../components/modals/RarityEditorModal';
 import PackInfoForm from './components/PackInfoForm';
 
-import type { Card as CardType } from '../../models/card'; 
 import { usePackEditor } from './hooks/usePackEditor'; 
 
 // 💡 CustomFieldCategory のインポート元
 // 型抽象は廃止
-import type { DisplaySetting } from '../../models/pack';
+import type { FieldSetting } from '../../models/customField';
 
 // ----------------------------------------------------------------------
 interface PackEditorProps extends ReturnType<typeof usePackEditor> {
     packId: string;
-    handleOpenCardViewModal: (card: CardType) => void;
 }
 // ----------------------------------------------------------------------
 
@@ -54,7 +52,8 @@ const PackEditor: React.FC<PackEditorProps> = ({
     isCardModalOpen,
     editingCard,
     handleOpenCardEditorModal,
-    handleCloseCardEditorModal,
+    handleOpenCardViewModal,
+    handleCloseCardModal,
 
     isRarityModalOpen,
     handleOpenRarityEditorModal,
@@ -85,7 +84,6 @@ const PackEditor: React.FC<PackEditorProps> = ({
     // 💡 修正1: usePackEditorの戻り値に含まれる 'handlePackCustomFieldChange' を追加
     handlePackCustomFieldChange, 
     
-    handleOpenCardViewModal,
 }) => {
     
     if (!packData) return null; 
@@ -98,7 +96,7 @@ const PackEditor: React.FC<PackEditorProps> = ({
         _itemType: 'Card' | 'Deck' | 'Pack',
         _type: 'num' | 'str',
         _index: number,
-        _settingUpdates: Partial<DisplaySetting>
+        _settingUpdates: Partial<FieldSetting>
     ) => {
         // Pack のカスタムフィールド設定変更ロジックが必要な場合はここに実装する
         console.warn(`[PackEditor] ⚠️ Pack Field Setting Change captured.`);
@@ -152,7 +150,7 @@ const PackEditor: React.FC<PackEditorProps> = ({
                             // 💡 修正2: 必須プロパティ 'onPackCustomFieldChange' に 'handlePackCustomFieldChange' を渡す
                             onPackCustomFieldChange={handlePackCustomFieldChange} 
                             // packFieldSettings は Pack モデルで直接定義されていると仮定
-                            customFieldSettings={packData.packFieldSettings ? (packData.packFieldSettings as unknown as Record<string, DisplaySetting>) : {}}
+                            customFieldSettings={packData.packFieldSettings ? (packData.packFieldSettings as unknown as Record<string, FieldSetting>) : {}}
                             onCustomFieldSettingChange={handlePackFieldSettingChange} 
                         />
                         {/* --------------------------------------------------- */}
@@ -179,7 +177,7 @@ const PackEditor: React.FC<PackEditorProps> = ({
             
             <CardModal 
                 open={isCardModalOpen}
-                onClose={handleCloseCardEditorModal}
+                onClose={handleCloseCardModal}
                 card={editingCard}
                 packRaritySettings={packData.rarityConfig} 
                 onSave={handleCardSave}
@@ -194,10 +192,10 @@ const PackEditor: React.FC<PackEditorProps> = ({
                     _itemType: "Card" | "Deck" | "Pack", 
                     type: 'num' | 'str', 
                     index: number, 
-                    settingUpdates: Partial<DisplaySetting>
+                    settingUpdates: Partial<FieldSetting>
                 ) => {
                     if (Object.keys(settingUpdates).length === 1) {
-                        const field = Object.keys(settingUpdates)[0] as keyof DisplaySetting;
+                        const field = Object.keys(settingUpdates)[0] as keyof FieldSetting;
                         const value = settingUpdates[field];
                         // handleCustomFieldSettingChange のシグネチャに合わせる
                         handleCustomFieldSettingChange(type, index, field, value); 

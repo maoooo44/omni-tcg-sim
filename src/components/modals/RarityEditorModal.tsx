@@ -2,9 +2,10 @@
  * src/components/modals/RarityEditorModal.tsx
  *
  * 特定のパックに収録されるカードのレアリティ設定（レアリティ名と封入確率）を編集するためのモーダルコンポーネントです。
- * カスタムフック `useRarityEditor` を使用して、レアリティの追加・削除、確率の変更、合計確率のバリデーションなどの編集ロジックを完全に分離しています。
- * このコンポーネントは純粋な Presentational コンポーネントとして動作し、編集対象のパックデータと、
- * 編集後のデータを親コンポーネントに返すための `onSave` コールバックを受け取ります。
+ * * ★ 最終修正:
+ * 1. `RarityProbabilityInput`から`useEffect`を削除し、**親の値による表示の強制上書きを排除**。
+ * 2. 入力中の値は`displayValue`で管理し、削除時の**ゼロ復活を防ぐ**。
+ * 3. `onBlur`時に、親に通知した値に基づいて表示を整形し、小数点以下2桁を超える部分のみ切り捨て（例: 10.02を削除しても10.0ではなく10.0に戻るように修正）。
  */
 
 import React, { useCallback, useMemo, useState } from 'react'; 
@@ -18,6 +19,109 @@ import AddIcon from '@mui/icons-material/Add';
 // Pack, AdvancedRarityConfig, RarityConfig, specialProbabilitySlots を含む型定義
 import type { Pack, AdvancedRarityConfig, RarityConfig } from '../../models/pack'; 
 import { useRarityEditor } from '../../features/packs/hooks/useRarityEditor'; 
+
+// --- RarityProbabilityInput: 確率入力用のカスタムコンポーネント (バグ修正済み) ---
+interface RarityProbabilityInputProps {
+    value: number; // 内部で扱う 0.0〜1.0 の値
+    onChange: (value: number) => void;
+    label: string;
+}
+
+const RarityProbabilityInput: React.FC<RarityProbabilityInputProps> = ({ value, onChange, label }) => {
+    
+    // 内部の 0.0〜1.0 の値を 0〜100 の文字列に変換（表示用）
+    // 末尾のゼロや小数点を削除しないように、toPrecisionと正規表現で整形する
+    const formatValueToDisplay = (num: number): string => {
+        // 1. 100倍してパーセンテージ値にする (toFixed(2)で浮動小数点誤差を防ぎ、小数点以下2桁で固定)
+        const val100 = (num * 100).toFixed(2);
+        
+        // 2. 末尾の不要な ".00" や ".0" を削除（10.00 -> 10, 10.50 -> 10.5）
+        let formatted = val100.replace(/\.00$/, ''); // 10.00 -> 10
+        formatted = formatted.replace(/(\.\d)0$/, '$1'); // 10.50 -> 10.5
+
+        // 例外: 10.02を削除して10.0に戻すとき、10.0は10.0のまま維持する必要があるため、
+        // ユーザーが入力した値と異ならないよう、可能な限りシンプルに整形
+        return formatted;
+    };
+    
+    // 表示用のローカルな状態 (ユーザー入力そのまま)
+    // 初期値は親のvalueから整形した値
+    const [displayValue, setDisplayValue] = useState(formatValueToDisplay(value));
+    
+    // ★ 修正: useEffectによる親のvalueでの強制上書きを削除。
+    // 親のvalueはuseRarityEditorの他の項目変更などで勝手に変わる可能性があるため、
+    // ここでuseEffectを使うと、ユーザーの入力（displayValue）が予期せずリセットされる。
+
+
+    const handleChange = useCallback((e: React.ChangeEvent<HTMLInputElement>) => {
+        let rawInput = e.target.value;
+        
+        // 1. 数値以外の文字を削除（数値、小数点のみを許可）
+        rawInput = rawInput.replace(/[^\d.]/g, '');
+        const parts = rawInput.split('.');
+        if (parts.length > 2) {
+            rawInput = parts[0] + '.' + parts.slice(1).join('');
+        }
+        
+        // 2. 小数点以下3桁以上を削除（リアルタイム制限）
+        const decimalIndex = rawInput.indexOf('.');
+        if (decimalIndex !== -1 && rawInput.length > decimalIndex + 3) {
+            rawInput = rawInput.substring(0, decimalIndex + 3);
+        }
+
+        // 3. 表示値を更新（ユーザーの入力に追従）
+        setDisplayValue(rawInput);
+        
+        // 4. バリデーションと強制修正（親への通知値の決定）
+        let floatValue = parseFloat(rawInput);
+        
+        // 5. 特殊な入力（"."や空文字）を処理
+        if (rawInput === '' || rawInput === '.') {
+            floatValue = 0;
+        } else if (isNaN(floatValue) || floatValue < 0) {
+            floatValue = 0;
+        } else if (floatValue > 100) {
+            // ★ 100を超える場合、リアルタイムで100に修正し、入力も100に強制
+            floatValue = 100;
+            setDisplayValue("100"); // 表示も100に修正
+        }
+        
+        // 6. 内部値 (0.0〜1.0) に変換して親に通知
+        const newInternalValue = floatValue / 100;
+        onChange(newInternalValue);
+        
+    }, [onChange]);
+    
+    
+    const handleBlur = useCallback(() => {
+        // ★ フォーカスアウト時：親に通知済みの値（value）を基に、表示を再整形する
+        // これにより、入力途中の「7.」や「10.0」などが、正確な値に基づいて整形される
+        setDisplayValue(formatValueToDisplay(value));
+        
+        // ただし、valueが0.10000000001のような浮動小数点誤差を持っている場合、
+        // formatValueToDisplayで確実に小数点以下2桁に丸められるため、表示がクリーンになる
+        
+    }, [value]);
+
+
+    return (
+        <TextField
+            label={label}
+            // type="text" に固定し、ブラウザの勝手な補完を防ぐ
+            type="text" 
+            inputMode="decimal"
+            value={displayValue} 
+            onChange={handleChange}
+            onBlur={handleBlur} // フォーカスアウト時に表示を整形（末尾の.などを削除）
+            
+            fullWidth
+            size="small"
+            // 入力支援として min/max を設定 (実際の制限は JS で行う)
+            inputProps={{ min: "0", max: "100" }} 
+        />
+    );
+};
+// -------------------------------------------------------------
 
 // モーダルが受け取るプロパティ
 interface RarityEditorModalProps {
@@ -37,7 +141,7 @@ const RarityEditorModal: React.FC<RarityEditorModalProps> = ({ open, onClose, pa
     // useRarityEditor の初期値として、Advanced/Classicどちらの設定も考慮して渡す必要がある
     const initialRarities = useMemo(() => {
         const initial = packToEditor.isAdvancedRulesEnabled 
-            ? packToEditor.advancedRarityConfig 
+            ? packToEditor.advancedRarityConfig
             : packToEditor.rarityConfig;
             
         if (initial && initial.length > 0) {
@@ -53,35 +157,35 @@ const RarityEditorModal: React.FC<RarityEditorModalProps> = ({ open, onClose, pa
     }, [packToEditor]);
     
     
-    // ★ カスタムフックからすべての状態とハンドラを取得 (シグネチャ変更に対応)
+    // カスタムフックからすべての状態とハンドラを取得
     const {
         editingRarities,
         isAdvancedEnabled, 
-        specialProbabilitySlots, // ★ NEW: 特殊確率枠数
+        specialProbabilitySlots, 
         totalProbability,
         probabilityMismatch,
-        totalSpecialProbability, // ★ NEW: 合計特殊確率
-        specialProbabilityMismatch, // ★ NEW: 特殊確率不一致フラグ
+        totalSpecialProbability, 
+        specialProbabilityMismatch, 
         totalFixedValue, 
-        baseDrawSlots, // ★ NEW: 基本抽選枠 (余り)
-        baseDrawSlotsNegative, // ★ NEW: 基本抽選枠が負の数になるフラグ
+        baseDrawSlots, 
+        baseDrawSlotsNegative, 
         handleAdvancedToggle, 
-        handleSpecialProbabilitySlotsChange, // ★ NEW: 特殊確率枠数変更ハンドラ
+        handleSpecialProbabilitySlotsChange, 
         handleFixedValueChange, 
         handleAddRarity,
         handleRemoveRarity,
         handleRarityChange,
         getFinalRarityConfig, 
-        getFinalPackDetails, // ★ NEW: Pack詳細 (specialProbabilitySlots を含む)
+        getFinalPackDetails, 
     } = useRarityEditor(
         initialRarities, 
         packToEditor.isAdvancedRulesEnabled,
-        packToEditor.specialProbabilitySlots ?? 0, // ★ NEW: 初期特殊確率枠数を渡す
-        packToEditor.cardsPerPack // ★ NEW: 封入枚数を渡す
+        packToEditor.specialProbabilitySlots ?? 0, 
+        packToEditor.cardsPerPack 
     );
     
     
-    // ★ アドバンスドモード切り替え処理 (変更なし)
+    // アドバンスドモード切り替え処理
     const handleToggleAdvanced = useCallback((event: React.ChangeEvent<HTMLInputElement>) => {
         const checked = event.target.checked;
         if (checked) {
@@ -109,12 +213,12 @@ const RarityEditorModal: React.FC<RarityEditorModalProps> = ({ open, onClose, pa
         }
 
         const finalConfig = getFinalRarityConfig(isAdvancedEnabled); 
-        const finalDetails = getFinalPackDetails(); // ★ NEW: specialProbabilitySlots を含む詳細を取得
+        const finalDetails = getFinalPackDetails(); 
         
         // パック全体のデータ構造に反映し、親に返す Pack オブジェクトを作成
         const updatedPack: Pack = {
             ...packToEditor,
-            ...finalDetails, // ★ NEW: isAdvancedRulesEnabled と specialProbabilitySlots を更新
+            ...finalDetails, 
 
             // モードに応じて設定を格納するフィールドを振り分ける
             rarityConfig: isAdvancedEnabled ? (packToEditor.rarityConfig as RarityConfig[]) : (finalConfig as RarityConfig[]),
@@ -131,22 +235,22 @@ const RarityEditorModal: React.FC<RarityEditorModalProps> = ({ open, onClose, pa
     }, [packToEditor, getFinalRarityConfig, getFinalPackDetails, onSave, onClose, isAdvancedEnabled]);
 
 
-    // ★ 保存ボタンの無効化条件に特殊確率、基本抽選枠のバリデーションを追加
+    // 保存ボタンの無効化条件に特殊確率、基本抽選枠のバリデーションを追加
     const disableSave = editingRarities.length === 0 || probabilityMismatch || 
         (isAdvancedEnabled && (specialProbabilityMismatch || baseDrawSlotsNegative));
 
-    // ★ Grid のサイズを動的に変更
-    // レアリティ名: 4, 基本確率: 2, 特殊確率: 3, 確定枚数: 2, 削除: 1 (合計12)
+    // Grid のサイズを動的に変更
+    // レアリティ名: 3, 基本確率: 3, 特殊確率: 3, 確定枚数: 2, 削除: 1 (合計12)
+    // ⚠ MaterialUIのGrid v7ではitemは廃止され、sizeを使います。
     const rarityNameSize = isAdvancedEnabled ? 3 : 6;
     const probabilitySize = isAdvancedEnabled ? 3 : 5;
-    const specialProbabilitySize = isAdvancedEnabled ? 3 : 0; // 非アドバンスド時は非表示
-    const fixedValueSize = isAdvancedEnabled ? 2 : 0; // 非アドバンスド時は非表示
+    const specialProbabilitySize = isAdvancedEnabled ? 3 : 0; 
+    const fixedValueSize = isAdvancedEnabled ? 2 : 0; 
     const deleteSize = 1;
-    // 合計: 3+3+3+2+1=12 (アドバンスド) / 6+5+1=12 (クラシック)
 
     return (
         <>
-            {/* 1. 警告ダイアログ (変更なし) */}
+            {/* 1. 警告ダイアログ */}
             <Dialog open={openWarning} onClose={handleCancelAdvanced}>
                 <DialogTitle>{"高度な封入設定を有効にしますか？"}</DialogTitle>
                 <DialogContent>
@@ -168,7 +272,7 @@ const RarityEditorModal: React.FC<RarityEditorModalProps> = ({ open, onClose, pa
                 </DialogTitle>
                 <DialogContent dividers>
                     
-                    {/* ★ アドバンスドモード トグル */}
+                    {/* アドバンスドモード トグル */}
                     <Box sx={{ mb: 2, display: 'flex', justifyContent: 'flex-end', alignItems: 'center' }}>
                         <Typography variant="body2" color="textSecondary" sx={{ mr: 1 }}>
                             高度な封入設定を使用
@@ -184,7 +288,7 @@ const RarityEditorModal: React.FC<RarityEditorModalProps> = ({ open, onClose, pa
                     
                     <Divider sx={{ my: 1 }} />
                     
-                    {/* ★ NEW: 上部のサマリーセクション (アドバンスド時のみ表示) */}
+                    {/* 上部のサマリーセクション (アドバンスド時のみ表示) */}
                     {isAdvancedEnabled && (
                         <Box sx={{ mb: 3, p: 2, border: '1px solid #ddd', borderRadius: 1 }}>
                             <Grid container spacing={2}>
@@ -229,11 +333,11 @@ const RarityEditorModal: React.FC<RarityEditorModalProps> = ({ open, onClose, pa
                             <Typography variant="subtitle2">レアリティ名</Typography>
                         </Grid>
                         <Grid size={probabilitySize}>
-                            <Typography variant="subtitle2">{isAdvancedEnabled ? '基本確率' : '確率 (0.0〜1.0)'}</Typography>
+                            <Typography variant="subtitle2">{isAdvancedEnabled ? '基本確率' : '確率 (0〜100)'}</Typography>
                         </Grid>
                         {isAdvancedEnabled && (
                             <Grid size={specialProbabilitySize}>
-                                <Typography variant="subtitle2" align="center">特殊確率 (0.0〜1.0)</Typography>
+                                <Typography variant="subtitle2" align="center">特殊確率 (0〜100)</Typography>
                             </Grid>
                         )}
                         {isAdvancedEnabled && (
@@ -247,8 +351,8 @@ const RarityEditorModal: React.FC<RarityEditorModalProps> = ({ open, onClose, pa
                     </Grid>
                     <Divider />
                     
-                    {/* レアリティ設定リスト */}
-                    <Box sx={{ maxHeight: 400, overflowY: 'auto' }}>
+                    {/* レアリティ設定リスト (固定高さ & 上部パディング追加) */}
+                    <Box sx={{ height: 400, overflowY: 'auto', pt: 2 }}>
                         {editingRarities.map((rarity, index) => (
                             <Grid container spacing={2} key={index} alignItems="center" sx={{ mb: 2 }}>
                                 
@@ -265,39 +369,33 @@ const RarityEditorModal: React.FC<RarityEditorModalProps> = ({ open, onClose, pa
                                     />
                                 </Grid>
                                 
-                                {/* 2. 基本確率 */}
+                                {/* 2. 基本確率 - リアルタイム制限付き TextField */}
                                 <Grid size={probabilitySize}>
-                                    <TextField
-                                        label={isAdvancedEnabled ? '基本確率' : '確率 (0.0〜1.0)'}
-                                        type="number"
-                                        inputProps={{ step: "0.0001", min: "0" }}
-                                        value={rarity.probability.toString()}
-                                        onChange={(e) => 
-                                            handleRarityChange(index, 'probability', e.target.value)
+                                    <RarityProbabilityInput
+                                        label={isAdvancedEnabled ? '基本確率' : '確率'}
+                                        value={rarity.probability}
+                                        onChange={(newValue) => 
+                                            // newValueは 0.0〜1.0 の数値。toString() に変換してフックに渡す
+                                            handleRarityChange(index, 'probability', newValue.toString())
                                         }
-                                        fullWidth
-                                        size="small"
                                     />
                                 </Grid>
                                 
-                                {/* ★ 3. 特殊確率 (アドバンスド時のみ表示) */}
+                                {/* 3. 特殊確率 (アドバンスド時のみ表示) - リアルタイム制限付き TextField */}
                                 {isAdvancedEnabled && (
                                     <Grid size={specialProbabilitySize}>
-                                        <TextField
+                                        <RarityProbabilityInput
                                             label="特殊確率"
-                                            type="number"
-                                            inputProps={{ step: "0.0001", min: "0" }}
-                                            value={(rarity as AdvancedRarityConfig).specialProbability?.toString() || '0'} 
-                                            onChange={(e) => 
-                                                handleRarityChange(index, 'specialProbability', e.target.value)
+                                            value={(rarity as AdvancedRarityConfig).specialProbability || 0}
+                                            onChange={(newValue) => 
+                                                // newValueは 0.0〜1.0 の数値。toString() に変換してフックに渡す
+                                                handleRarityChange(index, 'specialProbability', newValue.toString())
                                             }
-                                            fullWidth
-                                            size="small"
                                         />
                                     </Grid>
                                 )}
 
-                                {/* ★ 4. 確定枚数 (Fixed Value) - 整数 (アドバンスド時のみ表示) */}
+                                {/* 4. 確定枚数 (Fixed Value) - 整数 (アドバンスド時のみ表示) */}
                                 {isAdvancedEnabled && (
                                     <Grid size={fixedValueSize}>
                                         <TextField
@@ -345,16 +443,16 @@ const RarityEditorModal: React.FC<RarityEditorModalProps> = ({ open, onClose, pa
                     <Box sx={{ display: 'flex', justifyContent: 'space-between', mt: 2 }}>
                         <Typography variant="h6">合計基本確率:</Typography>
                         <Typography variant="h6" color={probabilityMismatch ? 'error' : 'textPrimary'}>
-                            {totalProbability.toFixed(4)} / 1.0000 
+                            {(totalProbability * 100).toFixed(2)}% / 100.00% 
                         </Typography>
                     </Box>
 
-                    {/* ★ NEW: 合計特殊確率の表示と警告 (アドバンスド時のみ) */}
+                    {/* 合計特殊確率の表示と警告 (アドバンスド時のみ) */}
                     {isAdvancedEnabled && (
                         <Box sx={{ display: 'flex', justifyContent: 'space-between', mt: 1 }}>
                             <Typography variant="h6">合計特殊確率:</Typography>
                             <Typography variant="h6" color={specialProbabilityMismatch ? 'error' : 'textPrimary'}>
-                                {totalSpecialProbability.toFixed(4)} / 1.0000 
+                                {(totalSpecialProbability * 100).toFixed(2)}% / 100.00% 
                             </Typography>
                         </Box>
                     )}
@@ -362,12 +460,12 @@ const RarityEditorModal: React.FC<RarityEditorModalProps> = ({ open, onClose, pa
                     {/* 警告メッセージ */}
                     {probabilityMismatch && (
                         <Alert severity="warning" sx={{ mt: 1 }}>
-                            **警告:** 基本確率の合計が **1.0** と異なっています。
+                            **警告:** 基本確率の合計が **100.00%** と異なっています。
                         </Alert>
                     )}
                     {isAdvancedEnabled && specialProbabilityMismatch && (
                         <Alert severity="warning" sx={{ mt: 1 }}>
-                            **警告:** 特殊確率の合計が **1.0** と異なっています。特殊抽選が正常に機能しません。
+                            **警告:** 特殊確率の合計が **100.00%** と異なっています。特殊抽選が正常に機能しません。
                         </Alert>
                     )}
                     {isAdvancedEnabled && baseDrawSlotsNegative && (

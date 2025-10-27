@@ -5,7 +5,10 @@
  * 各エンティティ（Pack, Deck, Card）のフィルタリング可能なフィールドを定義する。
  */
 
-import type { FilterField, SortOption } from '../components/controls/SortAndFilterControls';
+import type { FilterField } from '../hooks/useSortAndFilter';
+import type { SortOption } from '../components/controls/SortAndFilterControls';
+import type { DefaultSortConfig } from '../hooks/useSortAndFilter';
+export type { FilterField, SortOption };
 
 /**
  * パックリスト用のフィルタフィールド定義
@@ -75,3 +78,64 @@ export const DECK_SORT_OPTIONS: SortOption[] = [
     { label: 'カード枚数', value: 'cardCount' },
     { label: 'ID', value: 'deckId' },
 ];
+
+export const CARD_SORT_OPTIONS: SortOption[] = [
+    { label: 'No. (デフォルト)', value: 'number' },
+    { label: 'カード名', value: 'name' },
+    { label: 'レアリティ', value: 'rarity' },
+    { label: 'ID', value: 'cardId' },
+];
+
+/**
+ * カードプール用のソートオプション（リスト/図鑑モード共通）
+ */
+export const CARD_POOL_SORT_OPTIONS: SortOption[] = [
+    { label: '図鑑/パック順', value: 'number' },
+    { label: '名前', value: 'name' },
+    { label: 'パック名', value: 'packName' },
+    { label: 'レアリティ', value: 'rarity' },
+];
+
+/**
+ * カードプール用のソートオプション（枚数を含む、DTCGリストモード限定）
+ */
+export const CARD_POOL_SORT_OPTIONS_WITH_COUNT: SortOption[] = [
+    ...CARD_POOL_SORT_OPTIONS,
+    { label: '枚数', value: 'count' },
+];
+
+// =========================================================================
+// デフォルトソート設定
+// =========================================================================
+
+/**
+ * パックリスト用のデフォルトソート設定
+ */
+export const PACK_DEFAULT_SORT: DefaultSortConfig = {
+    defaultSortField: 'number',
+    defaultSortOrder: 'asc',
+};
+
+/**
+ * デッキリスト用のデフォルトソート設定
+ */
+export const DECK_DEFAULT_SORT: DefaultSortConfig = {
+    defaultSortField: 'number',
+    defaultSortOrder: 'asc',
+};
+
+/**
+ * カード（パック編集画面）用のデフォルトソート設定
+ */
+export const CARD_DEFAULT_SORT: DefaultSortConfig = {
+    defaultSortField: 'number',
+    defaultSortOrder: 'asc',
+};
+
+/**
+ * カードプール用のデフォルトソート設定
+ */
+export const CARD_POOL_DEFAULT_SORT: DefaultSortConfig = {
+    defaultSortField: 'number',
+    defaultSortOrder: 'asc',
+};

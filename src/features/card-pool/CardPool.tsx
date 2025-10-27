@@ -6,15 +6,11 @@
  * 個々のカード表示ロジックは OwnedCardItem コンポーネントに委譲されます。
  */
 
-import React, { useMemo } from 'react'; 
+import React, { useMemo, useCallback, useState, useEffect } from 'react'; // ★ useEffect を追加
 import { 
-    Box, Typography, Grid, Paper, Select, MenuItem, FormControl, 
-    InputLabel, TextField, Pagination, ToggleButtonGroup, ToggleButton, 
-    Button, Alert, Divider, Tooltip 
+    Box, Typography, Alert, 
+    ToggleButtonGroup, ToggleButton, Tooltip, Pagination
 } from '@mui/material';
-import SearchIcon from '@mui/icons-material/Search';
-import CloseIcon from '@mui/icons-material/Close';
-import SortIcon from '@mui/icons-material/Sort';
 import ViewModuleIcon from '@mui/icons-material/ViewModule';
 import ViewListIcon from '@mui/icons-material/ViewList';
 
@@ -23,12 +19,28 @@ import { useGridDisplay } from '../../hooks/useGridDisplay';
 import { CardPoolGridSettings } from '../../configs/defaults'; 
 import GridColumnToggle from '../../components/controls/GridColumnToggle'; 
 import ReusableItemGrid from '../../components/common/ReusableItemGrid'; 
+import SortAndFilterControls from '../../components/controls/SortAndFilterControls';
+
+// ★ CardModal とその Props のインポートを追加
+import CardModal from '../../components/modals/CardModal'; 
+import type { CardModalProps } from '../../components/modals/CardModal';
+
+// ★ useCardData と Card, Pack のインポートを修正
+import { useCardData } from '../../hooks/useCardData';
+import type { Card } from '../../models/card';
+import type { Pack } from '../../models/pack'; // ★ Pack 型をインポート
 
 // 💡 既存のインポート
-import { useCardPoolDisplay, CARDS_PER_PAGE, type ViewMode } from './hooks/useCardPoolDisplay'; 
-import type { CardPoolFilters } from './hooks/useCardPoolDisplay'; 
-import { type SortField } from '../../utils/sortingUtils'; 
+// ★ OwnedCardDisplay の型をインポート
+import { useCardPoolDisplay, CARDS_PER_PAGE, type ViewMode, type OwnedCardDisplay } from './hooks/useCardPoolDisplay'; 
 import OwnedCardItem from './components/OwnedCard'; 
+import { 
+    CARD_POOL_SORT_OPTIONS, 
+    CARD_POOL_SORT_OPTIONS_WITH_COUNT,
+    CARD_FILTER_FIELDS 
+} from '../../configs/sortAndFilterDefaults'; 
+
+
 // 💡 仮のUser Dataフック (本来はDB/Contextから取得)
 const useUserData = () => ({
     // UserDataState.gridSettings.cardPool の仮のデータ構造
@@ -42,16 +54,83 @@ const useUserData = () => ({
     }
 });
 
+// ★ CardModal の表示に必要な Props の型を定義
+type CardItemCustomProps = {
+    onOpenCardViewModal: (cardId: string) => void;
+}
+
 
 const CardPool: React.FC = () => {
+    // useCardDataフックを呼び出し、カード情報取得関数を取得
+    // ★ fetchCardFieldSettings を fetchPackInfoForCard に変更
+    const { fetchCardInfo, fetchPackInfoForCard } = useCardData();
+
+    // ★ モーダル制御ロジック
+    const [isModalOpen, setIsModalOpen] = useState(false);
+    const [selectedCardId, setSelectedCardId] = useState<string | null>(null);
+    const [selectedCardForModal, setSelectedCardForModal] = useState<Card | null>(null);
+    // ★ Pack 情報を保持する State を追加
+    const [packInfo, setPackInfo] = useState<Pack | null>(null);
+
     
+    // IDがセットされたら、非同期でカードとパック情報を取得
+    useEffect(() => {
+        const loadCardData = async () => {
+            if (selectedCardId) {
+                // カード情報とパック情報を非同期で同時に取得
+                const [card, pack] = await Promise.all([
+                    fetchCardInfo(selectedCardId),
+                    fetchPackInfoForCard(selectedCardId), // ★ パック情報全体を取得
+                ]);
+                
+                setSelectedCardForModal(card ?? null);
+                setPackInfo(pack ?? null);
+                
+                // カードとパックの両方があればモーダルを開く
+                if (card && pack) {
+                    setIsModalOpen(true);
+                } else {
+                    console.error(`Failed to load data for cardId: ${selectedCardId}. Card: ${!!card}, Pack: ${!!pack}`);
+                }
+            }
+        };
+        loadCardData();
+    }, [selectedCardId, fetchCardInfo, fetchPackInfoForCard]); // ★ 依存配列を修正
+
+
+    const handleOpenCardViewModal = useCallback((cardId: string) => {
+        setSelectedCardId(cardId);
+        // setIsModalOpen(true) は useEffect に任せる
+    }, []);
+    
+    const handleCloseModal = useCallback(() => {
+        setIsModalOpen(false);
+        setSelectedCardId(null);
+        setSelectedCardForModal(null);
+        // ★ packInfo もリセット
+        setPackInfo(null);
+    }, []);
+    
+    // ★ CardModal のダミー保存/削除ハンドラ
+    const handleCardSave: CardModalProps['onSave'] = useCallback((cardToSave) => {
+        console.warn("Card Save called from CardPool. Operation ignored in view mode.", cardToSave);
+    }, []);
+    
+    const handleCardRemove: CardModalProps['onRemove'] = useCallback(async (cardId) => {
+        console.warn("Card Remove called from CardPool. Operation ignored in view mode.", cardId);
+    }, []);
+
+
+ 
     // 従来のロジックフックから状態とハンドラを取得
     const {
         isLoading,
         error,
         filteredCards,
-        filter,
-        setFilter,
+        searchTerm,
+        filters,
+        setSearchTerm,
+        setFilters,
         currentPage,
         totalPages,
         setCurrentPage,
@@ -62,7 +141,6 @@ const CardPool: React.FC = () => {
         viewMode, 
         setViewMode, 
         isDTCGEnabled,
-        availablePacks,
     } = useCardPoolDisplay();
     
     // DBから永続化されたユーザー設定を取得 (仮)
@@ -98,35 +176,17 @@ const CardPool: React.FC = () => {
         }
     };
 
-    const handleFilterChange = (key: keyof CardPoolFilters, value: string | number | null) => {
-        setFilter({ ...filter, [key]: value }); 
-        setCurrentPage(1); 
-    };
+    // ソートオプションを動的に選択（DTCGモードのリスト表示では枚数ソートを含む）
+    const sortOptions = useMemo(() => {
+        return isDTCGEnabled && viewMode === 'list' 
+            ? CARD_POOL_SORT_OPTIONS_WITH_COUNT 
+            : CARD_POOL_SORT_OPTIONS;
+    }, [isDTCGEnabled, viewMode]);
 
-    const handleClearSearch = () => {
-        setFilter({ ...filter, search: null }); 
-        setCurrentPage(1);
-    };
-
-    const handleSortChange = (
-        _event: React.MouseEvent<HTMLElement>,
-        newSortField: string | null,
-    ) => {
-        if (newSortField) {
-            if (newSortField === sortField) {
-                // 同じキーが選択されたら順序を反転
-                toggleSortOrder();
-            } else {
-                // 異なるキーが選択されたらキーを変更
-                setSortField(newSortField as SortField);
-            }
-        }
-    };
-    
     // ロード中、エラー表示
     if (isLoading) {
         return (
-            <Box sx={{ display: 'flex', justifyContent: 'center', p: 4 }}>
+            <Box sx={{ display: 'flex', justifyContent: 'center', p: 3 }}>
                 <Typography>カードデータをロード中...</Typography>
             </Box>
         );
@@ -140,157 +200,58 @@ const CardPool: React.FC = () => {
         );
     }
 
-    // ソートオプションの定義
-    const sortOptions: { value: SortField, label: string }[] = useMemo(() => {
-        const options: { value: SortField, label: string }[] = [
-            { value: 'number', label: '図鑑/パック順' },
-            { value: 'name', label: '名前' },
-            { value: 'packName', label: 'パック名' }, 
-            { value: 'rarity', label: 'レアリティ' },
-        ];
-        if (isDTCGEnabled && viewMode === 'list') {
-            options.push({ value: 'count', label: '枚数' });
-        }
-        return options;
-    }, [isDTCGEnabled, viewMode]);
-
 
     return (
         <Box sx={{ flexGrow: 1, p: 2 }}>
-            <Typography variant="h4" gutterBottom>
-                カードプール
-            </Typography>
-            <Divider sx={{ mb: 3 }} />
+            {/* ソート＆フィルタコントロール */}
+            <SortAndFilterControls
+                labelPrefix="カード"
+                sortOptions={sortOptions}
+                sortField={sortField}
+                sortOrder={sortOrder}
+                searchTerm={searchTerm}
+                filters={filters}
+                setSortField={setSortField}
+                toggleSortOrder={toggleSortOrder}
+                setSearchTerm={setSearchTerm}
+                setFilters={setFilters}
+                filterFields={CARD_FILTER_FIELDS}
+            />
 
-            <Paper elevation={2} sx={{ p: 3, mb: 3 }}>
-                <Typography variant="h6" gutterBottom>フィルターと並び替え</Typography>
-                
-                <Grid container spacing={2}>
-                    
-                    {/* 検索フィールド - 💡 修正: size => xs/md */}
-                    <Grid size={{xs:12,md:4}}> 
-                        <Box sx={{ display: 'flex', alignItems: 'flex-end', gap: 1 }}>
-                            <SearchIcon color="action" sx={{ mb: 1.5 }} />
-                            <TextField 
-                                label="カード名で検索"
-                                fullWidth
-                                value={filter.search || ''}
-                                onChange={(e) => handleFilterChange('search', e.target.value)}
-                            />
-                            {filter.search && (
-                                <Button onClick={handleClearSearch} size="small" sx={{ mb: 0.5 }}>
-                                    <CloseIcon />
-                                </Button>
-                            )}
-                        </Box>
-                    </Grid>
-                    
-                    {/* パックフィルター - 💡 修正: size => xs/md */}
-                    <Grid size={{xs:6,md:2}}>
-                        <FormControl fullWidth>
-                            <InputLabel>パック</InputLabel>
-                            <Select
-                                value={filter.packId || 'all'}
-                                label="パック"
-                                onChange={(e) => handleFilterChange('packId', e.target.value === 'all' ? null : e.target.value)}
-                            >
-                                <MenuItem value="all">全て</MenuItem>
-                                {availablePacks.map(pack => (
-                                    <MenuItem key={pack.packId} value={pack.packId}>
-                                        {pack.number ? `[${pack.number}] ` : ''}{pack.name}
-                                    </MenuItem>
-                                ))}
-                            </Select>
-                        </FormControl>
-                    </Grid>
-                    
-                    {/* レアリティフィルター - 💡 修正: size => xs/md */}
-                    <Grid size={{xs:6,md:2}}>
-                        <FormControl fullWidth>
-                            <InputLabel>レアリティ</InputLabel>
-                            <Select
-                                value={filter.rarity || 'all'}
-                                label="レアリティ"
-                                onChange={(e) => handleFilterChange('rarity', e.target.value === 'all' ? null : e.target.value)}
-                            >
-                                <MenuItem value="all">全て</MenuItem>
-                                <MenuItem value="Common">Common</MenuItem>
-                                <MenuItem value="Rare">Rare</MenuItem>
-                                {/* ... 他のレアリティ ... */}
-                            </Select>
-                        </FormControl>
-                    </Grid>
-                    
-                    {/* 並び替えボタン - 💡 修正: size => xs/md */}
-                    <Grid size={{xs:12,md:4}}>
-                               <Box sx={{ display: 'flex', alignItems: 'center', height: '100%', gap: 1 }}>
-                                    <SortIcon color="action" sx={{ mb: 0.5 }} />
-                                    <ToggleButtonGroup
-                                        value={sortField}
-                                        exclusive
-                                        onChange={handleSortChange}
-                                        size="small"
-                                        aria-label="card sort"
-                                        sx={{ flexGrow: 1 }}
-                                    >
-                                        {sortOptions.map(opt => (
-                                            <ToggleButton key={opt.value} value={opt.value} aria-label={opt.label}>
-                                                {opt.label}
-                                            </ToggleButton>
-                                        ))}
-                                    </ToggleButtonGroup>
-                                    
-                                    {sortField && (
-                                        <Button 
-                                            onClick={toggleSortOrder} 
-                                            size="small"
-                                            variant="outlined"
-                                        >
-                                            {sortOrder === 'asc' ? '昇順 ▲' : '降順 ▼'}
-                                        </Button>
-                                    )}
-                               </Box>
-                    </Grid>
-                    
-                    {/* 表示モード切り替えと列数トグルボタン - 💡 修正: size => xs */}
-                    <Grid size={{xs:12}} sx={{ mt: 2, display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                                <ToggleButtonGroup
-                                    value={viewMode}
-                                    exclusive
-                                    onChange={handleViewModeChange}
-                                    size="small"
-                                    aria-label="view mode"
-                                >
-                                    <Tooltip title="所有カードリスト">
-                                        <ToggleButton value="list" aria-label="list">
-                                            <ViewListIcon /> リスト
-                                        </ToggleButton>
-                                    </Tooltip>
-                                    <Tooltip title="図鑑表示 (全カード)">
-                                        <ToggleButton value="collection" aria-label="collection">
-                                            <ViewModuleIcon /> 図鑑
-                                        </ToggleButton>
-                                    </Tooltip>
-                                </ToggleButtonGroup>
-
-                                {/* 💡 修正: viewModeの条件を削除し、常に表示 */}
-                                <GridColumnToggle 
-                                    currentColumns={columns} 
-                                    setColumns={setColumns} 
-                                    minColumns={minColumns} 
-                                    maxColumns={maxColumns} 
-                                    label={`列数:`}
-                                />
-                                
-                    </Grid>
-
-                </Grid>
-            </Paper>
-
-            <Typography variant="h6" sx={{ mt: 3 }}>
-                {/* 💡 修正: (1行 X 枚) の表示を削除 */}
-                合計 {totalCount} 件のカードを表示中
-            </Typography>
+            {/* 件数表示＆コントロール */}
+            <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 3 }}>
+                <Typography variant="h6">
+                    カード一覧 ({totalCount}件)
+                </Typography>
+                <Box sx={{ display: 'flex', alignItems: 'center', gap: 2 }}>
+                    <GridColumnToggle 
+                        currentColumns={columns} 
+                        setColumns={setColumns} 
+                        minColumns={minColumns} 
+                        maxColumns={maxColumns} 
+                        label="列数:"
+                    />
+                    <ToggleButtonGroup
+                        value={viewMode}
+                        exclusive
+                        onChange={handleViewModeChange}
+                        size="medium"
+                        aria-label="view mode"
+                        sx={{ height: '36.5px', width: '180px' }}
+                    >
+                        <Tooltip title="所有カードリスト">
+                            <ToggleButton value="list" aria-label="list" sx={{ height: '36.5px', flex: 1 }}>
+                                <ViewListIcon sx={{ mr: 0.5 }} /> 所持
+                            </ToggleButton>
+                        </Tooltip>
+                        <Tooltip title="図鑑表示 (全カード)">
+                            <ToggleButton value="collection" aria-label="collection" sx={{ height: '36.5px', flex: 1 }}>
+                                <ViewModuleIcon sx={{ mr: 0.5 }} /> 図鑑
+                            </ToggleButton>
+                        </Tooltip>
+                    </ToggleButtonGroup>
+                </Box>
+            </Box>
 
             {/* カード表示エリア */}
             <Box sx={{ mt: 3, minHeight: 400 }}>
@@ -300,10 +261,13 @@ const CardPool: React.FC = () => {
                     </Alert>
                 ) : (
                     <>
-                        {/* 💡 修正: ReusableItemGridへのpropsを更新 (gapを追加) */}
-                        <ReusableItemGrid
+                        <ReusableItemGrid<OwnedCardDisplay, CardItemCustomProps>
                             items={cardsOnPage}
                             ItemComponent={OwnedCardItem}
+                            // ★ itemProps に onOpenCardViewModal を渡す
+                            itemProps={{
+                                onOpenCardViewModal: handleOpenCardViewModal,
+                            }}
                             sxOverride={sxOverride}
                             aspectRatio={aspectRatio}
                             gap={gap}
@@ -325,6 +289,30 @@ const CardPool: React.FC = () => {
                     </>
                 )}
             </Box>
+            
+            {/* モーダル表示 */}
+            {/* ★ packInfo が存在する場合にのみ CardModal をレンダリング */}
+            {isModalOpen && selectedCardForModal && packInfo && (
+                <CardModal 
+                    open={isModalOpen}
+                    onClose={handleCloseModal}
+                    card={selectedCardForModal}
+                    
+                    // 💡 packInfo から必要な値を抽出
+                    packRaritySettings={packInfo.rarityConfig}
+                    currentPackName={packInfo.name}
+                    currentPackId={packInfo.packId}
+                    
+                    onSave={handleCardSave} 
+                    onRemove={handleCardRemove} 
+                    
+                    // 💡 packInfo から cardFieldSettings を取得
+                    customFieldSettings={packInfo.cardFieldSettings} 
+                    onCustomFieldSettingChange={() => {}} // ReadOnlyなのでダミー
+                    
+                    isReadOnly={true} 
+                />
+            )}
         </Box>
     );
 };

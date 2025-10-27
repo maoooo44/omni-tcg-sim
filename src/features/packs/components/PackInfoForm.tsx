@@ -14,10 +14,10 @@ import type { Pack } from '../../../models/pack';
 // 💡 修正1: Card 型をインポート
 import type { Card } from '../../../models/card';
 import PackPreviewCard from '../components/PackPreviewCard';
-import { PACK_TYPE_OPTIONS } from '../packUtils'; 
+import { PACK_TYPE_OPTIONS } from '../../../models/pack'; 
 
 import CustomFieldManager from '../../../components/controls/CustomFieldManager'; 
-import type { DisplaySetting } from '../../../models/pack';
+import type { FieldSetting } from '../../../models/customField';
 
 
 // PackEditorPageから渡されるPropsの型定義
@@ -34,14 +34,14 @@ interface PackInfoFormProps {
     onPackCustomFieldChange: (field: string, value: any) => void;
 
     // 💡 修正4: Packカスタムフィールドの設定情報を受け取る
-    customFieldSettings: Record<string, DisplaySetting>;
+    customFieldSettings: Record<string, FieldSetting>;
     
     // 💡 修正5: Packカスタムフィールド設定変更ハンドラを CustomFieldManagerProps から流用
     onCustomFieldSettingChange: (
         itemType: 'Card' | 'Deck' | 'Pack',
         type: 'num' | 'str',
         index: number,
-        settingUpdates: Partial<DisplaySetting>
+        settingUpdates: Partial<FieldSetting>
     ) => void;
 }
 

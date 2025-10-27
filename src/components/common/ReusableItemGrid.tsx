@@ -3,6 +3,7 @@
  *
  * 汎用的なアイテムグリッド表示コンポーネント
  * 💡 修正: spacing propを受け取り、Grid containerに適用。Grid itemはsxOverrideを適用。
+ * 💡 修正: カスタムPropsを透過的に渡すため、ジェネリクス P を追加。
  */
 import React from 'react';
 import { Grid, type SxProps, type Theme } from '@mui/material';
@@ -11,33 +12,39 @@ import { Grid, type SxProps, type Theme } from '@mui/material';
 type ItemType = { id?: string | number; cardId?: string | number, [key: string]: any }; 
 
 // アイテムコンポーネントのProps
-type ItemComponentProps<T> = {
+// P: CustomProps (追加のプロパティ。デフォルトは空オブジェクト)
+type ItemComponentProps<T, P extends object = {}> = {
     item: T;
     index?: number; // 💡 オプショナル: 必要な場合のみ使用（例: アニメーション遅延）
-    // ItemComponentに渡したい追加のprops (例: aspectRatio)
     aspectRatio: number;
-    [key: string]: any; 
-};
+    // P のプロパティを ItemComponentProps に追加
+    [key: string]: any; // 元のコードのインデックスシグネチャを維持
+} & P; // ★ カスタムProps P を結合
 
-// ReusableItemGrid の Props (フックからの結果を受け取るように変更)
-interface ReusableItemGridProps<T extends ItemType> {
+// ReusableItemGrid の Props 
+// T: ItemType, P: ItemComponentに渡す追加のカスタムPropsの型
+interface ReusableItemGridProps<T extends ItemType, P extends object = {}> {
     items: T[]; // 表示するアイテムの配列
-    ItemComponent: React.ComponentType<ItemComponentProps<T>>; // 個々のアイテムを描画するコンポーネント
-    itemProps?: Omit<ItemComponentProps<T>, 'item' | 'index' | 'aspectRatio'>; // item, index, aspectRatio は ReusableItemGrid から渡すため除外
+    // ItemComponent の型も P を含むように変更
+    ItemComponent: React.ComponentType<ItemComponentProps<T, P>>; 
+    
+    // 汎用性のために、itemProps は P のオプショナルな部分として扱う。
+    // item, index, aspectRatio は ReusableItemGrid から渡すため除外（Pはこれらを含まないことが前提）
+    itemProps?: P; 
     
     sxOverride: SxProps<Theme>;
     aspectRatio: number; // 現在のアスペクト比
     gap: number; // 💡 変更: px単位のgap値(小数点対応)
 }
 
-function ReusableItemGrid<T extends ItemType>({
+function ReusableItemGrid<T extends ItemType, P extends object = {}>({
     items,
     ItemComponent,
-    itemProps = {},
+    itemProps = {} as P, // ★ itemProps をオプションに戻し、デフォルト値を設定
     sxOverride, 
     aspectRatio, 
     gap,
-}: ReusableItemGridProps<T>): React.ReactElement {
+}: ReusableItemGridProps<T, P>): React.ReactElement {
     // 💡 修正: MUIのspacing propではなく、CSSのgapプロパティを使用（小数点対応）
     
     return (
@@ -51,12 +58,12 @@ function ReusableItemGrid<T extends ItemType>({
             {items.map((item, index) => (
                 <Grid
                     key={item.id || item.cardId || index}
-                    size={12}
+                    // ★ 修正: size={12} を削除！ sxOverrideで幅を制御する
                     sx={sxOverride}
                 >
                     <ItemComponent 
                         item={item}
-                        {...itemProps}
+                        {...itemProps} // ★ itemProps を展開して渡す
                         index={index}
                         aspectRatio={aspectRatio}
                     />
@@ -67,6 +74,7 @@ function ReusableItemGrid<T extends ItemType>({
 }
 
 // ジェネリックなコンポーネントのエクスポート定義
-export default ReusableItemGrid as <T extends ItemType>(
-    props: ReusableItemGridProps<T>,
+// ★ P を追加
+export default ReusableItemGrid as <T extends ItemType, P extends object = {}>(
+    props: ReusableItemGridProps<T, P>,
 ) => React.ReactElement;

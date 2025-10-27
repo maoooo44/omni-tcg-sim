@@ -7,7 +7,7 @@
 * 実際のカードフリップアニメーションは、子の `PackOpeningAnimation` コンポーネントに委譲します。
 */
 
-import React, { useState, useEffect, useMemo, useCallback } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import { Box } from '@mui/material';
 
 // useCardDataフックをインポート
@@ -31,10 +31,8 @@ import {
     DEFAULT_CARD_PREVIEW_HEIGHT
 } from '../../utils/imageUtils';
 
-import { PackOpenerGridSettings } from '../../configs/gridDefaults';
 
-
-// 定数: カードプレースホルダーオプション (変更なし)
+// 定数: カードプレースホルダーオプション
 const CARD_PLACEHOLDER_OPTIONS = {
     width: DEFAULT_CARD_PREVIEW_WIDTH,
     height: DEFAULT_CARD_PREVIEW_HEIGHT,
@@ -45,8 +43,10 @@ const CARD_PLACEHOLDER_OPTIONS = {
 interface PackOpenerHandlerProps {
     selectedPack: Pack | null;
     lastOpenedResults: OpenedResultState;
-    // setLastOpenedResults はコンポーネント内で使用されていないが、型定義の整合性のため復活
     setLastOpenedResults: React.Dispatch<React.SetStateAction<OpenedResultState>>;
+    sxOverride: any;
+    aspectRatio: number;
+    gap: number;
 }
 
 // 💡 プレースホルダーの生成を分離
@@ -68,11 +68,13 @@ const generatePlaceholders = (selectedPack: Pack): OpenerCardData[] => {
 const PackOpenerHandler: React.FC<PackOpenerHandlerProps> = ({
     selectedPack,
     lastOpenedResults,
-    //setLastOpenedResults, // setLastOpenedResults を受け取る
+    sxOverride,
+    aspectRatio,
+    gap,
 }) => {
     
     // useCardDataフックを呼び出し、カード情報取得関数を取得
-    const { getCardInfo } = useCardData();
+    const { fetchCardInfo } = useCardData();
 
     // 現在表示しているカードリスト (プレースホルダー or 結果)
     const [displayedCards, setDisplayedCards] = useState<OpenerCardData[]>([]);
@@ -83,69 +85,85 @@ const PackOpenerHandler: React.FC<PackOpenerHandlerProps> = ({
     const [isModalOpen, setIsModalOpen] = useState(false);
     const [selectedCardForModal, setSelectedCardForModal] = useState<Card | null>(null); // CardModalに渡すCardデータ
     
-    // 1. lastOpenedResults を PackOpeningAnimation が求めるフラットなリストに変換 (ロジック変更なし)
-    const flattenedOpenedCards = useMemo((): OpenerCardData[] => {
-        const results = lastOpenedResults.results;
-        
-        if (results.length === 0 || !selectedPack) {
-            return [];
+    // 💡 新規: 非同期で計算した開封結果リストを保持するState
+    const [actualOpenedCards, setActualOpenedCards] = useState<OpenerCardData[]>([]);
+
+    // 1. lastOpenedResults を PackOpeningAnimation が求めるフラットなリストに変換（非同期処理）
+    // 💡 useMemo から useEffect にロジックを移動し、非同期でカード情報を取得
+    useEffect(() => {
+        const calculateOpenedCards = async () => {
+            const results = lastOpenedResults.results;
+            
+            if (results.length === 0 || !selectedPack) {
+                setActualOpenedCards([]);
+                return;
+            }
+            
+            // 全てのカード情報を非同期で一括取得
+            const cardIds = results.map(r => r.cardId);
+            const cardPromises = cardIds.map(id => fetchCardInfo(id));
+            const actualCards = await Promise.all(cardPromises);
+            
+            const cardMap = new Map<string, Card>(
+                actualCards
+                    .filter((card): card is Card => card !== undefined)
+                    .map(card => [card.cardId, card])
+            );
+            
+            const flattenedList: OpenerCardData[] = results.reduce((acc: OpenerCardData[], result) => {
+                const actualCard = cardMap.get(result.cardId);
+                
+                // カードデータが見つからない場合のフォールバック
+                const cardDetails = actualCard ? {
+                    cardId: actualCard.cardId,
+                    name: actualCard.name,
+                    imageUrl: actualCard.imageUrl,
+                    rarity: actualCard.rarity || '不明',
+                    packId: actualCard.packId, 
+                    number: actualCard.number,
+                } : {
+                    cardId: result.cardId,
+                    name: `カードデータが見つかりません (${result.cardId})`,
+                    imageUrl: null,
+                    rarity: 'UNKNOWN',
+                    packId: selectedPack.packId,
+                    number: null,
+                };
+                
+                for (let i = 0; i < result.count; i++) {
+                    const placeholderText = cardDetails.name;
+                    
+                    const finalImageUrl = getDisplayImageUrl(
+                        cardDetails.imageUrl,
+                        {
+                            ...CARD_PLACEHOLDER_OPTIONS,
+                            text: placeholderText || 'CARD',
+                        }
+                    );
+
+                    acc.push({
+                        id: `${result.cardId}-${crypto.randomUUID()}-${i}`,
+                        cardId: cardDetails.cardId,
+                        name: cardDetails.name,
+                        imageUrl: finalImageUrl,
+                        rarity: cardDetails.rarity,
+                        cardBackImageUrl: selectedPack.cardBackImageUrl,
+                    });
+                }
+                return acc;
+            }, []);
+
+            setActualOpenedCards(flattenedList);
+        };
+
+        if (lastOpenedResults.results.length > 0 && selectedPack) {
+            calculateOpenedCards();
+        } else {
+            setActualOpenedCards([]);
         }
         
-        // result の型が { cardId: string, count: number } であることを保証
-        return results.reduce((acc: OpenerCardData[], result) => {
-            const cardArray: OpenerCardData[] = [];
-            
-            // getCardInfo を使って実際のカードデータを取得
-            const actualCard: Card | undefined = getCardInfo(result.cardId);
-
-            // データが見つからない場合のフォールバック
-            const cardDetails = actualCard ? {
-                cardId: actualCard.cardId,
-                name: actualCard.name,
-                // CardモデルのimageUrlは string | null | undefined の可能性があるため、そのまま渡す
-                imageUrl: actualCard.imageUrl,
-                rarity: actualCard.rarity || '不明',
-                // CardModalで必要となるが OpenerCardData に含まれない基本フィールド
-                packId: actualCard.packId, 
-                number: actualCard.number,
-            } : {
-                cardId: result.cardId,
-                name: `カードデータが見つかりません (${result.cardId})`,
-                imageUrl: null, // nullを渡すことで、getDisplayImageUrlが確実にプレースホルダーを生成する
-                rarity: 'UNKNOWN',
-                packId: selectedPack.packId, // 少なくともパックIDは設定
-                number: null,
-            };
-            
-            for (let i = 0; i < result.count; i++) {
-                
-                // プレースホルダーテキストの決定 (カード名)
-                const placeholderText = cardDetails.name;
-                
-                // getDisplayImageUrlを使用してimageUrlを決定
-                const finalImageUrl = getDisplayImageUrl(
-                    cardDetails.imageUrl, // 実際の画像URL、または undefined/null
-                    {
-                        ...CARD_PLACEHOLDER_OPTIONS,
-                        text: placeholderText || 'CARD',
-                    }
-                );
-
-                cardArray.push({
-                    // idにcrypto.randomUUID()を混ぜて、同一カードが複数枚あってもユニークになるようにする
-                    id: `${result.cardId}-${crypto.randomUUID()}-${i}`,
-                    cardId: cardDetails.cardId,
-                    name: cardDetails.name,
-                    imageUrl: finalImageUrl, // プレースホルダーまたは実画像URL
-                    rarity: cardDetails.rarity,
-                    cardBackImageUrl: selectedPack.cardBackImageUrl, // 💡 追加: パックの裏面画像URLを含める
-                });
-            }
-            return acc.concat(cardArray);
-        }, []);
-
-    }, [lastOpenedResults, selectedPack, getCardInfo]);
-
+    }, [lastOpenedResults.results, selectedPack, fetchCardInfo]); 
+    // ↑ flattenedOpenedCards（useMemo）の代わりに actualOpenedCards（useEffect）を導入
 
     // 🚨 修正: useEffectを統合し、リセット時にプレースホルダーをセットするように変更 (ロジック変更なし)
     useEffect(() => {
@@ -158,10 +176,11 @@ const PackOpenerHandler: React.FC<PackOpenerHandlerProps> = ({
         const hasNewResults = lastOpenedResults.results.length > 0;
         const isInitialState = lastOpenedResults.id === 'initial';
         
-        if (hasNewResults) {
-            // 3-B. 開封結果が確定したら、カードリストを切り替え
+        // 💡 修正: hasNewResults のチェックと actualOpenedCards の準備完了を待つ
+        if (hasNewResults && actualOpenedCards.length > 0) {
+            // 3-B. 開封結果が確定し、非同期のデータ変換が完了したら、カードリストを切り替え
             console.log('[PackOpenerHandler] Opening animation: switching to actual cards');
-            setDisplayedCards(flattenedOpenedCards);
+            setDisplayedCards(actualOpenedCards); // 💡 修正: actualOpenedCards を使用
             
             // 二重RAFでブラウザの描画フレームを待ち、CSSの初期状態が確実に適用されてからアニメーション開始
             requestAnimationFrame(() => {
@@ -174,7 +193,7 @@ const PackOpenerHandler: React.FC<PackOpenerHandlerProps> = ({
         } else if (isInitialState || (!isInitialState && !hasNewResults)) {
             // 3-A. 初回ロード時 (isInitialState) および 再開封時のリセット (!hasNewResults)
             
-            // 1. プレースホルダーを生成してセット（最重要: 前の実際のカードデータをクリア）
+            // 1. プレースホルダーを生成してセット
             const placeholders = generatePlaceholders(selectedPack);
             setDisplayedCards(placeholders);
             
@@ -186,7 +205,8 @@ const PackOpenerHandler: React.FC<PackOpenerHandlerProps> = ({
             }
         }
         
-    }, [lastOpenedResults.id, lastOpenedResults.results.length, selectedPack]); // flattenedOpenedCardsを除外して無限ループを防止
+    }, [lastOpenedResults.id, lastOpenedResults.results.length, selectedPack, actualOpenedCards.length]); 
+    // 💡 依存配列に actualOpenedCards.length を追加
 
     // cardBackImageUrlはPackOpeningAnimationに渡す(生のURLをそのまま渡す。OpenerCardでgetDisplayImageUrlを使用)
     const cardBackImageUrl = selectedPack?.cardBackImageUrl || '';
@@ -209,8 +229,9 @@ const PackOpenerHandler: React.FC<PackOpenerHandlerProps> = ({
     }, []);
     
     // 【新規追加】カードをクリックした時のハンドラ
-    const handleCardClick = useCallback((openerCardData: OpenerCardData) => {
-        const actualCard: Card | undefined = getCardInfo(openerCardData.cardId);
+    const handleCardClick = useCallback(async (openerCardData: OpenerCardData) => {
+        // 💡 修正: fetchCardInfo は async なので await が必須
+        const actualCard: Card | undefined = await fetchCardInfo(openerCardData.cardId);
 
         if (!actualCard) {
             console.error("Card data not found for modal:", openerCardData.cardId);
@@ -231,7 +252,7 @@ const PackOpenerHandler: React.FC<PackOpenerHandlerProps> = ({
 
         setSelectedCardForModal(cardForModal);
         setIsModalOpen(true);
-    }, [getCardInfo, selectedPack]);
+    }, [fetchCardInfo, selectedPack]);
 
 
     if (!selectedPack || displayedCards.length === 0) {
@@ -239,13 +260,15 @@ const PackOpenerHandler: React.FC<PackOpenerHandlerProps> = ({
     }
 
     return (
-        <Box sx={{ mt: 3, width: '100%', display: 'flex', flexDirection: 'column' }}>
+        <Box sx={{ /*mt: 3,*/ width: '100%', display: 'flex', flexDirection: 'column' }}>
             <PackOpeningAnimation
                 openedCards={displayedCards}
                 isRevealed={isRevealed}
                 cardBackImageUrl={cardBackImageUrl}
                 onCardClick={handleCardClick}
-                gridSettings={PackOpenerGridSettings}
+                sxOverride={sxOverride}
+                aspectRatio={aspectRatio}
+                gap={gap}
             />
             
             {/* CardViewModalをコンポーネントツリーに追加し、必須propsを渡す */}
@@ -261,11 +284,11 @@ const PackOpenerHandler: React.FC<PackOpenerHandlerProps> = ({
                 currentPackName={selectedPack.name} 
                 currentPackId={selectedPack.packId} 
                 
-                // customFieldSettings, onCustomFieldSettingChange は親から渡されるか、Contextから取得されるべき
-                // ここではエラー回避のため一旦仮の値を渡すが、適切な実装が必要
-                // 実際には PackOpenerHandler の props に customFieldSettings を追加すべき
-                customFieldSettings={{} as CardModalProps['customFieldSettings']} // 仮
-                onCustomFieldSettingChange={() => {}} // 仮
+                /* 💡 修正: selectedPack から cardFieldSettings を取得して渡す */
+                customFieldSettings={selectedPack.cardFieldSettings} 
+                
+                // 閲覧モードなので設定変更は常にダミー関数を渡す
+                onCustomFieldSettingChange={() => {}}
 
                 // パック開封結果の閲覧なので ReadOnly を true に設定
                 isReadOnly={true}

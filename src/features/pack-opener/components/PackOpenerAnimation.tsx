@@ -12,16 +12,16 @@ import { Box, Typography } from '@mui/material';
 // OpenerCard (CardFaceを使用する採用版) をインポート
 import OpenerCard from './OpenerCard'; 
 import ReusableItemGrid from '../../../components/common/ReusableItemGrid';
-import { useGridDisplay } from '../../../hooks/useGridDisplay';
 import type { OpenerCardData } from '../../../models/packOpener';
-import type { GridSettings } from '../../../models/grid';
 
 interface PackOpenerAnimationProps {
     openedCards: OpenerCardData[]; // 封入されたカードのリスト
     isRevealed: boolean; // フリップ状態 (PackOpenerから受け取る)
     cardBackImageUrl: string; // 裏面画像URL (PackOpenerから受け取る)
     onCardClick: (card: OpenerCardData) => void;
-    gridSettings: GridSettings; // グリッド設定を追加
+    sxOverride: any;
+    aspectRatio: number;
+    gap: number;
 }
 
 const FLIP_DELAY_MS = 100; // カード1枚あたりのフリップ開始遅延
@@ -55,25 +55,13 @@ const PackOpenerAnimation: React.FC<PackOpenerAnimationProps> = ({
     isRevealed,
     cardBackImageUrl,
     onCardClick,
-    gridSettings,
+    sxOverride,
+    aspectRatio,
+    gap,
 }) => {
     
-    // useGridDisplayフックでグリッド設定を取得
-    const gridDisplayProps = useGridDisplay({
-        settings: gridSettings,
-        storageKey: 'packOpener', // パック開封画面用のストレージキー
-        userGlobalDefault: {
-            isUserDefaultEnabled: false,
-            globalColumns: null,
-            advancedResponsive: {
-                isEnabled: false,
-                columns: {},
-            }
-        },
-    });
-    
     return (
-        <Box sx={{ p: 2, display: 'flex', flexDirection: 'column', width: '100%' }}>
+        <Box sx={{ /*p: 2,*/ display: 'flex', flexDirection: 'column', width: '100%' }}>
             
             {/* 2. カード表示グリッド */}
             <ReusableItemGrid
@@ -84,7 +72,9 @@ const PackOpenerAnimation: React.FC<PackOpenerAnimationProps> = ({
                     cardBackImageUrl,
                     onCardClick,
                 }}
-                {...gridDisplayProps}
+                sxOverride={sxOverride}
+                aspectRatio={aspectRatio}
+                gap={gap}
             />
             
             {/* 3. 結果のサマリー (開封後に表示) */}

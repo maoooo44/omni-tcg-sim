@@ -16,6 +16,7 @@ import { useGridDisplay } from '../../hooks/useGridDisplay';
 import ReusableItemGrid from '../../components/common/ReusableItemGrid';
 import PackItem from './components/PackItem';
 import SortAndFilterControls from '../../components/controls/SortAndFilterControls';
+import GridColumnToggle from '../../components/controls/GridColumnToggle';
 import { PackListGridSettings } from '../../configs/gridDefaults';
 import { PACK_FILTER_FIELDS } from '../../configs/sortAndFilterDefaults';
 
@@ -27,14 +28,15 @@ const PackList: React.FC = () => {
         sortField,
         sortOrder,
         searchTerm,
+        filters,
         PACK_SORT_OPTIONS,
         setSortField,
         toggleSortOrder,
         setSearchTerm,
+        setFilters,
         handleSelectPack,
         handleNewPack,
         handleDeletePack,
-        handleFilterChange,
     } = usePackList();
 
     // グリッド表示設定
@@ -64,25 +66,36 @@ const PackList: React.FC = () => {
                 sortField={sortField}
                 sortOrder={sortOrder}
                 searchTerm={searchTerm}
+                filters={filters}
                 setSortField={setSortField}
                 toggleSortOrder={toggleSortOrder}
                 setSearchTerm={setSearchTerm}
+                setFilters={setFilters}
                 filterFields={PACK_FILTER_FIELDS}
-                onFilterChange={handleFilterChange}
             />
 
-            {/* 件数表示＆新規作成ボタン（下側） */}
-            <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mt: 3, mb: 2 }}>
+            {/* 件数表示＆コントロール（下側） */}
+            <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 3 }}>
                 <Typography variant="h6">
                     パック一覧 ({displayedPacks.length}件)
                 </Typography>
-                <Button
-                    variant="contained"
-                    startIcon={<AddIcon />}
-                    onClick={handleNewPack}
-                >
-                    新規パックを作成
-                </Button>
+                <Box sx={{ display: 'flex', alignItems: 'center', gap: 2 }}>
+                    <GridColumnToggle
+                        currentColumns={gridDisplayProps.columns}
+                        setColumns={gridDisplayProps.setColumns}
+                        minColumns={gridDisplayProps.minColumns}
+                        maxColumns={gridDisplayProps.maxColumns}
+                        label="列数:"
+                    />
+                    <Button
+                        variant="contained"
+                        startIcon={<AddIcon />}
+                        onClick={handleNewPack}
+                        sx={{ width: '180px' }}
+                    >
+                        新規パックを作成
+                    </Button>
+                </Box>
             </Box>
 
             {/* 1. 検索結果がゼロの場合のAlert */}

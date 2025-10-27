@@ -3,17 +3,33 @@
  *
  * CSV形式の文字列を受け取り、ヘッダー行とデータ行の配列にパースするユーティリティ関数。
  * CSV標準（ダブルクォーテーションによるエスケープ）に対応する。
+ * コメント行（# で始まる行）は無視される。
  */
+
+/**
+ * 行がコメント行かどうかを判定します。
+ * @param line - 判定対象の行
+ * @returns コメント行の場合true
+ */
+const isCommentLine = (line: string): boolean => {
+    const trimmed = line.trim();
+    return trimmed.startsWith('#');
+};
 
 /**
  * CSVテキストをパースし、ヘッダーとデータの配列に変換します。
  * CSV標準のエスケープルールに従い、1行目をヘッダーとして扱います。
+ * コメント行（# で始まる行）は無視されます。
  * @param csvText - パース対象のCSV文字列
  * @returns { headers: string[], data: string[][] } - ヘッダー行とデータ行の配列
  */
 export const parseCSV = (csvText: string): { headers: string[], data: string[][] } => {
-    // 空行を無視し、改行コードを正規化
-    const lines = csvText.trim().replace(/\r\n/g, '\n').split('\n').filter(line => line.trim() !== '');
+    // 空行とコメント行を無視し、改行コードを正規化
+    const lines = csvText.trim().replace(/\r\n/g, '\n').split('\n')
+        .filter(line => {
+            const trimmed = line.trim();
+            return trimmed !== '' && !isCommentLine(trimmed);
+        });
     
     if (lines.length === 0) return { headers: [], data: [] };
 

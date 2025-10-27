@@ -8,7 +8,16 @@
 
 import type { Card } from "./card"; // Cardの型定義は別ファイルからインポート
 
+import type { FieldSetting } from './customField';
+
+
 export type PackType = 'Booster' | 'ConstructedDeck' | 'Other';
+
+/**
+ * パック種別 (PackType) の選択肢リスト
+ * UIのドロップダウンメニューで使用される。
+ */
+export const PACK_TYPE_OPTIONS: PackType[] = ['Booster', 'ConstructedDeck', 'Other'];
 
 export interface RarityConfig {
     rarityName: string; // 例: 'Common', 'Rare'
@@ -35,37 +44,29 @@ export interface AdvancedRarityConfig {
     fixedValue: number; // 確定枚数
 }
 
-export interface DisplaySetting {
-    /** ユーザーフレンドリーな表示名 (例: 'マナコスト', '逃げるエネルギー') */
-    displayName: string;
-    /** 詳細画面などでこのフィールドを表示するかどうか */
-    isVisible: boolean;
-    /** 表示順序 (オプション) */
-    order?: number; 
-}
 
 /** カードの標準フィールドの表示設定を定義する型 */
 export interface PackFieldSettings {
-    num_1: DisplaySetting;
-    num_2: DisplaySetting;
-    str_1: DisplaySetting;
-    str_2: DisplaySetting;
+    num_1: FieldSetting;
+    num_2: FieldSetting;
+    str_1: FieldSetting;
+    str_2: FieldSetting;
 }
 
 /** カードの標準フィールドの表示設定を定義する型 */
 export interface CardFieldSettings {
-    num_1: DisplaySetting;
-    num_2: DisplaySetting;
-    num_3: DisplaySetting;
-    num_4: DisplaySetting;
-    num_5: DisplaySetting;
-    num_6: DisplaySetting;
-    str_1: DisplaySetting;
-    str_2: DisplaySetting;
-    str_3: DisplaySetting;
-    str_4: DisplaySetting;
-    str_5: DisplaySetting;
-    str_6: DisplaySetting;
+    num_1: FieldSetting;
+    num_2: FieldSetting;
+    num_3: FieldSetting;
+    num_4: FieldSetting;
+    num_5: FieldSetting;
+    num_6: FieldSetting;
+    str_1: FieldSetting;
+    str_2: FieldSetting;
+    str_3: FieldSetting;
+    str_4: FieldSetting;
+    str_5: FieldSetting;
+    str_6: FieldSetting;
 }
 
 export interface Pack {
@@ -99,8 +100,8 @@ export interface Pack {
     str_1?: string;
     str_2?: string;
 
-    packFieldSettings?: PackFieldSettings;
-    cardFieldSettings?: CardFieldSettings;
+    packFieldSettings: PackFieldSettings;
+    cardFieldSettings: CardFieldSettings;
 
     /** ユーザー定義のタグ/その他の属性。カスタムフィールドの代わり。 */
     tag?: Record<string, string>;

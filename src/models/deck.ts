@@ -7,25 +7,19 @@
 
 export type DeckType = 'MainOnly' | 'MainSide' | 'MainSideExtra';
 
-export interface DisplaySetting {
-    /** ユーザーフレンドリーな表示名 (例: 'マナコスト', '逃げるエネルギー') */
-    displayName: string;
-    /** 詳細画面などでこのフィールドを表示するかどうか */
-    isVisible: boolean;
-    /** 表示順序 (オプション) */
-    order?: number; 
-}
+import type { FieldSetting } from './customField';
+
 
 /** カードの標準フィールドの表示設定を定義する型 */
 export interface DeckFieldSettings {
-    num_1: DisplaySetting;
-    num_2: DisplaySetting;
-    num_3: DisplaySetting;
-    num_4: DisplaySetting;
-    str_1: DisplaySetting;
-    str_2: DisplaySetting;
-    str_3: DisplaySetting;
-    str_4: DisplaySetting;
+    num_1: FieldSetting;
+    num_2: FieldSetting;
+    num_3: FieldSetting;
+    num_4: FieldSetting;
+    str_1: FieldSetting;
+    str_2: FieldSetting;
+    str_3: FieldSetting;
+    str_4: FieldSetting;
 }
 
 
@@ -65,7 +59,7 @@ export interface Deck {
     str_3?: string; 
     str_4?: string; 
 
-    fieldSettings?: DeckFieldSettings;
+    fieldSettings: DeckFieldSettings;
 
     /** ユーザー定義のタグ/その他の属性。カスタムフィールドの代わり。 */
     tag?: Record<string, string>;

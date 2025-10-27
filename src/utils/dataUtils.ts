@@ -6,9 +6,11 @@
  */
 
 import { v4 as uuidv4 } from 'uuid'; 
-import type { Deck } from '../models/deck';
-import type { Pack } from '../models/pack'; 
+import type { Deck, DeckFieldSettings } from '../models/deck';
+// 💡 Pack の型に加えて、設定の型もインポート
+import type { Pack, PackFieldSettings, CardFieldSettings } from '../models/pack'; 
 import type { Card } from '../models/card';
+import type { FieldSetting } from '../models/customField'; // 💡 FieldSetting の型もインポート
 
 /**
  * 汎用的なUUID (v4) を生成する関数。
@@ -47,6 +49,24 @@ export const applyDefaultsIfMissing = <T extends Record<string, any>, D extends 
 };
 
 
+// 💡 カスタムフィールド設定のデフォルト値を生成するヘルパー関数
+const createDefaultFieldSettings = <K extends string>(keys: readonly K[], prefix: string): Record<K, FieldSetting> => {
+    const settings = {} as Record<K, FieldSetting>;
+    
+    keys.forEach(key => {
+        const parts = key.split('_');
+        const type = parts[0].charAt(0).toUpperCase() + parts[0].slice(1);
+        const index = parts[1];
+        
+        settings[key] = {
+            displayName: `${prefix} ${type} ${index}`,
+            isVisible: false, // デフォルトでは非表示
+        } as FieldSetting;
+    });
+    
+    return settings;
+};
+
 // ------------------------------------
 // Core Model Default Data Generators
 // ------------------------------------
@@ -58,6 +78,11 @@ export const applyDefaultsIfMissing = <T extends Record<string, any>, D extends 
 export const createDefaultDeck = (id?: string): Deck => {
     const newDeckId = id || generateId(); 
     const now = new Date().toISOString();
+    const DECK_FIELD_KEYS = [
+        'num_1', 'num_2', 'num_3', 'num_4',
+        'str_1', 'str_2', 'str_3', 'str_4',
+    ] as const;
+    const defaultDeckFieldSettings = createDefaultFieldSettings(DECK_FIELD_KEYS, 'Deck') as DeckFieldSettings;
     return {
         deckId: newDeckId,
         name: '新規デッキ',
@@ -74,9 +99,11 @@ export const createDefaultDeck = (id?: string): Deck => {
         updatedAt: now,
         mainDeck: new Map(), // Map<cardId, count>
         sideDeck: new Map(),
-        extraDeck: new Map(),  
+        extraDeck: new Map(),  
+        fieldSettings: defaultDeckFieldSettings,
     };
 }
+
 
 /**
  * 新しいパックの初期データを生成し、UUIDを付与します。（PackEditで使用する詳細なデフォルト値）
@@ -85,11 +112,26 @@ export const createDefaultPack = (id?: string): Pack => {
     const newPackId = id || generateId(); // IDを引数で受け取れるようにする
     const now = new Date().toISOString();
     
+    // 💡 Pack 自身のカスタムフィールドキー
+    const PACK_FIELD_KEYS = ['num_1', 'num_2', 'str_1', 'str_2'] as const;
+    // 💡 Card のカスタムフィールドキー (Pack の設定として保持)
+    const CARD_FIELD_KEYS = [
+        'num_1', 'num_2', 'num_3', 'num_4', 'num_5', 'num_6',
+        'str_1', 'str_2', 'str_3', 'str_4', 'str_5', 'str_6'
+    ] as const;
+
+    // 💡 Pack Field Settings のデフォルト値を生成
+    const defaultPackFieldSettings = createDefaultFieldSettings(PACK_FIELD_KEYS, 'Pack') as PackFieldSettings;
+    
+    // 💡 Card Field Settings のデフォルト値を生成
+    const defaultCardFieldSettings = createDefaultFieldSettings(CARD_FIELD_KEYS, 'Card') as CardFieldSettings;
+    
     const DEFAULT_RARITY_CONFIG = [ 
         { rarityName: 'N', probability: 1 },
     ];
     const DEFAULT_ADVANCED_RARITY_CONFIG = [ 
-        { rarityName: 'N', probability: 1, specialProbability:1, fixedValue: 0 },
+        // fixedValue: 0 は AdvancedRarityConfig で必須
+        { rarityName: 'N', probability: 1, specialProbability: 1, fixedValue: 0 }, 
     ];
 
     return {
@@ -111,7 +153,16 @@ export const createDefaultPack = (id?: string): Pack => {
         rarityConfig: DEFAULT_RARITY_CONFIG,
         advancedRarityConfig: DEFAULT_ADVANCED_RARITY_CONFIG,
         specialProbabilitySlots: 0,
-        isAdvancedRulesEnabled: false,      
+        isAdvancedRulesEnabled: false, 
+        
+        // 💡 Pack 自身のカスタムフィールド設定を追加
+        packFieldSettings: defaultPackFieldSettings,
+        
+        // 💡 Card のカスタムフィールド設定を追加
+        cardFieldSettings: defaultCardFieldSettings,
+
+        // 💡 オプショナルな Pack のカスタムフィールドの値は初期データでは含めない（DB肥大化防止）
+        // num_1, num_2, str_1, str_2 は Pack 型でオプショナルなため、このオブジェクトから省略
     };
 }
 
@@ -135,5 +186,6 @@ export const createDefaultCard = (packId: string): Card => {
         isFavorite: false,
         createdAt: now,
         updatedAt: now,
+        // 💡 Card のカスタムフィールドの値 (num_1, str_1など) は Pack と同様に省略
     };
 }

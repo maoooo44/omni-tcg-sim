@@ -8,16 +8,22 @@
  */
 
 import React from 'react';
+import { Outlet } from '@tanstack/react-router'; 
 import { Box, Typography } from '@mui/material';
-import DeckListManager from '../features/decks/DeckList'; 
+import DeckList from '../features/decks/DeckList'; 
 
 const DeckListPage: React.FC = () => {
     return (
-        <Box sx={{ p: 3, flexGrow: 1 }}>
+        <Box sx={{ p: 3, flexGrow: 1}}>
             <Typography variant="h4" gutterBottom>デッキ一覧</Typography>
             
             {/* 全ての表示とロジックをDeckListに委譲 (フィーチャーコンポーネント) */}
-            <DeckListManager /> 
+            <DeckList /> 
+
+            {/* 子ルート（PackEditPageなど）を表示するためのOutlet */}
+            <Box sx={{ mt: 4 }}>
+              <Outlet />
+            </Box>
             
         </Box>
     );

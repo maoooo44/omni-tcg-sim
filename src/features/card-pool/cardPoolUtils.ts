@@ -11,6 +11,9 @@ import type { OwnedCardDisplay } from './hooks/useCardPoolDisplay'; // useCardPo
 /**
  * OwnedCardDisplayオブジェクトから、useSortAndFilterフックがソートに使用するための
  * 対応するフィールド値を取得するアクセサ関数を提供します。
+ * 
+ * 💡 注意: このアクセサは 'number' フィールドの複合ソート（packNumber + cardNumber）を実装するために必要です。
+ * 他のフィールドはデフォルトアクセサで処理可能ですが、複合ソートのため全体を保持しています。
  */
 export const cardPoolFieldAccessor = (item: OwnedCardDisplay, field: SortField): string | number | null | undefined => {
     switch (field) {
@@ -20,16 +23,6 @@ export const cardPoolFieldAccessor = (item: OwnedCardDisplay, field: SortField):
             const cardNumber = item.number ?? 999999;
             // 複合ソート用の文字列/数値を作成 (例: 001005001010)
             return `${String(packNumber).padStart(6, '0')}${String(cardNumber).padStart(6, '0')}`;
-        case 'packName':
-            return item.packName; 
-        case 'name':
-            return item.name;
-        case 'rarity':
-            return item.rarity;
-        case 'count':
-            return item.count; 
-        case 'cardId':
-            return item.cardId;
         default:
             return (item as any)[field] ?? null; 
     }

@@ -16,7 +16,7 @@ import PackList from '../features/packs/PackList';
 const PackListPage: React.FC = () => {
 
   return (
-    <Box sx={{ p: 3 }}>
+    <Box sx={{ p: 3, flexGrow: 1 }}>
       <Typography variant="h4" gutterBottom>パック管理</Typography>
       
       {/* パック一覧のフィーチャーコンポーネントを配置 */}

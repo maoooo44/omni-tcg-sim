@@ -6,19 +6,19 @@
  * - CustomFieldIndex: カスタムフィールドのインデックス（Cardでは1-6）
  * - FieldSetting: 表示設定として既存の DisplaySetting を流用
  */
-import type { DisplaySetting } from './pack';
+export interface FieldSetting {
+    /** ユーザーフレンドリーな表示名 (例: 'マナコスト', '逃げるエネルギー') */
+    displayName: string;
+    /** 詳細画面などでこのフィールドを表示するかどうか */
+    isVisible: boolean;
+    /** 表示順序 (オプション) */
+    order?: number; 
+}
 
 /** カスタムフィールドの型 */
-export type CustomFieldType = 'num' | 'str' | 'bool';
+export type CustomFieldType = 'num' | 'str';
 
 /** カスタムフィールドのインデックス（Card の num_1..num_6 / str_1..str_6 に対応） */
 export type CustomFieldIndex = 1 | 2 | 3 | 4 | 5 | 6;
-
-/**
- * FieldSetting は UI 側で使われていたローカル型の代わりに
- * Pack の DisplaySetting をそのまま利用します。
- * （以前の isEnabled は DisplaySetting.isVisible に統合します）
- */
-export type FieldSetting = DisplaySetting;
 
 export default {} as const;

@@ -7,9 +7,7 @@
 */
 import React from 'react';
 import { useParams } from '@tanstack/react-router'; 
-import { 
-    Box, Typography, Divider
-} from '@mui/material';
+import { Box, Typography } from '@mui/material';
 import PackOpener from '../features/pack-opener/PackOpener'; // これに全てのロジックを委譲
 
 interface PackOpenerParams { 
@@ -20,11 +18,8 @@ const PackOpenerPage: React.FC = () => {
     const { packId } = useParams({ strict: false }) as PackOpenerParams;
     
     return (
-        <Box sx={{ p: 2 }}>
-            <Typography variant="h4" gutterBottom>
-                パック開封シミュレータ
-            </Typography>
-            <Divider sx={{ mb: 2 }} />
+        <Box sx={{ p: 3, flexGrow: 1 }}>
+            <Typography variant="h4" gutterBottom>パック開封シミュレータ</Typography>
 
             {/* パックIDを渡し、実際のロジックはFeatureコンポーネントに委譲 */}
             <PackOpener preselectedPackId={packId} />

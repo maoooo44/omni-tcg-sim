@@ -1,165 +1,297 @@
 /**
  * src/components/modals/CustomFieldModal.tsx
- * * 特定のカスタムフィールド（bool, num, str のどれか、インデックス1-10）の設定
- * (displayName, description, isEnabled) を編集するためのモーダル。
- * * 💡 CustomFieldManager.tsx の openSettingModal から呼び出される。
+ * * カスタムフィールド設定の管理リスト。ドラッグ＆ドロップで表示名と順序を設定。
  */
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback, useMemo } from 'react';
 import { 
     Dialog, DialogTitle, DialogContent, DialogActions, 
-    TextField, Button, FormControlLabel, Checkbox, 
-    Typography, Box, Grid
+    TextField, Button, Typography, Box, Grid, 
 } from '@mui/material';
+import ReorderIcon from '@mui/icons-material/Reorder'; 
 
-import type { DisplaySetting } from '../../models/pack';
+// 💡 D&D ライブラリのインポート
+import { 
+    DndContext, 
+    closestCenter, 
+    PointerSensor, 
+    useSensor, 
+    useSensors, 
+    type DragEndEvent 
+} from '@dnd-kit/core';
+import { 
+    SortableContext, 
+    useSortable, 
+    verticalListSortingStrategy,
+    arrayMove
+} from '@dnd-kit/sortable';
+import { CSS } from '@dnd-kit/utilities';
+
+import type { FieldSetting, CustomFieldType } from '../../models/customField'; 
+import type { CustomFieldKeys, CustomFieldInfo } from '../controls/CustomFieldManager'; 
 
 // ----------------------------------------
-// Props 定義
+// 型定義 (変更なし)
 // ----------------------------------------
+export type AllFieldInfo = CustomFieldInfo & { 
+    setting: FieldSetting | undefined; 
+};
+
+interface LocalFieldSetting extends AllFieldInfo {
+    displayName: string;
+}
 
 export interface CustomFieldModalProps {
-    /** モーダルの開閉状態 */
     isOpen: boolean;
-    /** モーダルを閉じるハンドラ */
     onClose: () => void;
-
-    /** 編集対象アイテムの種別 ('Card', 'Deck', 'Pack'など) */
     itemType: 'Card' | 'Deck' | 'Pack';
-    /** 編集対象フィールドの型 ('bool', 'num', 'str') */
-    type: 'num' | 'str';
-    index: number;
-    
-    /** 現在の設定の初期値 */
-    initialSetting: DisplaySetting;
-
-    /**
-    /** カスタムフィールド設定 (displayName, isVisible, description) の変更を親に伝える
-     */
     onSettingChange: (
         itemType: 'Card' | 'Deck' | 'Pack',
-        type: 'num' | 'str',
+        type: CustomFieldType, 
         index: number,
-        settingUpdates: Partial<DisplaySetting>
+        settingUpdates: Partial<FieldSetting>
     ) => void;
+    allFieldInfo: AllFieldInfo[];
 }
+
+// ----------------------------------------
+// Sortableアイテムコンポーネント (変更なし)
+// ----------------------------------------
+
+interface SortableItemProps {
+    field: LocalFieldSetting;
+    handleDisplayNameChange: (fieldKey: CustomFieldKeys, newDisplayName: string) => void;
+}
+
+const SortableItem: React.FC<SortableItemProps> = ({ field, handleDisplayNameChange }) => {
+    // fieldKey を一意のIDとして利用
+    const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({ id: field.fieldKey });
+    
+    const style = {
+        transform: CSS.Transform.toString(transform),
+        transition,
+        zIndex: isDragging ? 10 : 1, 
+        opacity: isDragging ? 0.9 : 1, 
+        p: 1, 
+    };
+
+    const isSet = !!field.setting?.displayName;
+
+    return (
+        <Grid 
+            // 1列表示
+            size={12} 
+            ref={setNodeRef} 
+            style={style}
+        >
+            <Box 
+                sx={{
+                    p: 1, 
+                    display: 'flex', 
+                    alignItems: 'center',
+                    border: isDragging ? '1px dashed primary.main' : '1px solid #eee', 
+                    borderRadius: 1,
+                    bgcolor: isSet ? 'rgba(0, 0, 0, 0.02)' : 'transparent',
+                }}
+            >
+                {/* 💡 ドラッグハンドル（三本線）: attributes/listeners を適用し、ドラッグ専用にする */}
+                <Box
+                    sx={{
+                        cursor: 'grab',
+                        p: 1,
+                        mr: 1,
+                        display: 'flex',
+                        alignItems: 'center',
+                        color: 'text.secondary',
+                        '&:hover': { color: 'primary.main' },
+                        flexShrink: 0, 
+                    }}
+                    {...attributes} 
+                    {...listeners} 
+                >
+                    <ReorderIcon />
+                </Box>
+
+                {/* 入力フォーム */}
+                <TextField
+                    fullWidth
+                    label={`${field.fieldKey} (表示名)`} 
+                    placeholder="表示名 (空で削除)"
+                    value={field.displayName} 
+                    onChange={(e) => handleDisplayNameChange(field.fieldKey, e.target.value)}
+                    size="small"
+                    // 入力中に D&D が発動しないように onMouseDown を設定
+                    onMouseDown={(e) => e.stopPropagation()} 
+                />
+            </Box>
+        </Grid>
+    );
+};
+
 
 // ----------------------------------------
 // コンポーネント本体
 // ----------------------------------------
 
 const CustomFieldModal: React.FC<CustomFieldModalProps> = ({ 
-    isOpen, 
-    onClose, 
-    itemType, 
-    type, 
-    index, 
-    initialSetting, 
-    onSettingChange 
+    isOpen, onClose, itemType, allFieldInfo, onSettingChange 
 }) => {
-    // フォームのローカル状態管理
-    const [localSetting, setLocalSetting] = useState<DisplaySetting>(initialSetting);
+    const [localSettings, setLocalSettings] = useState<LocalFieldSetting[]>([]);
+    
+    // DndContextのためのセンサー設定
+    const sensors = useSensors(
+        useSensor(PointerSensor, { 
+            // センサーの距離を小さくし、純粋なクリックではないことを強調
+            activationConstraint: { distance: 5 }
+        })
+    );
 
-    // initialSetting が変更されたとき（モーダルが開いたときなど）に状態をリセット
+    // allFieldInfo の変更時にローカル状態を構築/リセット
     useEffect(() => {
-        setLocalSetting(initialSetting);
-    }, [initialSetting]);
+        const sortedInfo = [...allFieldInfo].sort((a, b) => {
+            if (a.type !== b.type) {
+                return a.type === 'num' ? -1 : 1; 
+            }
+            return a.index - b.index;
+        });
 
-    // 入力値変更ハンドラ (Text / Checkbox)
-    const handleChange = (field: keyof DisplaySetting, value: any) => {
-        // 💡 修正2: TS7006 エラー解消のため、prev に明示的に FieldSetting 型を指定
-        setLocalSetting((prev: DisplaySetting) => ({
-            ...prev,
-            [field]: value
-        }));
+        const currentActiveFields = sortedInfo
+            .filter(f => f.setting?.displayName)
+            .map(f => ({ ...f, displayName: f.setting!.displayName })); 
+        
+        currentActiveFields.sort((a, b) => {
+            const aOrder = a.setting?.order ?? Infinity;
+            const bOrder = b.setting?.order ?? Infinity;
+            return aOrder - bOrder;
+        });
+        
+        const unusedFields = sortedInfo
+            .filter(f => !f.setting?.displayName)
+            .map(f => ({ ...f, displayName: '' })); 
+
+        setLocalSettings([...currentActiveFields, ...unusedFields]);
+
+    }, [allFieldInfo]);
+
+
+    // 表示名変更ハンドラ (SortableItemに渡す)
+    const handleDisplayNameChange = useCallback((fieldKey: CustomFieldKeys, newDisplayName: string) => { 
+        setLocalSettings(prev => prev.map(f => 
+            f.fieldKey === fieldKey 
+                ? { ...f, displayName: newDisplayName } 
+                : f
+        ));
+    }, []);
+
+    /**
+     * D&D終了時の処理
+     */
+    const handleDragEnd = (event: DragEndEvent) => {
+        const { active, over } = event;
+
+        if (active.id !== over?.id) {
+            setLocalSettings(prev => {
+                const oldIndex = prev.findIndex(f => f.fieldKey === active.id);
+                const newIndex = prev.findIndex(f => f.fieldKey === over?.id);
+
+                if (oldIndex !== -1 && newIndex !== -1) {
+                    // 配列の並び替えに arrayMove を使用
+                    return arrayMove(prev, oldIndex, newIndex);
+                }
+                return prev;
+            });
+        }
     };
+
 
     // 保存処理
     const handleSave = () => {
-        // displayNameが必須であると仮定し、空の場合は保存をブロック
-        if (!localSetting.displayName.trim()) {
-            alert("表示名は必須です。");
-            return;
-        }
-
-        // 変更された部分のみを抽出して onSettingChange を呼び出す
-        const updates: Partial<DisplaySetting> = {};
-        if (localSetting.displayName !== initialSetting.displayName) {
-            updates.displayName = localSetting.displayName;
-        }
-        // description が undefined から '' に変わる可能性も考慮
-        // DisplaySetting uses isVisible for visibility toggle
-        if ((localSetting as any).isVisible !== (initialSetting as any).isVisible) {
-            (updates as any).isVisible = (localSetting as any).isVisible;
-        }
-
-        // 実際に更新があった場合のみストアアクションを呼び出す
-        if (Object.keys(updates).length > 0) {
-            onSettingChange(itemType, type, index, updates);
-        }
+        const changes: Record<CustomFieldKeys, Partial<FieldSetting>> = {} as Record<CustomFieldKeys, Partial<FieldSetting>>;
         
-        onClose(); // モーダルを閉じる
-    };
+        localSettings.forEach((field, index) => {
+            const initialSetting = allFieldInfo.find(f => f.fieldKey === field.fieldKey)?.setting;
+            const initialDisplayName = initialSetting?.displayName.trim() || '';
+            const newDisplayName = field.displayName.trim();
 
-    // キャンセル処理
-    const handleCancel = () => {
-        // 状態を初期値に戻す（useEffectが実行されるため厳密には不要だが念のため）
-        setLocalSetting(initialSetting);
+            const initialOrder = initialSetting?.order;
+            const newOrder = index + 1;
+
+            const updates: Partial<FieldSetting> = {};
+
+            // 1. displayName の変更・新規設定・削除チェック
+            if (newDisplayName !== initialDisplayName) {
+                updates.displayName = newDisplayName;
+            }
+
+            // 2. order の変更チェック
+            if (newOrder !== initialOrder) {
+                 updates.order = newOrder;
+            }
+            
+            if (Object.keys(updates).length > 0 || (newDisplayName === '' && initialDisplayName !== '')) {
+                changes[field.fieldKey] = updates;
+            }
+        });
+
+        // onSettingChange を呼び出す
+        Object.entries(changes).forEach(([fieldKey, updates]) => {
+            const fieldInfo = allFieldInfo.find(f => f.fieldKey === fieldKey);
+            if (fieldInfo) {
+                onSettingChange(itemType, fieldInfo.type, fieldInfo.index, updates);
+            }
+        });
+        
         onClose();
     };
 
+    const handleCancel = () => {
+        onClose();
+    };
+    
+    // SortableContext に渡すIDのリスト
+    const items = useMemo(() => localSettings.map(f => f.fieldKey), [localSettings]);
 
-    // フォームが無効化されているかチェック (displayNameが空の場合)
-    const isSaveDisabled = !localSetting.displayName.trim();
 
     return (
         <Dialog 
             open={isOpen} 
             onClose={handleCancel} 
-            maxWidth="sm" 
+            maxWidth="lg" 
             fullWidth
         >
-            <DialogTitle>カスタムフィールド設定の編集</DialogTitle>
+            <DialogTitle>カスタムフィールド設定の管理（ドラッグ＆ドロップ）</DialogTitle>
             <DialogContent dividers>
                 <Box sx={{ mb: 2 }}>
-                    <Typography variant="subtitle1" color="textSecondary">
-                        対象: **{itemType}** ({type.toUpperCase()}{index})
+                    <Typography variant="caption" color="textSecondary">
+                        **{itemType}** のカスタムフィールドの**表示名**と**表示順序**を管理します。**三本線アイコンをドラッグ**して**縦方向のみ**順序を変更できます。表示名を空にして保存すると、その設定は**削除**されます。
+                        <br/>
+                        *注: ドラッグ中の自動スクロール機能は無効にしました。*
                     </Typography>
                 </Box>
                 
-                <Grid container spacing={2}>
-                    
-                    {/* 表示名 (必須) */}
-                    <Grid size={{ xs: 12 }}>
-                        <TextField
-                            fullWidth
-                            required
-                            label="表示名"
-                            // localSetting.displayName は useEffect で初期化されるため、! が不要
-                            value={localSetting.displayName} 
-                            onChange={(e) => handleChange('displayName', e.target.value)}
-                            helperText="カードの入力フォームに表示される名前です。"
-                            inputProps={{ maxLength: 50 }}
-                        />
-                    </Grid>
-
-                    {/* 説明フィールドは DisplaySetting に含まれないため削除（シンプル化） */}
-
-                    {/* 有効/無効の切り替え */}
-                    <Grid size={{ xs: 12 }}>
-                        <FormControlLabel
-                            control={
-                                <Checkbox
-                                    checked={(localSetting as any).isVisible}
-                                    onChange={(e) => handleChange('isVisible' as any, e.target.checked)}
+                <DndContext 
+                    sensors={sensors} 
+                    collisionDetection={closestCenter} 
+                    onDragEnd={handleDragEnd}
+                    // 💡 修正: 自動スクロールを完全に無効化
+                    autoScroll={false} 
+                >
+                    <SortableContext 
+                        items={items} 
+                        // 縦軸固定の verticalListSortingStrategy を適用
+                        strategy={verticalListSortingStrategy} 
+                    >
+                        <Grid container spacing={1}> 
+                            {localSettings.map((field) => (
+                                <SortableItem
+                                    key={field.fieldKey}
+                                    field={field}
+                                    handleDisplayNameChange={handleDisplayNameChange}
                                 />
-                            }
-                            label="このカスタムフィールドを表示する"
-                        />
-                        <Typography variant="caption" color="textSecondary" sx={{ display: 'block' }}>
-                            無効にすると、このフィールドはUIに表示されなくなりますが、既存の値は保持されます。
-                        </Typography>
-                    </Grid>
-                </Grid>
+                            ))}
+                        </Grid>
+                    </SortableContext>
+                </DndContext>
+                
             </DialogContent>
             <DialogActions>
                 <Button onClick={handleCancel} color="inherit">
@@ -169,9 +301,8 @@ const CustomFieldModal: React.FC<CustomFieldModalProps> = ({
                     onClick={handleSave} 
                     color="primary" 
                     variant="contained"
-                    disabled={isSaveDisabled}
                 >
-                    保存
+                    設定を保存
                 </Button>
             </DialogActions>
         </Dialog>

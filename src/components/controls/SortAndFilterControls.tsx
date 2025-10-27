@@ -25,29 +25,16 @@ import AddIcon from '@mui/icons-material/Add';
 import ClearIcon from '@mui/icons-material/Clear';
 
 import type { SortField } from '../../utils/sortingUtils';
-import type { SortFilterState } from '../../hooks/useSortAndFilter'; // 型定義をインポート
+import type { 
+    SortFilterState, 
+    FilterField, 
+    FilterCondition 
+} from '../../hooks/useSortAndFilter';
 
 // 汎用的なソートオプションの型 (表示名とフィールドキー)
 export interface SortOption {
     label: string;
     value: SortField;
-}
-
-// フィルタフィールドの型定義
-export type FilterFieldType = 'text' | 'number' | 'select' | 'boolean';
-
-export interface FilterField {
-    field: string;
-    label: string;
-    type: FilterFieldType;
-    options?: string[]; // select用のオプション
-    caseSensitive?: boolean; // text用の大文字小文字区別（デフォルト: false）
-}
-
-// フィルタ条件の型
-export interface FilterCondition {
-    field: string;
-    value: string | number | boolean;
 }
 
 // コンポーネントのProps型
@@ -59,10 +46,10 @@ export interface SortAndFilterControlsProps extends SortFilterState {
     setSortField: (field: SortField) => void;
     toggleSortOrder: () => void;
     setSearchTerm: (term: string) => void;
+    setFilters: (filters: FilterCondition[]) => void;
     
     // 💡 フィルタリング関連
     filterFields?: FilterField[]; // フィルタリング可能なフィールド定義
-    onFilterChange?: (filters: FilterCondition[]) => void; // フィルタ条件変更時のコールバック
     
     // 💡 UIオプション
     labelPrefix?: string; // 例: "パック" のソート・フィルタ
@@ -78,19 +65,20 @@ const SortAndFilterControls: React.FC<SortAndFilterControlsProps> = ({
     sortField,
     sortOrder,
     searchTerm,
+    filters: externalFilters,
     sortOptions,
     setSortField,
     toggleSortOrder,
     setSearchTerm,
+    setFilters: setExternalFilters,
     filterFields = [],
-    onFilterChange,
-    labelPrefix = '',
+    labelPrefix = 'アイテム',
     disableFiltering = false,
     disableSorting = false,
 }) => {
     
-    // フィルタ条件の状態管理
-    const [filters, setFilters] = useState<FilterCondition[]>([]);
+    // フィルタ条件の状態管理（親からの値で初期化）
+    const [filters, setFilters] = useState<FilterCondition[]>(externalFilters);
     const [currentField, setCurrentField] = useState<string>('');
     const [currentValue, setCurrentValue] = useState<string>('');
     
@@ -120,25 +108,25 @@ const SortAndFilterControls: React.FC<SortAndFilterControlsProps> = ({
         
         const newFilters = [...filters, { field: currentField, value: parsedValue }];
         setFilters(newFilters);
-        onFilterChange?.(newFilters);
+        setExternalFilters(newFilters);
         
         // 入力欄をリセット
         setCurrentField('');
         setCurrentValue('');
-    }, [currentField, currentValue, filters, filterFields, onFilterChange]);
+    }, [currentField, currentValue, filters, filterFields, setExternalFilters]);
 
     // フィルタ条件を削除
     const handleRemoveFilter = useCallback((index: number) => {
         const newFilters = filters.filter((_, i) => i !== index);
         setFilters(newFilters);
-        onFilterChange?.(newFilters);
-    }, [filters, onFilterChange]);
+        setExternalFilters(newFilters);
+    }, [filters, setExternalFilters]);
 
     // すべてのフィルタをクリア
     const handleClearAllFilters = useCallback(() => {
         setFilters([]);
-        onFilterChange?.([]);
-    }, [onFilterChange]);
+        setExternalFilters([]);
+    }, [setExternalFilters]);
 
     // 現在選択中のフィールド定義を取得
     const selectedFieldDef = filterFields.find(f => f.field === currentField);

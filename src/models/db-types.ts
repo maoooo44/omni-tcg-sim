@@ -72,8 +72,8 @@ export interface DBPack {
     num_2?: number | null; 
     str_1?: string;
     str_2?: string;
-    packFieldSettings?: PackFieldSettings;
-    cardFieldSettings?: CardFieldSettings;
+    packFieldSettings: PackFieldSettings;
+    cardFieldSettings: CardFieldSettings;
     tag?: Record<string, string>;
     searchText?: string;
     
@@ -114,7 +114,7 @@ export interface DBDeck {
     str_2?: string; 
     str_3?: string; 
     str_4?: string; 
-    fieldSettings?: DeckFieldSettings;
+    fieldSettings: DeckFieldSettings;
     tag?: Record<string, string>;
     searchText?: string;
 }

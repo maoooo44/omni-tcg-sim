@@ -18,6 +18,7 @@ import AddIcon from '@mui/icons-material/Add';
 import { useGridDisplay } from '../../hooks/useGridDisplay'; 
 import ReusableItemGrid from '../../components/common/ReusableItemGrid';
 import DeckItem from './components/DeckItem'; // DeckItemを使用する (PackItemと互換)
+import GridColumnToggle from '../../components/controls/GridColumnToggle';
 
 // import { useSortAndFilter } from '../../hooks/useSortAndFilter'; // useDeckList内で処理される前提
 import SortAndFilterControls from '../../components/controls/SortAndFilterControls'; 
@@ -27,7 +28,7 @@ import SortAndFilterControls from '../../components/controls/SortAndFilterContro
 import { createDefaultDeck } from '../../utils/dataUtils';
 import { DeckListGridSettings } from '../../configs/gridDefaults'; // グリッド設定のインポート
 // 💡 追加/修正: フィルタフィールド定義をインポート
-import { DECK_SORT_OPTIONS, DECK_FILTER_FIELDS } from '../../configs/sortAndFilterDefaults'; 
+import { DECK_FILTER_FIELDS } from '../../configs/sortAndFilterDefaults'; 
 const DECK_EDIT_PATH_PREFIX = '/user/decks'; 
 
 
@@ -46,13 +47,15 @@ const DeckList: React.FC = () => {
         sortField,
         sortOrder,
         searchTerm,
+        filters,
         setSortField,
         toggleSortOrder,
         setSearchTerm,
-        handleFilterChange, // ★ 高度なフィルタリングのハンドラ
+        setFilters,
+        DECK_SORT_OPTIONS,
         // 既存プロパティ
         isLoading,
-        handlemoveDeckToTrash, 
+        handlemoveDeckToTrash,
     } = useDeckList();
     
     const navigate = useNavigate(); 
@@ -133,33 +136,44 @@ const DeckList: React.FC = () => {
     // const hasFilteredResults = displayedDecks.length > 0; // isFilteredButEmptyで代替
 
     return (
-        <Box sx={{ p: 3 }}>
+        <Box sx={{ flexGrow: 1, p: 2 }}>
             
             {/* ソート・フィルタリングUIの配置 */}
-            {/* ★ 修正: filterFields と onFilterChange を追加 */}
+            {/* ★ 修正: filterFields と setFilters を追加 */}
             <SortAndFilterControls
                 labelPrefix="デッキ"
                 sortOptions={DECK_SORT_OPTIONS}
                 sortField={sortField}
                 sortOrder={sortOrder}
                 searchTerm={searchTerm}
+                filters={filters}
                 setSortField={setSortField}
                 toggleSortOrder={toggleSortOrder}
                 setSearchTerm={setSearchTerm}
+                setFilters={setFilters}
                 filterFields={DECK_FILTER_FIELDS} // ★ DECK用のフィルタフィールド定義
-                onFilterChange={handleFilterChange} // ★ useDeckListから取得したハンドラ
             />
 
-            <Box sx={{ mb: 3, display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                <Typography variant="h5">デッキ一覧 ({displayedDecks.length}件)</Typography>
-                <Button
-                    variant="contained"
-                    color="primary"
-                    startIcon={<AddIcon />}
-                    onClick={handleCreateNewDeck}
-                >
-                    新規デッキを作成
-                </Button>
+            <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 3 }}>
+                <Typography variant="h6">デッキ一覧 ({displayedDecks.length}件)</Typography>
+                <Box sx={{ display: 'flex', alignItems: 'center', gap: 2 }}>
+                    <GridColumnToggle
+                        currentColumns={gridDisplayProps.columns}
+                        setColumns={gridDisplayProps.setColumns}
+                        minColumns={gridDisplayProps.minColumns}
+                        maxColumns={gridDisplayProps.maxColumns}
+                        label="列数:"
+                    />
+                    <Button
+                        variant="contained"
+                        color="primary"
+                        startIcon={<AddIcon />}
+                        onClick={handleCreateNewDeck}
+                        sx={{ width: '180px' }}
+                    >
+                        新規デッキを作成
+                    </Button>
+                </Box>
             </Box>
 
             {/* 検索結果がゼロの場合のAlert (高度なフィルタリング結果も含む) */}

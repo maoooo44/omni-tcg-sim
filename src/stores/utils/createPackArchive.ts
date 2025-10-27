@@ -1,4 +1,4 @@
-// src/stores/utils/createPackArchive.ts // 💡 ファイル名を変更
+// src/stores/utils/createPackArchive.ts
 
 import { archiveService } from '../../services/archive/archiveService';
 import { packService } from '../../services/packs/packService'; 
@@ -19,6 +19,9 @@ import {
     type ArchiveHandler, 
     type ArchiveMappers
 } from './_archiveCoreUtils'; 
+
+// 💡 修正: dataUtilsから createDefaultPack をインポート
+import { createDefaultPack } from '../../utils/dataUtils'; 
 
 // 💡 PackStore の型をインポート
 import type { PackStore } from '../packStore';
@@ -101,39 +104,33 @@ const _archiveBundleToArchivePack = (bundle: ArchivePackBundle): ArchivePack => 
 
 /**
  * DBArchiveからArchiveDisplayData (ArchivePack) へ変換するマッパー
+ * 💡 修正: createDefaultPack を利用し、手動補完を削除
  */
 const packToArchiveDisplayData = (dbRecord: DBArchive): ArchiveDisplayData => {
     const archiveBundle = _dbArchiveToArchivePackBundle(dbRecord); 
     const packData = archiveBundle.packData;
     
+    // データが完全に存在する場合
     if (packData) {
         return _archiveBundleToArchivePack(archiveBundle);
     }
     
-    // Packの必須プロパティを全て補完
+    // Packデータが削除されている（null）場合
+    
+    // 1. dataUtilsからデフォルトのPackオブジェクトを生成 (packIdを付与)
+    const defaultPack = createDefaultPack(dbRecord.itemId); 
+    
+    // 3. 最終的な ArchivePack オブジェクトを生成
     return {
+        // Archive固有のメタデータを追加
         archiveId: dbRecord.archiveId,
         archivedAt: dbRecord.archivedAt,
-        packId: dbRecord.itemId,
-        name: 'Deleted Pack (No Data)', 
-        itemType: ARCHIVE_ITEM_TYPE, 
-        isFavorite: false, 
-        isManual: false,
-        imageUrl: '',
-        cardBackImageUrl: '',
-        price: 0,
-        packType: 'Booster',
-        cardsPerPack: 0,
-        totalCards: 0,
-        series: 'Unknown',
-        releaseDate: '',
-        description: '',
-        isOpened: false,
+        // createDefaultPack の値をベースに、削除メタデータで上書き
+        ...defaultPack,         
+        // DBから取得したアーカイブ日時を最終更新日として設定
         createdAt: dbRecord.archivedAt,
         updatedAt: dbRecord.archivedAt,
-        rarityConfig: [],
-        specialProbabilitySlots: 0,
-        isAdvancedRulesEnabled: false,
+
     } as ArchivePack;
 };
 

@@ -3,23 +3,27 @@
  *
  * CardデータのCSVインポート/エクスポートを行うI/Oサービス層。
  * CSVパース/フォーマットのロジックと、Cardオブジェクトへのマッピングを担う。
+ * 
+ * 【仕様】
+ * - カスタムフィールドは物理フィールド名（bool_1, num_1, str_1等）で指定
+ * - ユーザーフレンドリー名のマッピングは行わない
+ * - コメント行（# で始まる行）は無視される
  */
 
 import type { Card } from '../../models/card';
 import { formatCardsToCsv } from '../../utils/csvFormatter';
 import { parseCSV } from '../..//utils/csvParser';
 import { generateId, createDefaultCard } from '../../utils/dataUtils'; 
-// 💡 修正: 新しいユーティリティファイルから型をインポート
+// 💡 修正: CustomFieldDefinitionは不要になったが、インターフェース互換性のため一旦残す
 import type { CustomFieldDefinition } from './dataIOUtils';
-// models/customField は削除されたため、CSV 用に簡易な型をここに定義する
+
 type CsvCustomFieldType = 'bool' | 'num' | 'str';
 
 // =========================================================================
-// 定数定義 (カスタムインデックスフィールドの扱いを修正)
+// 定数定義
 // =========================================================================
 
 // ユーザーが意図的に値を指定することを許容する固定フィールド (小文字で定義)
-// 💡 修正: custom_Xxx_Yyy の物理名をここから削除
 const FIXED_FIELDS_LOWER: string[] = [
     'name', 
     'rarity', 
@@ -35,11 +39,10 @@ const SYSTEM_RESERVED_FIELDS: (keyof Card)[] = [
     'packId', 
     'createdAt',
     'updatedAt',
-    // 💡 修正: custom_Xxx_Yyy 物理名も予約語としてチェック対象に含める
-    ...Array.from({ length: 10 }, (_, i) => `custom_${i + 1}_bool` as keyof Card),
-    ...Array.from({ length: 10 }, (_, i) => `custom_${i + 1}_num` as keyof Card),
-    ...Array.from({ length: 10 }, (_, i) => `custom_${i + 1}_str` as keyof Card),
 ];
+
+// 物理カスタムフィールド名のパターン（bool_1～10, num_1～10, str_1～10）
+const CUSTOM_FIELD_PATTERN = /^(bool|num|str)_([1-9]|10)$/;
 
 // FIXED_FIELDS_LOWER 以外の予約語のみをチェック対象とする
 const CHECK_RESERVED_FIELDS: string[] = SYSTEM_RESERVED_FIELDS
@@ -65,40 +68,28 @@ const splitPipeSeparatedValue = (value: string | null | undefined): string[] => 
  * CSVテキストをパースし、Cardオブジェクトの配列に変換します。
  * @param packId - 割り当てるPack ID
  * @param csvText - CSV形式の文字列
- * @param customFieldDefs - ユーザー定義のカスタムフィールドマッピング
+ * @param customFieldDefs - （互換性のため残すが使用しない）
  * @returns Cardオブジェクトの配列
  */
 export const importCardsFromCsv = async (
     packId: string, 
     csvText: string,
-    customFieldDefs: CustomFieldDefinition[]
+    _customFieldDefs: CustomFieldDefinition[] // 使用しないが互換性のため残す
 ): Promise<Card[]> => {
     
-    // 1. CSVパース
+    // 1. CSVパース（コメント行は自動的に除外される）
     const { headers, data } = parseCSV(csvText);
 
     if (headers.length === 0 || data.length === 0) {
         return [];
     }
     
-    // 💡 ユーザーフレンドリー名から物理キーへのマップを構築 (小文字で照合)
-    const userFriendlyToCardKeyMap = new Map<string, CustomFieldDefinition>();
-    customFieldDefs.forEach(def => {
-        // 表示名が空の場合はスキップ
-        if (def.fieldName.trim()) {
-            userFriendlyToCardKeyMap.set(def.fieldName.toLowerCase().trim(), def);
-        }
-    });
-
-    // 2. 予約語チェック
+    // 2. 予約語チェック（cardId, packId, createdAt, updatedAtのみ）
     for (const header of headers) {
         const lowerCaseHeader = header.toLowerCase().trim();
         
-        // CHECK_RESERVED_FIELDSに含まれるヘッダーは弾く (cardId, packId, custom_1_strなど)
-        // ただし、ユーザーフレンドリー名として定義されている場合は許可する必要があるため、除外
-        if (CHECK_RESERVED_FIELDS.includes(lowerCaseHeader) && !userFriendlyToCardKeyMap.has(lowerCaseHeader)) {
-            // custom_Xxx_Yyy や cardId などがユーザーフレンドリー名として定義されていなければエラー
-            throw new Error(`予約済みのシステムフィールド名 "${header}" はカスタムプロパティとして使用できません。`);
+        if (CHECK_RESERVED_FIELDS.includes(lowerCaseHeader)) {
+            throw new Error(`予約済みのシステムフィールド名 "${header}" はCSVで指定できません。`);
         }
     }
 
@@ -118,34 +109,25 @@ export const importCardsFromCsv = async (
                 lowerCaseHeader;
                 
             fixedHeaderIndices[fieldName] = index;
+            return;
         }
 
-        // --- (B) ユーザーフレンドリーなカスタムフィールド名の照合 ---
-        const userDef = userFriendlyToCardKeyMap.get(lowerCaseHeader);
-        if (userDef) {
-            // 照合が成功した場合、カスタムマッピングに追加 (物理名を使用)
-            customHeaderIndices.push({ 
-                header: userDef.cardKey, 
-                index: index, 
-                type: userDef.type 
-            });
-            return; 
-        }
-
-        // --- (C) 物理カスタムインデックス名 (custom_Xxx_Yyy) の照合 ---
-        // ユーザーがCSVヘッダーに物理名 (例: custom_1_str) を直接記述した場合
-        if (lowerCaseHeader.startsWith('custom_') && lowerCaseHeader.match(/_(bool|num|str)$/)) {
-            const typeMatch = lowerCaseHeader.match(/_(bool|num|str)$/);
-            const type = typeMatch ? (typeMatch[1] as CsvCustomFieldType) : 'str';
+        // --- (B) 物理カスタムフィールド名 (bool_1, num_1, str_1 等) の照合 ---
+        const customMatch = lowerCaseHeader.match(CUSTOM_FIELD_PATTERN);
+        if (customMatch) {
+            const type = customMatch[1] as CsvCustomFieldType;
+            const fieldKey = lowerCaseHeader as keyof Card; // 例: "bool_1"
             
             customHeaderIndices.push({ 
-                header: lowerCaseHeader as keyof Card, 
+                header: fieldKey, 
                 index: index, 
                 type: type 
             });
+            return;
         }
         
-        // (A), (B), (C) のいずれにもマッチしないヘッダーは無視される
+        // (A), (B) のいずれにもマッチしないヘッダーは無視される
+        console.warn(`[cardCsvIO] Unknown CSV header "${header}" will be ignored.`);
     });
 
     // 4. データ行をCardオブジェクトに変換 (中略、ロジック変更なし)
