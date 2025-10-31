@@ -1,42 +1,39 @@
 /**
  * src/stores/userDataStore.ts
  *
- * ユーザーの設定（DTCG/Free/God Mode）および、それに関連するメタデータ（チート回数）の
- * グローバルな状態を管理するZustandストア。
- * 責務は、モード間の複雑なロジック処理と、userDataServiceを介した設定の永続化である。
- * 💡 修正: カスタムフィールド設定 (customFieldConfig) の更新と永続化アクションを削除。
- * 📌 修正: gridSettings の状態とロジックを追加。
+ * * ユーザーの設定（ゲームモード、GC設定、Grid表示設定）および、それに関連するメタデータ
+ * （チート回数）のグローバルな状態を管理するZustandストア。
+ *
+ * * 責務:
+ * 1. ユーザー設定（UserDataState）の状態を保持する。
+ * 2. ゲームモード（DTCG/Free/God Mode）間のロジックを管理し、状態を更新する。
+ * 3. 永続化層（userDataService）を介した設定のロード、および変更時の保存をトリガーする。
+ * 4. DB保存のための永続化可能な状態を抽出し、サービス層に渡す（getPersistableState）。
+ * 5. GridDisplayDefault設定など、ネストされた設定オブジェクトのイミュータブルな更新を管理する。
  */
 
 import { create } from 'zustand';
-// userDataService から PersistedUserSettings と DEFAULT_SETTINGS をインポート
-import { userDataService, DEFAULT_SETTINGS } from '../services/user-data/userDataService'; 
-// models/userData から必要な型をインポート
-import type{ CurrentGameMode, UserDataState, GridDisplayDefault, PersistedUserSettings, } from '../models/userData'; 
-// 💡 削除: CustomFieldType, CustomFieldIndex, FieldSetting のインポートを削除
+import { userDataService, DEFAULT_SETTINGS } from '../services/user-data/userDataService';
+import type { CurrentGameMode, UserDataState, GridDisplayDefault, PersistedUserSettings, } from '../models/userData';
 
 
 // ----------------------------------------
-// 💡 UserDataStore インターフェースの定義 (状態 + アクション)
+// UserDataStore インターフェースの定義 (状態 + アクション)
 // ----------------------------------------
-
-// ... (UserDataStore インターフェースの定義は変更なし) ...
 
 export interface UserDataStore extends UserDataState {
-    // 💡 状態に依存するセレクター
+    // 状態に依存するセレクター
     getCurrentMode: () => CurrentGameMode;
-    
+
     // --- アクション ---
-    loadUserData: () => Promise<void>; 
-    setDTCGMode: (isEnabled: boolean) => Promise<void>; 
-    setGodMode: (isGMode: boolean) => Promise<void>; 
-    
+    loadUserData: () => Promise<void>;
+    setDTCGMode: (isEnabled: boolean) => Promise<void>;
+    setGodMode: (isGMode: boolean) => Promise<void>;
+
     /** 外部データ（インポート）でユーザーデータを更新する */
     importUserData: (data: Omit<UserDataState & { coins: number }, 'coins'>) => Promise<void>;
 
-    /** * 💡 削除: カスタムフィールドの設定 (displayName, isEnabled, description) を更新し永続化するアクションを削除 */
-
-    // 📌 新規追加: GridDisplayDefault の設定を更新するアクション
+    /** GridDisplayDefault の設定を更新するアクション */
     setGridDisplayDefault: (
         componentKey: 'cardPool', // 現時点では cardPool のみ
         updates: Partial<GridDisplayDefault>
@@ -48,22 +45,18 @@ export interface UserDataStore extends UserDataState {
 // 初期値設定
 // ----------------------------------------
 
-// 💡 削除: customFieldConfig の初期値設定を削除
-
-// 📌 既存: gridSettings の初期値
+// 既存: gridSettings の初期値
 const initialGridSettings = DEFAULT_SETTINGS.gridSettings;
 
 // ユーザーデータの初期値 (状態部分のみ)
 const initialState: UserDataState = {
-    isDTCGEnabled: true, 
+    isDTCGEnabled: true,
     isGodMode: false,
     cheatCount: 0,
-    
-    gcSettings: DEFAULT_SETTINGS.gcSettings,
-    
-    // 💡 削除: customFieldConfig を削除
 
-    // 📌 既存: gridSettings の初期値を設定
+    gcSettings: DEFAULT_SETTINGS.gcSettings,
+
+    // 既存: gridSettings の初期値を設定
     gridSettings: initialGridSettings,
 };
 
@@ -77,12 +70,10 @@ const getPersistableState = (state: UserDataStore): PersistedUserSettings => ({
     isDTCGEnabled: state.isDTCGEnabled,
     isGodMode: state.isGodMode,
     cheatCount: state.cheatCount,
-    
-    gcSettings: state.gcSettings,
-    
-    // 💡 削除: customFieldConfig を削除
 
-    // 📌 gridSettings を永続化対象に追加
+    gcSettings: state.gcSettings,
+
+    // gridSettings を永続化対象に追加
     gridSettings: state.gridSettings,
 });
 
@@ -93,11 +84,11 @@ const getPersistableState = (state: UserDataStore): PersistedUserSettings => ({
 
 export const useUserDataStore = create<UserDataStore>((set, get) => ({
     ...initialState,
-    
+
     // 現在のモードを計算して返すセレクター
     getCurrentMode: () => {
         const { isDTCGEnabled, isGodMode } = get();
-        if (isGodMode) return 'god' as CurrentGameMode; 
+        if (isGodMode) return 'god' as CurrentGameMode;
         if (isDTCGEnabled) return 'dtcg' as CurrentGameMode;
         return 'free' as CurrentGameMode;
     },
@@ -106,16 +97,14 @@ export const useUserDataStore = create<UserDataStore>((set, get) => ({
         try {
             const settings = await userDataService.loadSettings();
             if (settings) {
-                set({ 
+                set({
                     isDTCGEnabled: settings.isDTCGEnabled,
                     isGodMode: settings.isGodMode,
                     cheatCount: settings.cheatCount,
-                    
-                    gcSettings: settings.gcSettings,
-                    
-                    // 💡 削除: customFieldConfig のロードを削除
 
-                    // 📌 gridSettings をロード
+                    gcSettings: settings.gcSettings,
+
+                    // gridSettings をロード
                     gridSettings: settings.gridSettings,
                 });
             }
@@ -124,24 +113,24 @@ export const useUserDataStore = create<UserDataStore>((set, get) => ({
             console.error('Failed to load user data:', error);
         }
     },
-    
+
     setDTCGMode: async (isEnabled: boolean) => {
-        set({ isDTCGEnabled: isEnabled }); 
+        set({ isDTCGEnabled: isEnabled });
         await userDataService.saveSettings(getPersistableState(get()));
         console.log(`DTCG Mode set to ${isEnabled}.`);
     },
 
     setGodMode: async (isGMode: boolean) => {
         const currentGodMode = get().isGodMode;
-        
+
         if (isGMode && !currentGodMode) {
             const { cheatCount } = get();
-            let newCheatCount = cheatCount + 1; 
-            
-            set({ 
-                isGodMode: isGMode, 
+            let newCheatCount = cheatCount + 1;
+
+            set({
+                isGodMode: isGMode,
                 isDTCGEnabled: true, // God ModeはDTCGの派生
-                cheatCount: newCheatCount 
+                cheatCount: newCheatCount
             });
             console.log(`God Mode Activated. Cheat Count: ${newCheatCount}`);
 
@@ -152,21 +141,19 @@ export const useUserDataStore = create<UserDataStore>((set, get) => ({
         } else {
             return;
         }
-        
+
         await userDataService.saveSettings(getPersistableState(get()));
     },
-        
-    importUserData: async (data) => { 
-        set({ 
+
+    importUserData: async (data) => {
+        set({
             isDTCGEnabled: data.isDTCGEnabled,
             isGodMode: data.isGodMode,
             cheatCount: data.cheatCount,
-            
-            gcSettings: data.gcSettings, 
-            
-            // 💡 削除: customFieldConfig のインポートを削除
 
-            // 📌 gridSettings をインポート
+            gcSettings: data.gcSettings,
+
+            // gridSettings をインポート
             gridSettings: data.gridSettings,
         });
         await userDataService.saveSettings(getPersistableState(get()));
@@ -174,23 +161,19 @@ export const useUserDataStore = create<UserDataStore>((set, get) => ({
     },
 
     // ----------------------------------------
-    // 💡 削除: onSettingChange アクションの実装を削除
-    // ----------------------------------------
-
-    // ----------------------------------------
-    // 📌 既存実装: setGridDisplayDefault
+    // setGridDisplayDefault
     // ----------------------------------------
     setGridDisplayDefault: async (componentKey, updates) => {
         set((state) => {
             // 階層のシャローコピー
             const newGridSettings = { ...state.gridSettings };
             const currentSettings = newGridSettings[componentKey];
-            
+
             // 該当するコンポーネントの設定を更新
             newGridSettings[componentKey] = {
                 ...currentSettings,
                 ...updates,
-                // advancedResponsive のネストされたオブジェクトも更新対象にある可能性
+                // advancedResponsive のネストされたオブジェクトをディープマージ
                 advancedResponsive: {
                     ...currentSettings.advancedResponsive,
                     ...updates.advancedResponsive,

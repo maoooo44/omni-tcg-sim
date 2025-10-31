@@ -1,8 +1,14 @@
 /**
  * src/utils/csvFormatter.ts
  *
- * 汎用的なフォーマットロジックを提供するユーティリティ関数群。
- * 主に、特定のモデルオブジェクトの配列をCSV文字列に変換する処理を担う。
+ * * 汎用的なCSVフォーマットロジックを提供するユーティリティモジュール。
+ * 主な責務は、特定のモデルオブジェクトの配列を、CSV標準（RFC 4180）に準拠した形式のCSV文字列に変換することです。
+ * 変換ロジックには、カンマ、二重引用符、改行を含む値の適切な二重引用符エスケープ処理が含まれます。
+ *
+ * * 責務:
+ * 1. Cardオブジェクトの配列をCSV文字列に変換する（formatCardsToCsv）。
+ * 2. CSV値のエスケープ処理（二重引用符で囲み、内部の二重引用符を二重化）を適用する。
+ * 3. データのヘッダー（列）を明示的に定義し、データの一貫性を保証する。
  */
 
 import type { Card } from '../models/card';
@@ -15,9 +21,9 @@ export const formatCardsToCsv = (cards: Card[]): string => {
 
     // Cardのプロパティを安全に扱うためのキーリストを定義
     const headers: (keyof Card)[] = [
-        'cardId', 'packId', 'number', /*'term', 'definition', 'lastViewedAt', 'createdAt',*/ 'updatedAt',
+        'cardId', 'packId', 'number', 'updatedAt',
     ];
-    
+
     // 値のフォーマットとエスケープ
     const escapeCsvValue = (value: any): string => {
         if (value === null || value === undefined) return '';
@@ -31,7 +37,7 @@ export const formatCardsToCsv = (cards: Card[]): string => {
     };
 
     // ヘッダー行を生成
-    const csvRows = [headers.join(',')];
+    const csvRows = [headers.map(h => escapeCsvValue(h)).join(',')]; // ヘッダーもエスケープすることが望ましい
 
     // データ行を生成
     cards.forEach(card => {

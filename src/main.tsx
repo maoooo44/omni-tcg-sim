@@ -1,26 +1,21 @@
 /**
-* src/main.tsx
-* 
-* アプリケーションのエントリーポイント。
-* Reactのレンダリング開始を行います。
-* IndexedDB (Dexie) の初期化と接続は、useInitialLoadフック（または関連サービス）に移管されました。
-*/
+ * src/main.tsx
+ *
+ * * アプリケーションのエントリーポイント（ブートストラップモジュール）。
+ * 主な責務は、ReactアプリケーションをDOMにマウントし、レンダリングを開始することです。
+ * グローバルな初期化処理（IndexedDBの接続、データロードなど）は、App.tsxおよびカスタムフック（useInitialLoadなど）に委譲されています。
+ *
+ * * 責務:
+ * 1. React, ReactDOM, Appコンポーネントをインポートする。
+ * 2. ドキュメント内のルート要素（'#root'）を特定する。
+ * 3. ReactDOM.createRootを使用してアプリケーション（Appコンポーネント）をDOMにマウントし、レンダリングを開始する。
+ */
 
 import React from 'react';
 import ReactDOM from 'react-dom/client';
 import App from './App.tsx';
-// DB接続ロジックを削除したため、インポートも不要です
-// import { db } from './services/database/db.ts'; 
+import './index.css'
 
-// 🚨 削除: DB接続の try...catch ブロック全体を削除し、App.tsxのロードロジックに任せます。
-/*
-try {
-  db.open();
-  console.log("Database connection established successfully.");
-} catch (error) {
-  console.error("Failed to open database:", error);
-}
-*/
 
 // ルート要素が存在することを確認してからレンダリング
 const rootElement = document.getElementById('root');

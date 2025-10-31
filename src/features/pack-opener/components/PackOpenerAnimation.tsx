@@ -1,16 +1,19 @@
 /**
  * src/features/pack-opener/components/PackOpenerAnimation.tsx
  *
- * パック開封シミュレーションの結果を表示し、カードのフリップアニメーションを制御するコンポーネントです。
- * 開封結果のカードリストを受け取り、各カードにアニメーション遅延を適用して OpenerCard を描画します。
- * 【修正】ReusableItemGridを使用してカードプールと同じUI/UXを提供します。
+ * パック開封シミュレーションの結果表示領域全体と、カードの連続フリップアニメーションを制御するコンポーネント。
+ * * 責務:
+ * 1. 汎用グリッドコンポーネント (ReusableItemGrid) を利用して、開封されたカードリスト (openedCards) を整列表示する。
+ * 2. ReusableItemGridがアイテムの配列を処理する際に、OpenerCardにアニメーション遅延 (delay) を与えるためのラッパーコンポーネント (OpenerCardWrapper) を提供する。
+ * 3. 開封状態 (isRevealed) に応じて、カードをクリック可能にするか、結果のサマリーメッセージを表示するかを制御する。
+ * 4. グリッドの表示スタイル (aspectRatio, gap, sxOverride) を親コンポーネントから受け取り、ReuasbleItemGridに渡す。
  */
 
 import React from 'react';
 import { Box, Typography } from '@mui/material';
 
 // OpenerCard (CardFaceを使用する採用版) をインポート
-import OpenerCard from './OpenerCard'; 
+import OpenerCard from './OpenerCard';
 import ReusableItemGrid from '../../../components/common/ReusableItemGrid';
 import type { OpenerCardData } from '../../../models/packOpener';
 
@@ -37,7 +40,6 @@ interface OpenerCardWrapperProps {
 }
 
 const OpenerCardWrapper: React.FC<OpenerCardWrapperProps> = React.memo(({ item, index = 0, aspectRatio: _aspectRatio, isRevealed, cardBackImageUrl, onCardClick }) => {
-    console.log('OpenerCardWrapper - index:', index, 'delay:', index * FLIP_DELAY_MS, 'item.id:', item.id);
     return (
         <OpenerCard
             cardData={item}
@@ -59,10 +61,10 @@ const PackOpenerAnimation: React.FC<PackOpenerAnimationProps> = ({
     aspectRatio,
     gap,
 }) => {
-    
+
     return (
-        <Box sx={{ /*p: 2,*/ display: 'flex', flexDirection: 'column', width: '100%' }}>
-            
+        <Box sx={{ display: 'flex', flexDirection: 'column', width: '100%' }}>
+
             {/* 2. カード表示グリッド */}
             <ReusableItemGrid
                 items={openedCards}
@@ -76,7 +78,7 @@ const PackOpenerAnimation: React.FC<PackOpenerAnimationProps> = ({
                 aspectRatio={aspectRatio}
                 gap={gap}
             />
-            
+
             {/* 3. 結果のサマリー (開封後に表示) */}
             {isRevealed && (
                 <Box sx={{ mt: 4, textAlign: 'center' }}>

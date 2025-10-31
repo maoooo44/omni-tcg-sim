@@ -1,134 +1,142 @@
 /**
- * src/models/db-types.ts
- *
- * IndexedDB (Dexie) のテーブルに保存されるオブジェクトのスキーマ型定義。
- * このファイルは、アプリケーションモデル（src/models/*.ts）を、IndexedDBで永続化可能な
- * JSON互換の構造（Recordやプリミティブ型のみ）に変換したデータ構造を定義します。
- */
+ * src/models/db-types.ts
+ *
+ * * IndexedDB (Dexie) のテーブルに保存されるオブジェクトのスキーマ型定義を集約したモデル層モジュール。
+ * アプリケーションの主要なエンティティ（Card, Pack, Deck, Archive, CardPool, Setting）について、
+ * IndexedDBで永続化可能な JSON 互換のデータ構造（プリミティブ型、Record、配列のみ）を定義します。
+ *
+ * * 責務:
+ * 1. 永続化が必要な主要なデータモデルのインターフェース（DBCard, DBPack, DBDeckなど）を定義する。
+ * 2. 履歴機能で使用する複雑なデータ構造（DBPackBundle, DBArchiveData, DBArchive）を定義する。
+ * 3. データのキー（ID）やタイムスタンプなどの必須フィールドの型を明確にする。
+ */
 
-import type { PackType, RarityConfig, AdvancedRarityConfig, PackFieldSettings, CardFieldSettings } from "./pack"; // Cardの型定義は別ファイルからインポート
-import type { DeckType, DeckFieldSettings} from "./deck"; // Cardの型定義は別ファイルからインポート
-import type { ArchiveCollectionKey } from "./archive"; 
+import type { PackType, RarityConfig, AdvancedRarityConfig, ConstructedDeckCard, PackFieldSettings, CardFieldSettings } from "./pack";
+import type { DeckType, DeckFieldSettings } from "./deck";
+import type { ArchiveCollectionKey } from "./archive";
 
 
 
-// Card Data (DBに保存される JSON 互換の構造) (変更なし)
+// Card Data (DBに保存される JSON 互換の構造)
 export interface DBCard {
-    cardId: string; // カードの一意な識別子
-    packId: string; // 収録されているパックのID
-    name: string; // 
-    number?: number | null;  // 図鑑ナンバー/ソート順として使用
-    imageUrl: string; // カード画像の参照URL
-    imageColor?: string; //プレースホルダーの色プリセットキー
-    rarity: string; // 収録されているレアリティ名（Pack.rarityConfig.rarityNameに対応）
+    cardId: string;
+    packId: string;
+    name: string;
+    number?: number | null;
+    imageUrl: string;
+    imageColor?: string;
+    rarity: string;
     text: string;
     subtext: string;
     isFavorite: boolean;
-    createdAt: string; // ISO 8601形式の作成日時
-    updatedAt: string; // ISO 8601形式の最終更新日時
+    createdAt: string;
+    updatedAt: string;
 
-    num_1?: number | null; 
+    num_1?: number | null;
     num_2?: number | null;
-    num_3?: number | null; 
-    num_4?: number | null; 
-    num_5?: number | null; 
-    num_6?: number | null; 
-    str_1?: string; 
-    str_2?: string; 
-    str_3?: string; 
-    str_4?: string; 
+    num_3?: number | null;
+    num_4?: number | null;
+    num_5?: number | null;
+    num_6?: number | null;
+    str_1?: string;
+    str_2?: string;
+    str_3?: string;
+    str_4?: string;
     str_5?: string;
     str_6?: string;
 
-    tag?: Record<string, string>;
+    tag?: string[];
     searchText?: string;
 }
 
-// Pack Data (DBに保存される JSON 互換の構造) (変更なし)
+// Pack Data (DBに保存される JSON 互換の構造)
 export interface DBPack {
-    packId: string; // パックID (ユニークID, 自動生成)
+    packId: string;
     name: string;
     number?: number | null;
-    imageUrl: string; // 拡張パック画像の参照URL
-    imageColor?: string; //プレースホルダーの色プリセットキー
-    cardBackImageUrl: string; // カード裏面画像の参照URL
+    imageUrl: string;
+    imageColor?: string;
+    cardBackImageUrl: string;
+    cardBackImageColor?: string;
     packType: PackType;
-    cardsPerPack: number; // 1パックあたりの封入枚数
-    rarityConfig: RarityConfig[]; // レアリティと封入確率の配列
-    advancedRarityConfig?: AdvancedRarityConfig[]; // 高度な確定枚数を含むレアリティ設定
+    cardsPerPack: number;
+    rarityConfig: RarityConfig[];
+    advancedRarityConfig?: AdvancedRarityConfig[];
     specialProbabilitySlots: number;
     isAdvancedRulesEnabled: boolean;
-    price: number; // ゲーム内通貨での価格
-    totalCards: number; // 収録カード総数 (自動集計)
-    series: string; // TCGシリーズ名
+    price: number;
+    totalCards: number;
+    series: string;
     description: string;
-    isOpened: boolean; // 開封済みフラグ
+    isOpened: boolean;
     isFavorite: boolean;
     createdAt: string;
-    updatedAt: string; // ISO 8601形式の最終更新日時
+    updatedAt: string;
+
+    constructedDeckCards?: ConstructedDeckCard[];
 
     cardPresetId?: string;
     num_1?: number | null;
-    num_2?: number | null; 
+    num_2?: number | null;
     str_1?: string;
     str_2?: string;
     packFieldSettings: PackFieldSettings;
     cardFieldSettings: CardFieldSettings;
-    tag?: Record<string, string>;
+    tag?: string[];
     searchText?: string;
-    
+
 }
 
-// Deck Data (DBに保存される JSON 互換の構造) (変更なし)
+// Deck Data (DBに保存される JSON 互換の構造)
 export interface DBDeck {
-    deckId: string;
+    deckId: string;
     name: string;
-    number?: number | null; 
-    imageUrl: string; // オプションとし、デフォルトでは空または undefined を想定
-    imageColor?: string; // 例: 'red', 'blue'
-    ruleId?: string; // このデッキが準拠するカスタムルールセットのID（オプション）
-    deckType: DeckType; // デッキの構成要素
+    number?: number | null;
+    imageUrl: string;
+    imageColor?: string;
+    ruleId?: string;
+    deckType: DeckType;
     totalCards: number;
-    series: string; // デッキが属するTCGシリーズ名
+    series: string;
     description: string;
-    keycard_1?: string; //キーカードのcardId
+    keycard_1?: string;
     keycard_2?: string;
     keycard_3?: string;
-    isLegal: boolean; // 準拠するruleSetに基づき、デッキが形式的に有効か
-    hasUnownedCards: boolean;     // デッキに未所有カードが含まれているかどうかの状態
+    isLegal: boolean;
+    hasUnownedCards: boolean;
     isFavorite: boolean;
-    createdAt: string; // ISO 8601形式のタイムスタンプ
-    updatedAt: string; // ISO 8601形式のタイムスタンプ
+    createdAt: string;
+    updatedAt: string;
     // デッキに含まれるカードと枚数
     // key: cardId (string), value: count (number)
     // Mapを使用して、編集時や検索時に高速なアクセスを可能にする
-    mainDeck: Record<string, number>; 
-    sideDeck: Record<string, number>; 
-    extraDeck: Record<string, number>;  // TCGによってはエクストラデッキ
+    mainDeck: Record<string, number>;
+    sideDeck: Record<string, number>;
+    extraDeck: Record<string, number>;
 
-    num_1?: number | null; 
+    num_1?: number | null;
     num_2?: number | null;
-    num_3?: number | null; 
-    num_4?: number | null; 
-    str_1?: string; 
-    str_2?: string; 
-    str_3?: string; 
-    str_4?: string; 
+    num_3?: number | null;
+    num_4?: number | null;
+    str_1?: string;
+    str_2?: string;
+    str_3?: string;
+    str_4?: string;
     fieldSettings: DeckFieldSettings;
-    tag?: Record<string, string>;
+    tag?: string[];
     searchText?: string;
 }
 
-// Card Pool (変更なし)
+// Card Pool
 export interface DBCardPool {
-    cardId: string; // 主キー。どのカードかを示す
-    count: number;  // 所有枚数
+    cardId: string;
+    count: number;
 }
 
-// User Settings (汎用的なキー・バリュー形式) (変更なし)
+// User Settings (汎用的なキー・バリュー形式)
 export interface DBSetting {
-    key: string; // 主キー (例: 'coins', 'userSettings')
-    value: any;     // 保存する値（JSONオブジェクトなど）
+    key: string;
+    value: any;
 }
 
 
@@ -138,19 +146,19 @@ export interface DBSetting {
 export type ItemType = 'card' | 'pack' | 'deck';
 
 export interface DBPackBundle {
-    packData: DBPack;   // パック本体のメタデータ
-    cardsData: DBCard[]; // その時点の全カードの配列
+    packData: DBPack;
+    cardsData: DBCard[];
 }
 
 export type DBArchiveData = DBPackBundle | DBDeck;
 
-export interface DBArchive {  
+export interface DBArchive {
     archiveId: string
-    itemId: string;   // 削除されたアイテムの元ID（Pack ID, Deck ID）
-    itemType: 'packBundle' | 'deck';
+    itemId: string;
+    itemType: 'packBundle' | 'deck';
     collectionKey?: ArchiveCollectionKey;
-    archivedAt: string; // ISO 8601形式のタイムスタンプ
+    archivedAt: string;
     itemData: DBArchiveData;
     isFavorite: boolean;
-    isManual: boolean; //手動で作成されたか
+    isManual: boolean;
 }

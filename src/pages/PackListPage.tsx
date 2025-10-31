@@ -1,16 +1,21 @@
 /**
  * src/pages/PackListPage.tsx
  *
- * ページラッパーコンポーネント。このアプリケーションのパック管理機能のルートページを定義する。
- * 責務は、ルーティングのコンテキスト内でページ全体のレイアウト（パディング、マージン）を構築し、
- * タイトルを表示し、主要なフィーチャーコンポーネントであるPackList（一覧表示UI）を配置することに専念する。
- * データ取得やビジネスロジックは全てPackListフィーチャーに委譲するため、自身は純粋なプレゼンテーション層として機能する。
+ * * パック管理機能のメインページコンポーネント。
+ * このコンポーネントは、ルーティングのコンテキスト内でページ全体のレイアウト（パディング、マージン）を構築し、
+ * タイトルを表示し、主要な機能コンポーネントであるPackList（一覧表示UI）と子ルート（Outlet）を配置する責務を担います。
+ * データ取得やビジネスロジックは全てPackListフィーチャーに委譲するため、自身は純粋なプレゼンテーション層として機能します。
+ *
+ * * 責務:
+ * 1. ページのルート要素（Box）と基本的な余白、表示領域を定義する。
+ * 2. ページのタイトル（Typography: 'パック管理'）を表示する。
+ * 3. 実際の機能を提供するコンポーネント（PackList）を埋め込む。
+ * 4. 子ルートコンポーネント（PackEditorPageなど）のための Outlet を配置する。
  */
 import React from 'react';
-import { Outlet } from '@tanstack/react-router'; 
+//import { Outlet } from '@tanstack/react-router';
 import { Box, Typography } from '@mui/material';
-// 必要なコンポーネントのみをインポート
-import PackList from '../features/packs/PackList'; 
+import PackList from '../features/packs/PackList';
 
 
 const PackListPage: React.FC = () => {
@@ -18,14 +23,13 @@ const PackListPage: React.FC = () => {
   return (
     <Box sx={{ p: 3, flexGrow: 1 }}>
       <Typography variant="h4" gutterBottom>パック管理</Typography>
-      
-      {/* パック一覧のフィーチャーコンポーネントを配置 */}
+
       <PackList />
-      
-      {/* 子ルート（PackEditPageなど）を表示するためのOutlet */}
+
+      {/* 子ルートコンポーネントを表示するためのOutlet 
       <Box sx={{ mt: 4 }}>
         <Outlet />
-      </Box>
+      </Box>*/}
     </Box>
   );
 };

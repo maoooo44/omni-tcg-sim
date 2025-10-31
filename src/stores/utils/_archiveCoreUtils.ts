@@ -1,15 +1,24 @@
+/**
+ * src/stores/utils/_archiveCoreUtils.ts
+ *
+ * * Pack/Deckなどのアイテムタイプに依存しない、アーカイブ（'trash' / 'history'）操作の共通ロジックをカプセル化するユーティリティモジュール。
+ * * 責務:
+ * 1. ファクトリ関数 `createCommonArchiveActions` を提供し、Pack/Deckストアから注入された依存関係（Service、Storeアクション、マッパー）に基づき、共通のアーカイブCRUDおよびGC操作関数（`CommonArchiveActions`）を生成する。
+ * 2. 復元（Restore）ロジックにおいて、PackとCardの複合的な復元処理を条件分岐により吸収し、StoreとMain Serviceへの同期を行う。
+ * 3. アーカイブデータの表示用メタデータ取得、個別アイテムデータ取得、物理削除、GC実行の共通処理を実装する。
+ */
+
 import { archiveService } from '../../services/archive/archiveService';
-// dbArchiveToArchivePackBundle は PackHook のみで利用されるため、ここではインポートしない。
 import type { Deck } from '../../models/deck';
-import type { Pack } from '../../models/pack'; 
+import type { Pack } from '../../models/pack';
 import type { Card } from '../../models/card';
 import type { DBArchive } from '../../models/db-types';
-import type { 
-    ArchiveCollectionKey, 
+import type {
+    ArchiveCollectionKey,
     ArchiveItemType,
-    ArchiveDisplayData, 
+    ArchiveDisplayData,
     ArchiveItemData
-} from '../../models/archive'; 
+} from '../../models/archive';
 
 
 // --- 共通型定義 ---
@@ -28,7 +37,7 @@ export interface StoreActions<TEntity> {
 }
 
 
-// 💡 外部から注入されるマッパー関数の型を定義
+// 外部から注入されるマッパー関数の型を定義
 export interface ArchiveMappers {
     toArchiveDisplayData: (dbRecord: DBArchive) => ArchiveDisplayData;
     toArchiveItemData: (dbRecord: DBArchive) => ArchiveItemData;
@@ -40,19 +49,19 @@ export interface ArchiveHandler<TEntity extends Deck | Pack, TArchiveData> {
     itemType: ArchiveItemType;
     mainService: MainServiceActions<TEntity>;
     storeActions: StoreActions<TEntity>;
-    
+
     // マッパー: 複雑なPackBundleの処理を吸収するために必要
     mappers: {
         // TEntity(Pack/Deck)をArchiveのデータ形式に変換
-        toArchiveData: (entity: TEntity, relatedCards?: Card[]) => TArchiveData; 
+        toArchiveData: (entity: TEntity, relatedCards?: Card[]) => TArchiveData;
         // ArchiveデータからTEntity(Pack/Deck)または複合型に変換
-        fromArchiveData: (data: any) => TEntity | { pack: Pack, cards: Card[] }; 
+        fromArchiveData: (data: any) => TEntity | { pack: Pack, cards: Card[] };
     };
-    
-    // 💡 復元後の固有処理 
+
+    // 復元後の固有処理 
     postRestoreAction?: (restoredEntities: TEntity[]) => Promise<TEntity[]>;
-    
-    // 💡 Pack固有のCard操作のための依存性（Deckの場合は利用しない）
+
+    // Pack固有のCard操作のための依存性（Deckの場合は利用しない）
     // TEntityがPackの場合にのみ必要
     cardActions?: {
         bulkSaveCards: (cards: Card[]) => Promise<void>;
@@ -60,13 +69,14 @@ export interface ArchiveHandler<TEntity extends Deck | Pack, TArchiveData> {
     };
 }
 
-// 💡 共通アクションの戻り値型を定義
+// 共通アクションの戻り値型を定義
 export interface CommonArchiveActions<TEntity extends Deck | Pack> {
     bulkRestoreItemsFromArchive: (archiveIds: string[], collection: ArchiveCollectionKey) => Promise<TEntity[]>;
     bulkDeleteItemsFromArchive: (archiveIds: string[], collection: ArchiveCollectionKey) => Promise<void>;
     runGarbageCollection: () => Promise<void>;
     fetchAllArchiveMetadata: (collection: ArchiveCollectionKey) => Promise<ArchiveDisplayData[]>;
     fetchArchiveItemData: (archiveId: string, collection: ArchiveCollectionKey) => Promise<ArchiveItemData | null>;
+    updateItemIsFavoriteToArchive: (archiveId: string, collection: ArchiveCollectionKey, isFavorite: boolean) => Promise<number>;
 }
 
 
@@ -78,55 +88,56 @@ export interface CommonArchiveActions<TEntity extends Deck | Pack> {
  */
 export const createCommonArchiveActions = <TEntity extends Deck | Pack, TArchiveData>(
     handler: ArchiveHandler<TEntity, TArchiveData>,
-    mappers: ArchiveMappers 
+    mappers: ArchiveMappers
 ): CommonArchiveActions<TEntity> => {
-    
-    // 💡 全表示用メタデータリストの取得
+
+    // 全表示用メタデータリストの取得
     const fetchAllArchiveMetadata = async (collection: ArchiveCollectionKey): Promise<ArchiveDisplayData[]> => {
-        const dbArchives = await archiveService.fetchAllItemsFromArchive<DBArchive>(collection, (dbRecord) => dbRecord );
-        
+        const dbArchives = await archiveService.fetchAllItemsFromArchive<DBArchive>(collection, (dbRecord) => dbRecord);
+
         const archiveMetadata: ArchiveDisplayData[] = dbArchives
             .filter(dbArchive => dbArchive.itemType === handler.itemType)
             .flatMap(dbArchive => {
-                 // 💡 外部から注入された toArchiveDisplayData マッパーを利用
-                return mappers.toArchiveDisplayData(dbArchive); 
+                // 外部から注入された toArchiveDisplayData マッパーを利用
+                return mappers.toArchiveDisplayData(dbArchive);
             });
-            
-        archiveMetadata.sort((a, b) => b.archivedAt.localeCompare(a.archivedAt)); 
+
+        // 修正: archivedAt が meta オブジェクト内に移動したため、アクセス方法を変更
+        archiveMetadata.sort((a, b) => b.meta.archivedAt.localeCompare(a.meta.archivedAt));
         return archiveMetadata;
     };
 
     /**
-     * 💡 個別表示用のアーカイブ実体 (ArchiveItemData) を取得するロジック
+     * 個別表示用のアーカイブ実体 (ArchiveItemData) を取得するロジック
      */
     const fetchArchiveItemData = async (archiveId: string, collection: ArchiveCollectionKey): Promise<ArchiveItemData | null> => {
         const bundles = await archiveService.fetchRawItemsByIdsFromArchive([archiveId], collection);
         const dbArchive = bundles[0];
         // itemTypeのチェック
         if (!dbArchive || dbArchive.itemType !== handler.itemType) return null;
-        
-        // 💡 外部から注入された toArchiveItemData マッパーを利用して変換
-        return mappers.toArchiveItemData(dbArchive); 
+
+        // 外部から注入された toArchiveItemData マッパーを利用して変換
+        return mappers.toArchiveItemData(dbArchive);
     };
 
 
-    // 💡 Pack/Deck共通のバルク復元ロジック
+    // Pack/Deck共通のバルク復元ロジック
     const bulkRestoreItemsFromArchive = async (archiveIds: string[], collection: ArchiveCollectionKey): Promise<TEntity[]> => {
         if (archiveIds.length === 0) return [];
 
         console.log(`[ArchiveCore] ♻️ START bulk restoring ${archiveIds.length} items from ${collection}.`);
-        
+
         try {
             // 1. ArchiveからDBArchiveを取得
             const rawRecords = await archiveService.fetchRawItemsByIdsFromArchive(archiveIds, collection);
             let entitiesToRestore: TEntity[] = [];
             const restoredCards: Card[] = []; // Packの場合のみ使用
             const archiveIdsToDelete: string[] = [];
-            
+
             rawRecords.forEach(dbArchive => {
                 if (dbArchive && dbArchive.itemType === handler.itemType) { // itemTypeをチェック
                     const unpacked = handler.mappers.fromArchiveData(dbArchive.itemData);
-                    
+
                     if (handler.itemType === 'deck') {
                         // Deck (TEntity = Deck) の場合
                         entitiesToRestore.push(unpacked as TEntity);
@@ -136,20 +147,20 @@ export const createCommonArchiveActions = <TEntity extends Deck | Pack, TArchive
                         entitiesToRestore.push(pack as TEntity);
                         restoredCards.push(...cards); // 関連カードを抽出
                     }
-                    
+
                     if (collection === 'trash') {
-                        archiveIdsToDelete.push(dbArchive.archiveId); 
+                        archiveIdsToDelete.push(dbArchive.archiveId);
                     }
                 }
             });
 
             // 2. Main DBにバルク保存
             if (entitiesToRestore.length > 0) {
-                // 💡 復元後処理を適用
+                // 復元後処理を適用
                 if (handler.postRestoreAction) {
                     entitiesToRestore = await handler.postRestoreAction(entitiesToRestore);
                 }
-                
+
                 const restoredEntities = await handler.mainService.save(entitiesToRestore);
                 handler.storeActions.syncToStore(restoredEntities); // Storeに同期
                 entitiesToRestore = restoredEntities; // 戻り値を更新
@@ -164,7 +175,7 @@ export const createCommonArchiveActions = <TEntity extends Deck | Pack, TArchive
             if (collection === 'trash' && archiveIdsToDelete.length > 0) {
                 await archiveService.deleteItemsFromArchive(archiveIdsToDelete, 'trash');
             }
-            
+
             console.log(`[ArchiveCore] ✅ ${entitiesToRestore.length} items restored from ${collection}.`);
             return entitiesToRestore;
 
@@ -173,11 +184,11 @@ export const createCommonArchiveActions = <TEntity extends Deck | Pack, TArchive
             throw error;
         }
     };
-    
-    // 💡 Pack/Deck共通のバルク物理削除ロジック
+
+    // Pack/Deck共通のバルク物理削除ロジック
     const bulkDeleteItemsFromArchive = async (archiveIds: string[], collection: ArchiveCollectionKey) => {
         if (archiveIds.length === 0) return;
-        
+
         console.log(`[ArchiveCore] 💥 START physical deletion of ${archiveIds.length} items from ${collection}.`);
         try {
             await archiveService.deleteItemsFromArchive(archiveIds, collection);
@@ -187,8 +198,8 @@ export const createCommonArchiveActions = <TEntity extends Deck | Pack, TArchive
             throw error;
         }
     };
-    
-    // 💡 Pack/Deck共通のガーベジコレクションロジック
+
+    // Pack/Deck共通のガーベジコレクションロジック
     const runGarbageCollection = async () => {
         console.log(`[ArchiveCore] 🧹 START running garbage collection for type: ${handler.itemType}...`);
         try {
@@ -200,11 +211,46 @@ export const createCommonArchiveActions = <TEntity extends Deck | Pack, TArchive
         }
     };
 
+    /**
+     * 単一のアーカイブアイテムのお気に入りフラグを更新します。
+     */
+    const updateItemIsFavoriteToArchive = async (
+        archiveId: string,
+        collection: ArchiveCollectionKey,
+        isFavorite: boolean
+    ): Promise<number> => {
+        console.log(`[ArchiveCore:updateItemIsFavoriteToArchive] ⚡️ Toggling favorite for Archive ID: ${archiveId} in ${collection}.`);
+
+        try {
+            // archiveService の isFavorite フィールド更新に特化した関数があればそれを使うべきだが、
+            // 汎用 updateItemsFieldToArchive を利用し、フィールド名を固定する
+            const numUpdated = await archiveService.updateItemsFieldToArchive(
+                [archiveId],
+                collection,
+                'isFavorite', // フィールド名を固定
+                isFavorite
+            );
+
+            if (numUpdated > 0) {
+                console.log(`[ArchiveCore:updateItemIsFavoriteToArchive] ✅ Updated ${numUpdated} record(s).`);
+            } else {
+                console.warn(`[ArchiveCore:updateItemIsFavoriteToArchive] ⚠️ No records updated for Archive ID: ${archiveId}.`);
+            }
+            
+            return numUpdated;
+
+        } catch (error) {
+            console.error(`[ArchiveCore:updateItemIsFavoriteToArchive] ❌ Failed to update favorite state:`, error);
+            throw error;
+        }
+    };
+
     return {
         bulkRestoreItemsFromArchive,
         bulkDeleteItemsFromArchive,
-        runGarbageCollection, 
-        fetchAllArchiveMetadata, 
+        runGarbageCollection,
+        fetchAllArchiveMetadata,
         fetchArchiveItemData,
+        updateItemIsFavoriteToArchive,
     } as CommonArchiveActions<TEntity>;
 };

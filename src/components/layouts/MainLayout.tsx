@@ -1,10 +1,13 @@
 /**
- * src/components/layouts/MainLayout.tsx
- *
- * アプリケーションのメインレイアウトコンポーネントです。
- * ナビゲーションバー (Navbar) の表示と、ページコンテンツを囲むコンテナを提供します。
- * グローバルなCardViewModalを配置します。
- */
+* src/components/layouts/MainLayout.tsx
+*
+* アプリケーションのメインレイアウトコンポーネントです。
+* * 責務:
+* 1. ナビゲーションバー (Navbar) を配置し、必要なグローバル状態（coinsなど）を注入する。
+* 2. アプリケーションのページコンテンツを囲むメインのコンテナ (MUI Container) を提供する。
+* 3. ルーターのコンテンツ（<Outlet />）をレンダリングする。
+* 4. グローバルなモーダル（CardViewModalなど、コメント部）をルートレイアウトに配置する。
+*/
 import React from 'react';
 import { Outlet } from '@tanstack/react-router';
 import { Container } from '@mui/material';
@@ -13,7 +16,6 @@ import { Container } from '@mui/material';
 import Navbar from './Navbar';
 // coinsを取得するために useCurrencyStore をインポート
 import { useCurrencyStore } from '../../stores/currencyStore';
-//import { useUserDataStore } from '../../stores/userDataStore';
 import { useShallow } from 'zustand/react/shallow';
 
 const MainLayout: React.FC = () => {
@@ -24,20 +26,10 @@ const MainLayout: React.FC = () => {
         }))
     );
 
-    // userDataStore から DTCG/GodMode の設定を取得
-    /*const userSettings = useUserDataStore(
-        useShallow(state => ({
-            isDTCGEnabled: state.isDTCGEnabled,
-            isGodMode: state.isGodMode,
-        }))
-    );*/
-
     return (
         <>
             {/* Navbarをレンダリングする (MUIデザイン) */}
             <Navbar
-                /*isDTCGEnabled={userSettings.isDTCGEnabled}
-                isGodMode={userSettings.isGodMode}*/
                 coins={navbarProps.coins}
             />
 

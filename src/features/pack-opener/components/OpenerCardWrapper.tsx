@@ -1,7 +1,12 @@
 /**
  * src/features/pack-opener/components/OpenerCardWrapper.tsx
- * 
- * ReusableItemGridで使用するためのOpenerCardラッパー
+ *
+ * 汎用アイテムグリッド (ReusableItemGrid) の子要素として OpenerCard を表示するためのアダプターコンポーネント。
+ * * 責務:
+ * 1. ReusableItemGridが要求する統一されたインターフェース (item, itemProps, aspectRatio) を受け取る。
+ * 2. itemプロパティに含まれるカードデータ、アニメーション遅延 (delay) を抽出し、下層の OpenerCard に必要なPropsをマッピングする。
+ * 3. OpenerCardの表示に必要な追加Props (isRevealed, cardBackImageUrl, onClick, useFixedSize) を親から受け取り、OpenerCardに渡す。
+ * 4. cardBackImageUrlは、アイテムデータに固有の裏面画像URLがあればそれを優先し、なければ親から渡されたデフォルト画像URLを使用するロジックを提供する。
  */
 
 import React from 'react';

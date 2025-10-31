@@ -1,14 +1,20 @@
 /**
  * src/utils/sortingUtils.ts
- * 
- * データソートに関する汎用ユーティリティ関数群。
- * 数値（number/図鑑No.）と文字列による比較関数を提供し、外部から渡された accessor を利用することで、
- * どのエンティティでも再利用可能なソート処理を担う。
+ *
+ * * データソートに関する汎用ユーティリティモジュール。
+ * 主な責務は、T型のデータ配列を特定のフィールドと順序に基づいてソートするための再利用可能な比較関数と、
+ * それらを組み合わせたソート実行関数を提供することです。
+ * 数値ソート（number）が優先されるロジックと、文字列ソート（name、cardIdなど）のローカライズ対応が含まれます。
+ *
+ * * 責務:
+ * 1. ソートフィールドとソート順の型定義（SortField, SortOrder）を提供する。
+ * 2. number型フィールドのための比較関数（compareByNumber）を提供する。
+ * 3. string型フィールドのための比較関数（compareByString）を提供する。
+ * 4. 汎用的なソート実行関数（sortData）を提供し、numberソートをデフォルト/優先として適用する。
  */
 
 /**
  * 汎用的なソートフィールドの型
- * Pack, Deck, Card のいずれも持つフィールドを想定 (例: number, name, cardId)
  */
 export type SortField = 'number' | 'name' | 'cardId' | 'rarity' | string;
 
@@ -41,7 +47,7 @@ export const compareByNumber = <T>(
     if (numA === null) return 1;
     // Bがnull/undefinedの場合、Aが数値を持つなら A < B (Bを後回し)
     if (numB === null) return -1;
-    
+
     // 両方数値の場合
     const comparison = numA - numB;
 
@@ -67,6 +73,7 @@ export const compareByString = <T>(
     const strA = accessor(a).toLowerCase();
     const strB = accessor(b).toLowerCase();
 
+    // localeCompare を使用してローカライズされた文字列比較を行う
     const comparison = strA.localeCompare(strB);
 
     return order === 'asc' ? comparison : -comparison;
@@ -88,27 +95,27 @@ export const sortData = <T>(
     order: SortOrder,
     fieldAccessor: (item: T, field: SortField) => string | number | null | undefined
 ): T[] => {
-    
+
     // データがない場合はそのまま返す
     if (!data || data.length === 0) return [];
-    
+
     // 浅いコピーを作成してソートし、元の配列の不変性を保つ
     return [...data].sort((a, b) => {
         // 1. number フィールドによるソート (最優先のデフォルトソート)
         if (field === 'number') {
             return compareByNumber(
-                a, 
-                b, 
-                order, 
+                a,
+                b,
+                order,
                 (item) => fieldAccessor(item, 'number') as (number | null | undefined)
             );
         }
-        
+
         // 2. その他のフィールドによる文字列比較
         return compareByString(
-            a, 
-            b, 
-            order, 
+            a,
+            b,
+            order,
             (item) => String(fieldAccessor(item, field) ?? '') // null/undefined は空文字列として扱う
         );
     });

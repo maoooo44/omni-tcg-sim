@@ -1,31 +1,30 @@
-// src/configs/userDataDefaults.ts
-
-// 💡 修正: 必要な型をすべて models/userData からインポートする (循環参照の解消)
-import type { 
-    /*CustomFieldConfig,*/ 
+/**
+ * src/configs/userDataDefaults.ts
+ *
+ * * ユーザーのパーシステントな設定（アプリケーション設定、GC設定、グリッド表示設定など）に対するデフォルト値を定義するモジュール。
+ * 主にデータベースにユーザーデータが存在しない場合や、特定の項目が欠落している場合に使用されるフォールバック値を提供します。
+ *
+ * * 責務:
+ * 1. ユーザーの設定項目 (`GridDisplayDefault`, `GCSetting`, `PersistedUserSettings`) ごとのアプリケーションデフォルト値を静的データとして保持する。
+ * 2. 全てのユーザー設定を統合した最終的なデフォルトオブジェクト (`DEFAULT_SETTINGS`) を提供する。
+ */
+import type {
     GridDisplayDefault,
-    GCSetting, 
-    PersistedUserSettings 
-} from '../models/userData'; 
+    GCSetting,
+    PersistedUserSettings
+} from '../models/userData';
 
 // ----------------------------------------
 // 個別のデフォルト値
 // ----------------------------------------
 
-/** カスタムフィールドの簡易的なデフォルト構造 
-export const DEFAULT_CUSTOM_FIELD_CONFIG: CustomFieldConfig = {
-    Pack: { bool: {}, num: {}, str: {} } as any, 
-    Card: { bool: {}, num: {}, str: {} } as any,
-    Deck: { bool: {}, num: {}, str: {} } as any,
-};*/
-
 /** GridDisplayDefault のアプリケーションデフォルト値 */
 export const DEFAULT_GRID_DISPLAY_DEFAULT: GridDisplayDefault = {
     isUserDefaultEnabled: false,
-    globalColumns: null, 
+    globalColumns: null,
     advancedResponsive: {
         isEnabled: false,
-        columns: {}, 
+        columns: {},
     }
 }
 
@@ -51,10 +50,10 @@ export const DEFAULT_SETTINGS: PersistedUserSettings = {
     isDTCGEnabled: true,
     isGodMode: false,
     cheatCount: 0,
-    
+
     gcSettings: DEFAULT_GC_SETTINGS,
-    
-    //customFieldConfig: DEFAULT_CUSTOM_FIELD_CONFIG,
+
+    // customFieldConfig: 現在コメントアウトされているため、デフォルト設定オブジェクトから除外するか、コメントアウトを維持する。
 
     gridSettings: {
         cardPool: DEFAULT_GRID_DISPLAY_DEFAULT,

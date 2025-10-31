@@ -1,22 +1,31 @@
 /**
- * src/components/controls/SortAndFilterControls.tsx
- *
- * 汎用的なソートとフィルタリングの操作UIを提供するコンポーネント。
- * 親コンポーネントから状態と更新関数を受け取り、UIイベントに応じてそれらを呼び出す。
- */
+* src/components/controls/SortAndFilterControls.tsx
+*
+* 汎用的なソート、検索、フィルタリングの操作UIを一元的に提供する複合コントロールコンポーネント。
+* 親コンポーネントのロジック（カスタムフックなど）から状態と更新ハンドラを受け取り、UIイベントを処理する。
+*
+* * 責務:
+* 1. 簡易検索用のテキスト入力UIを提供する (filterFieldsが空の場合)。
+* 2. 高度なフィルタリング用のフィールド選択、値入力、条件追加/削除UIを提供する (filterFieldsがある場合)。
+* 3. 適用されたフィルタ条件をChipとして表示し、個別の削除および全クリア機能を提供する。
+* 4. ソート項目（フィールド）の選択UIを提供する。
+* 5. ソート順序（昇順/降順）をトグルするUIを提供する。
+* 6. すべてのUIイベント（検索、ソート、フィルタ操作）の結果を外部の状態更新関数 (`setSearchTerm`, `setSortField`, `setFilters`など) に渡す。
+*/
 import React, { useCallback, useState } from 'react';
-import { 
-    Box, 
-    TextField, 
-    FormControl, 
-    InputLabel, 
-    Select, 
-    MenuItem, 
-    IconButton, 
+import {
+    Box,
+    TextField,
+    FormControl,
+    InputLabel,
+    Select,
+    MenuItem,
+    IconButton,
     Grid,
     Button,
     Chip,
-    type SelectChangeEvent
+    type SelectChangeEvent,
+    type BoxProps
 } from '@mui/material';
 import SortIcon from '@mui/icons-material/Sort';
 import ArrowUpwardIcon from '@mui/icons-material/ArrowUpward';
@@ -25,10 +34,10 @@ import AddIcon from '@mui/icons-material/Add';
 import ClearIcon from '@mui/icons-material/Clear';
 
 import type { SortField } from '../../utils/sortingUtils';
-import type { 
-    SortFilterState, 
-    FilterField, 
-    FilterCondition 
+import type {
+    SortFilterState,
+    FilterField,
+    FilterCondition
 } from '../../hooks/useSortAndFilter';
 
 // 汎用的なソートオプションの型 (表示名とフィールドキー)
@@ -41,26 +50,24 @@ export interface SortOption {
 export interface SortAndFilterControlsProps extends SortFilterState {
     // 💡 ソートに利用できるフィールドのリスト
     sortOptions: SortOption[];
-    
+
     // 💡 状態更新関数
     setSortField: (field: SortField) => void;
     toggleSortOrder: () => void;
     setSearchTerm: (term: string) => void;
     setFilters: (filters: FilterCondition[]) => void;
-    
+
     // 💡 フィルタリング関連
     filterFields?: FilterField[]; // フィルタリング可能なフィールド定義
-    
+
     // 💡 UIオプション
     labelPrefix?: string; // 例: "パック" のソート・フィルタ
     disableFiltering?: boolean; // フィルタリングを無効にするオプション
     disableSorting?: boolean; // ソートを無効にするオプション
+
+    sx?: BoxProps['sx'];
 }
 
-/**
- * 汎用的なソートとフィルタリングの操作UIコンポーネント
- * (Grid v7対応: itemは廃止)
- */
 const SortAndFilterControls: React.FC<SortAndFilterControlsProps> = ({
     sortField,
     sortOrder,
@@ -75,13 +82,14 @@ const SortAndFilterControls: React.FC<SortAndFilterControlsProps> = ({
     labelPrefix = 'アイテム',
     disableFiltering = false,
     disableSorting = false,
+    sx,
 }) => {
-    
+
     // フィルタ条件の状態管理（親からの値で初期化）
     const [filters, setFilters] = useState<FilterCondition[]>(externalFilters);
     const [currentField, setCurrentField] = useState<string>('');
     const [currentValue, setCurrentValue] = useState<string>('');
-    
+
     const handleSortFieldChange = useCallback((event: SelectChangeEvent) => {
         setSortField(event.target.value as SortField);
     }, [setSortField]);
@@ -93,23 +101,23 @@ const SortAndFilterControls: React.FC<SortAndFilterControlsProps> = ({
     // フィルタ条件を追加
     const handleAddFilter = useCallback(() => {
         if (!currentField || !currentValue) return;
-        
+
         const fieldDef = filterFields.find(f => f.field === currentField);
         if (!fieldDef) return;
-        
+
         let parsedValue: string | number | boolean = currentValue;
-        
+
         // 型に応じて値を変換
         if (fieldDef.type === 'number') {
             parsedValue = currentValue; // 範囲検索文字列のまま保持
         } else if (fieldDef.type === 'boolean') {
             parsedValue = currentValue === 'true';
         }
-        
+
         const newFilters = [...filters, { field: currentField, value: parsedValue }];
         setFilters(newFilters);
         setExternalFilters(newFilters);
-        
+
         // 入力欄をリセット
         setCurrentField('');
         setCurrentValue('');
@@ -132,9 +140,9 @@ const SortAndFilterControls: React.FC<SortAndFilterControlsProps> = ({
     const selectedFieldDef = filterFields.find(f => f.field === currentField);
 
     return (
-        <Box sx={{ mb: 3, p: 2, bgcolor: 'background.paper', borderRadius: 2, boxShadow: 1 }}>
+        <Box sx={{ mb: 3, p: 2, bgcolor: 'background.paper', borderRadius: 2, boxShadow: 1, ...sx }}>
             <Grid container spacing={2} alignItems="center">
-                
+
                 {/* 検索/フィルタリング入力欄（従来の簡易検索） */}
                 {!disableFiltering && filterFields.length === 0 && (
                     <Grid size={{ xs: 12, sm: 6, md: 4 }}>

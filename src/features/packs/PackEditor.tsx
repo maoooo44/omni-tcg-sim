@@ -1,11 +1,22 @@
+/**
+ * src/features/packs/PackEditor.tsx
+ *
+ * パック編集フィーチャーのメインビューコンポーネント。
+ * * 責務:
+ * 1. usePackEditorカスタムフックから編集に必要な全てのデータ、状態、および操作ロジックを取得する。
+ * 2. 取得したロジックと状態を PackEditorToolbar, PackInfoForm, PackCardList, モーダルなどのサブコンポーネントに伝達し、UIのコンポジションを行う。
+ * 3. Pack情報（PackInfoForm）とカード一覧（PackCardList）のレイアウトを定義する（Gridレイアウト）。
+ * 4. データ保存のアラートメッセージ（saveAlert）を表示する。
+ * 5. 編集モードやカードモーダルの読み取り専用状態など、ビュー層の状態を管理・決定する。
+ */
 import React from 'react';
-import { 
+import {
     Box, Typography,
-    Alert, Paper, Divider, Grid, 
-} from '@mui/material'; 
+    Alert, Paper, Divider, Grid,
+} from '@mui/material';
 
 // ツールバーとIOモーダルのインポート
-import PackEditorToolbar from './components/PackEditorToolbar'; 
+import PackEditorToolbar from './components/PackEditorToolbar';
 import CsvImportModal from './components/CsvIOModal';
 import JsonImportModal from './components/JsonIOModal';
 
@@ -15,10 +26,8 @@ import CardModal from '../../components/modals/CardModal';
 import RarityEditorModal from '../../components/modals/RarityEditorModal';
 import PackInfoForm from './components/PackInfoForm';
 
-import { usePackEditor } from './hooks/usePackEditor'; 
+import { usePackEditor } from './hooks/usePackEditor';
 
-// 💡 CustomFieldCategory のインポート元
-// 型抽象は廃止
 import type { FieldSetting } from '../../models/customField';
 
 // ----------------------------------------------------------------------
@@ -30,12 +39,12 @@ interface PackEditorProps extends ReturnType<typeof usePackEditor> {
 
 const PackEditor: React.FC<PackEditorProps> = ({
     packId,
-    packData, 
-    isNewPack, 
+    packData,
+    isNewPack,
     isExistingPack,
-    isEditorMode, 
-    isDirty: _isDirty, 
-    toggleEditorMode, 
+    isEditorMode,
+    isDirty: _isDirty,
+    toggleEditorMode,
     csvIO,
     isDisabled,
     saveAlert,
@@ -58,14 +67,14 @@ const PackEditor: React.FC<PackEditorProps> = ({
     isRarityModalOpen,
     handleOpenRarityEditorModal,
     handleCloseRarityEditorModal,
-    handleRarityEditorSave, 
-    
+    handleRarityEditorSave,
+
     isImportModalOpen,
     setIsImportModalOpen,
     fileToImport,
     handleFileChange,
     handleConfirmImport,
-    
+
     isJsonImportModalOpen,
     setIsJsonImportModalOpen,
     jsonFileToImport,
@@ -79,34 +88,41 @@ const PackEditor: React.FC<PackEditorProps> = ({
     handleImportClick,
     handleExportClick,
 
-    customFieldSettings, 
-    handleCustomFieldSettingChange, 
-    // 💡 修正1: usePackEditorの戻り値に含まれる 'handlePackCustomFieldChange' を追加
-    handlePackCustomFieldChange, 
-    
+    customFieldSettings,
+    handleCustomFieldSettingChange,
+    handlePackCustomFieldChange,
+
+    handlePackFieldSettingChange, // usePackEditorから取得した生のハンドラ
+
 }) => {
-    
-    if (!packData) return null; 
+
+    if (!packData) return null;
 
     const isEditable = isEditorMode;
     const isCardModalReadOnly = !isEditable;
 
-    // PackInfoForm に渡すカスタムフィールド設定変更ハンドラのラッパー
-    const handlePackFieldSettingChange = React.useCallback((
-        _itemType: 'Card' | 'Deck' | 'Pack',
-        _type: 'num' | 'str',
-        _index: number,
-        _settingUpdates: Partial<FieldSetting>
+    // 💡 【修正】PackInfoForm / CustomFieldManager が期待するシグネチャに合わせたラッパー
+    const handlePackFieldSettingWrapper = React.useCallback((
+        _itemType: 'Card' | 'Deck' | 'Pack', // Packであることを確認できるが、ここでは無視
+        type: 'num' | 'str',
+        index: number,
+        settingUpdates: Partial<FieldSetting>
     ) => {
-        // Pack のカスタムフィールド設定変更ロジックが必要な場合はここに実装する
-        console.warn(`[PackEditor] ⚠️ Pack Field Setting Change captured.`);
-    }, []);
+        // settingUpdatesは常に単一の変更を含むと仮定（CustomFieldManagerの設計による）
+        if (Object.keys(settingUpdates).length === 1) {
+            const field = Object.keys(settingUpdates)[0] as keyof FieldSetting;
+            const value = settingUpdates[field];
+            
+            // usePackEditor.ts の関数に引数を変換して渡す
+            handlePackFieldSettingChange(type, index, field, value);
+        }
+    }, [handlePackFieldSettingChange]);
 
 
     return (
         <Box sx={{ p: 3 }}>
-            
-            <PackEditorToolbar 
+
+            <PackEditorToolbar
                 packData={packData}
                 isNewPack={isNewPack}
                 isExistingPack={isExistingPack}
@@ -126,9 +142,9 @@ const PackEditor: React.FC<PackEditorProps> = ({
             />
 
             {saveAlert && (
-                <Alert 
-                    severity={saveAlert.startsWith('❌') ? "error" : "success"} 
-                    onClose={() => setSaveAlert(null)} 
+                <Alert
+                    severity={saveAlert.startsWith('❌') ? "error" : "success"}
+                    onClose={() => setSaveAlert(null)}
                     sx={{ mb: 3 }}
                 >
                     {saveAlert}
@@ -137,35 +153,32 @@ const PackEditor: React.FC<PackEditorProps> = ({
 
             <Grid container spacing={4}>
                 {/* Grid の item は v7 で廃止。size を使用。 */}
-                <Grid size={{ xs: 12, md: 4 }}> 
+                <Grid size={{ xs: 12, md: 4 }}>
                     <Paper elevation={3} sx={{ p: 4, height: '100%' }}>
-                        {/* --------------------------------------------------- */}
-                        <PackInfoForm 
+                        <PackInfoForm
                             packData={packData}
                             isEditable={isEditable}
-                            handleInputChange={handleInputChange} 
+                            handleInputChange={handleInputChange}
                             handleSelectChange={handleSelectChange}
                             handleOpenRarityEditorModal={handleOpenRarityEditorModal}
                             handleSave={handleSave}
-                            // 💡 修正2: 必須プロパティ 'onPackCustomFieldChange' に 'handlePackCustomFieldChange' を渡す
-                            onPackCustomFieldChange={handlePackCustomFieldChange} 
-                            // packFieldSettings は Pack モデルで直接定義されていると仮定
+                            onPackCustomFieldChange={handlePackCustomFieldChange}
                             customFieldSettings={packData.packFieldSettings ? (packData.packFieldSettings as unknown as Record<string, FieldSetting>) : {}}
-                            onCustomFieldSettingChange={handlePackFieldSettingChange} 
+                            // 💡 【修正】ラッパー関数を渡す
+                            onCustomFieldSettingChange={handlePackFieldSettingWrapper}
                         />
-                        {/* --------------------------------------------------- */}
                     </Paper>
                 </Grid>
 
                 {/* Grid の item は v7 で廃止。size を使用。 */}
-                <Grid size={{ xs: 12, md: 8 }}> 
+                <Grid size={{ xs: 12, md: 8 }}>
                     <Paper elevation={3} sx={{ p: 4, height: '100%' }}>
-                        <PackCardList 
+                        <PackCardList
                             packId={packId}
-                            isEditable={isEditable} 
-                            onOpenEditorModal={handleOpenCardEditorModal} 
-                            onOpenViewModal={handleOpenCardViewModal} 
-                            cards={cards} 
+                            isEditable={isEditable}
+                            onOpenEditorModal={handleOpenCardEditorModal}
+                            onOpenViewModal={handleOpenCardViewModal}
+                            cards={cards}
                         />
                         <Divider sx={{ my: 3 }} />
                         <Typography variant="body2" color="text.secondary" sx={{ mt: 1 }}>
@@ -174,31 +187,30 @@ const PackEditor: React.FC<PackEditorProps> = ({
                     </Paper>
                 </Grid>
             </Grid>
-            
-            <CardModal 
+
+            <CardModal
                 open={isCardModalOpen}
                 onClose={handleCloseCardModal}
                 card={editingCard}
-                packRaritySettings={packData.rarityConfig} 
+                packRaritySettings={packData.rarityConfig}
                 onSave={handleCardSave}
                 onRemove={handleRemoveCard}
                 currentPackName={packData.name}
                 currentPackId={packId}
-                
-                customFieldSettings={customFieldSettings || {}} 
-                isReadOnly={isCardModalReadOnly} 
-                // CardModal に渡す onCustomFieldSettingChange は usePackEditor のハンドラを利用
+
+                customFieldSettings={customFieldSettings || {}}
+                isReadOnly={isCardModalReadOnly}
                 onCustomFieldSettingChange={React.useCallback((
-                    _itemType: "Card" | "Deck" | "Pack", 
-                    type: 'num' | 'str', 
-                    index: number, 
+                    _itemType: "Card" | "Deck" | "Pack",
+                    type: 'num' | 'str',
+                    index: number,
                     settingUpdates: Partial<FieldSetting>
                 ) => {
                     if (Object.keys(settingUpdates).length === 1) {
                         const field = Object.keys(settingUpdates)[0] as keyof FieldSetting;
                         const value = settingUpdates[field];
-                        // handleCustomFieldSettingChange のシグネチャに合わせる
-                        handleCustomFieldSettingChange(type, index, field, value); 
+                        // Cardの設定変更ハンドラ (usePackEditorで定義されたシグネチャに合わせたもの)
+                        handleCustomFieldSettingChange(type, index, field, value);
                     }
                 }, [handleCustomFieldSettingChange])}
             />
@@ -207,7 +219,7 @@ const PackEditor: React.FC<PackEditorProps> = ({
             <RarityEditorModal
                 open={isRarityModalOpen}
                 onClose={handleCloseRarityEditorModal}
-                packData={packData} 
+                packData={packData}
                 onSave={handleRarityEditorSave}
             />
 

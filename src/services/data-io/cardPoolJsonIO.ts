@@ -1,8 +1,12 @@
 /**
  * src/services/data-io/cardPoolJsonIO.ts
  *
- * CardPoolState (主に Map 構造を持つ ownedCards) のデータ構造を
- * JSON文字列へシリアライズ/デシリアライズ（Mapの変換/復元）するドメイン固有のI/Oサービス。
+ * * CardPoolState（主に Map 構造を持つ ownedCards）のデータ構造を
+ * * JSON文字列へシリアライズ/デシリアライズ（Mapの変換/復元）するドメイン固有のI/Oサービス層モジュール。
+ * * 責務:
+ * 1. CardPoolStateオブジェクトをJSON互換の構造（MapをArray<[string, number]>）に変換するシリアライザの提供。
+ * 2. JSON互換の構造をCardPoolState（Map構造）に復元するデシリアライザの提供。
+ * 3. 汎用的なJSON I/Oユーティリティ（genericJsonIO）を利用し、ドメイン固有のI/Oインターフェース（export/import）を提供する。
  */
 
 import type { CardPoolState } from '../../stores/cardPoolStore';
@@ -26,7 +30,7 @@ const cardPoolDeserializer: Deserializer<CardPoolState> = (loadedData: any): Car
     }
     // JSON互換配列を Map 構造に復元
     loadedData.ownedCards = new Map(loadedData.ownedCards);
-    
+
     return loadedData as CardPoolState;
 };
 

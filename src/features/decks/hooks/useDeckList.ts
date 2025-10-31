@@ -1,15 +1,15 @@
 /**
  * src/features/decks/hooks/useDeckList.ts
  *
- * デッキリストの表示に必要なデータをZustandストアから取得し、基本的なロジックを提供するカスタムフック。
- * 責務：
- * 1. コンポーネントマウント時にデッキ一覧データを非同期でロードする。
- * 2. デッキの削除アクション（handlemoveDeckToTrash）を提供する。
- * 3. 表示補助として、ユーティリティからカード総枚数計算機能（calculateTotalCards）を提供する。
- * 4. ソート＆フィルタリング機能を提供する。
+ * デッキリスト画面 (DeckList) のデータ取得、状態管理、ソート・フィルタリングロジックを提供するカスタムフック。
+ * * 責務:
+ * 1. Zustandストア (useDeckStore) からデッキデータとローディング状態をシャロー比較で取得する。
+ * 2. コンポーネントマウント時にデッキ全件の非同期ロード (fetchAllDecks) をトリガーする。
+ * 3. 汎用フック (useSortAndFilter) を使用して、全デッキリストに対して検索・ソート・フィルタリングロジックを適用し、結果 (displayedDecks) と制御関数を公開する。
+ * 4. 表示補助機能として、デッキの総カード枚数を計算するユーティリティ関数 (calculateTotalCards) を公開する。
  */
 
-import { useEffect, useCallback } from 'react';
+import { useEffect } from 'react';
 import { useShallow } from 'zustand/react/shallow';
 import { useDeckStore } from '../../../stores/deckStore';
 import type { Deck } from '../../../models/deck';
@@ -33,7 +33,6 @@ interface UseDeckListResult {
     setSearchTerm: (term: string) => void;
     setFilters: (filters: FilterCondition[]) => void;
     isLoading: boolean;
-    handlemoveDeckToTrash: (deckId: string) => void;
     // ユーティリティ関数を公開
     calculateTotalCards: (deck: Deck) => number;
 }
@@ -42,16 +41,14 @@ interface UseDeckListResult {
  * デッキリストの表示に必要なデータをストアから取得し、ロジックを提供するカスタムフック
  */
 export const useDeckList = (): UseDeckListResult => {
-    const { 
-        decks, 
-        isLoading, 
-        fetchAllDecks, 
-        moveDeckToTrash,
+    const {
+        decks,
+        isLoading,
+        fetchAllDecks,
     } = useDeckStore(useShallow(state => ({
         decks: state.decks,
         isLoading: state.isLoading,
         fetchAllDecks: state.fetchAllDecks,
-        moveDeckToTrash: state.moveDeckToTrash,
     })));
 
     // 1. コンポーネントマウント時にデッキをロードする
@@ -73,13 +70,6 @@ export const useDeckList = (): UseDeckListResult => {
         setFilters,
     } = useSortAndFilter<Deck>(decks, undefined, DECK_DEFAULT_SORT);
 
-    // 3. デッキ削除ハンドラ
-    const handlemoveDeckToTrash = useCallback((deckId: string) => {
-        if (window.confirm('本当にこのデッキを削除しますか？')) {
-            moveDeckToTrash(deckId);
-        }
-    }, [moveDeckToTrash]);
-    
     return {
         decks,
         displayedDecks,
@@ -93,8 +83,6 @@ export const useDeckList = (): UseDeckListResult => {
         setSearchTerm,
         setFilters,
         isLoading,
-        handlemoveDeckToTrash,
-        // ユーティリティとしてインポートした関数を直接返す
         calculateTotalCards: utilityCalculateTotalCards,
     };
 };

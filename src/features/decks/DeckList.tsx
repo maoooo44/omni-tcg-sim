@@ -1,49 +1,47 @@
 /**
  * src/features/decks/DeckList.tsx
  *
- * ユーザーが作成したデッキの一覧を表示し、新規作成、編集、削除の操作を提供するコンポーネント。
- * useDeckListフックからデータを取得し、useSortAndFilterフックでソート・フィルタリングを適用する。
- * グリッド表示UI（ReusableItemGrid、DeckItem）に専念する。
+ * * ユーザーが作成したデッキの一覧を表示し、新規作成、編集、ゴミ箱への移動操作を提供するメインコンポーネント。
+ * * 責務:
+ * 1. useDeckListフックを呼び出し、デッキデータ（全件/ソート・フィルタ適用済み）とソート/フィルタリング状態・ハンドラを取得する。
+ * 2. useGridDisplayフックを呼び出し、一覧表示の列数設定（レスポンシブ設定含む）を管理する。
+ * 3. 取得したデータと設定に基づき、汎用グリッドコンポーネント（ReusableItemGrid）にUI描画とイベント処理を委譲する。
+ * 4. 新規デッキ作成ボタンを提供し、デフォルトデッキを作成した上で編集画面へ遷移させる。
+ * 5. ソート・フィルタリングコントロールUI、列数トグル、ステータス表示（ロード中/デッキなし/フィルタリング結果なし）を提供する。
  */
 import React, { useCallback } from 'react';
 import { useDeckList } from './hooks/useDeckList';
-import { useNavigate } from '@tanstack/react-router'; 
-import { 
-    Box, Typography, Button, Alert, 
+import { useNavigate } from '@tanstack/react-router';
+import {
+    Box, Typography, Button, Alert,
 } from '@mui/material';
 import AddIcon from '@mui/icons-material/Add';
 
 
-// 💡 追加: グリッド表示関連のインポート
-import { useGridDisplay } from '../../hooks/useGridDisplay'; 
+import { useGridDisplay } from '../../hooks/useGridDisplay';
 import ReusableItemGrid from '../../components/common/ReusableItemGrid';
-import DeckItem from './components/DeckItem'; // DeckItemを使用する (PackItemと互換)
+import DeckItem from './components/DeckItem';
 import GridColumnToggle from '../../components/controls/GridColumnToggle';
 
-// import { useSortAndFilter } from '../../hooks/useSortAndFilter'; // useDeckList内で処理される前提
-import SortAndFilterControls from '../../components/controls/SortAndFilterControls'; 
+// import SortAndFilterControls from '../../components/controls/SortAndFilterControls'; // 削除
+import SortAndFilterButton from '../../components/controls/SortAndFilterButton'; // 💡 統合コンポーネントを追加
 
-// 💡 修正: calculateTotalCards のインポートを削除
-// import { deckFieldAccessor } from './deckUtils'; // useDeckList内で処理される前提
 import { createDefaultDeck } from '../../utils/dataUtils';
-import { DeckListGridSettings } from '../../configs/gridDefaults'; // グリッド設定のインポート
-// 💡 追加/修正: フィルタフィールド定義をインポート
-import { DECK_FILTER_FIELDS } from '../../configs/sortAndFilterDefaults'; 
-const DECK_EDIT_PATH_PREFIX = '/user/decks'; 
+import { DeckListGridSettings } from '../../configs/gridDefaults';
+import { DECK_FILTER_FIELDS } from '../../configs/sortAndFilterDefaults';
+const DECK_EDIT_PATH_PREFIX = '/decks';
 
 
 // =========================================================================
-// 3. コンポーネント本体
+// コンポーネント本体
 // =========================================================================
 
 const DeckList: React.FC = () => {
-    
+
     // 1. データ取得とアクション
-    // 💡 修正: usePackList.ts の返り値と同様に、必要な状態とハンドラを useDeckList から取得する想定に変更
     const {
         decks,
-        // 💡 追加: useDeckListから取得する想定のプロパティ
-        displayedDecks, // ★ 高度なフィルタリング適用後のリスト
+        displayedDecks, // 高度なフィルタリング適用後のリスト
         sortField,
         sortOrder,
         searchTerm,
@@ -55,29 +53,15 @@ const DeckList: React.FC = () => {
         DECK_SORT_OPTIONS,
         // 既存プロパティ
         isLoading,
-        handlemoveDeckToTrash,
+        //handlemoveDeckToTrash,
     } = useDeckList();
-    
-    const navigate = useNavigate(); 
-    
-    // 💡 削除: useSortAndFilter は useDeckList の内部で処理されることを前提とする
-    // const {
-    //     sortedAndFilteredData: displayedDecks,
-    //     sortField,
-    //     sortOrder,
-    //     searchTerm,
-    //     setSortField,
-    //     setSearchTerm,
-    //     toggleSortOrder,
-    // } = useSortAndFilter<Deck>(decks, deckFieldAccessor, {
-    //     defaultSortField: 'number', 
-    //     defaultSortOrder: 'asc'
-    // });
-    
+
+    const navigate = useNavigate();
+
     // 2. グリッド表示フックの適用 (変更なし)
     const gridDisplayProps = useGridDisplay({
-        settings: DeckListGridSettings, 
-        storageKey: 'deckList', 
+        settings: DeckListGridSettings,
+        storageKey: 'deckList',
         userGlobalDefault: {
             isUserDefaultEnabled: false,
             globalColumns: null,
@@ -90,21 +74,21 @@ const DeckList: React.FC = () => {
 
     // 3. 新規デッキ作成ハンドラ (変更なし)
     const handleCreateNewDeck = useCallback(() => {
-        const newDeck = createDefaultDeck(); 
-        const newDeckId = newDeck.deckId; 
-        
-        navigate({ 
-            to: `${DECK_EDIT_PATH_PREFIX}/$deckId`, 
-            params: { deckId: newDeckId } 
-        }); 
+        const newDeck = createDefaultDeck();
+        const newDeckId = newDeck.deckId;
+
+        navigate({
+            to: `${DECK_EDIT_PATH_PREFIX}/$deckId`,
+            params: { deckId: newDeckId }
+        });
     }, [navigate]);
-    
+
     // 4. アイテムクリック時の編集画面遷移ハンドラ (変更なし)
     const handleSelectDeck = useCallback((deckId: string) => {
-        navigate({ 
-            to: `${DECK_EDIT_PATH_PREFIX}/$deckId`, 
-            params: { deckId: deckId } 
-        }); 
+        navigate({
+            to: `${DECK_EDIT_PATH_PREFIX}/$deckId`,
+            params: { deckId: deckId }
+        });
     }, [navigate]);
 
     const hasDecks = decks.length > 0;
@@ -118,7 +102,7 @@ const DeckList: React.FC = () => {
             </Box>
         );
     }
-    
+
     if (isTotallyEmpty) {
         return (
             <Box sx={{ p: 3 }}>
@@ -132,31 +116,30 @@ const DeckList: React.FC = () => {
             </Box>
         );
     }
-    
-    // const hasFilteredResults = displayedDecks.length > 0; // isFilteredButEmptyで代替
 
     return (
         <Box sx={{ flexGrow: 1, p: 2 }}>
-            
-            {/* ソート・フィルタリングUIの配置 */}
-            {/* ★ 修正: filterFields と setFilters を追加 */}
-            <SortAndFilterControls
-                labelPrefix="デッキ"
-                sortOptions={DECK_SORT_OPTIONS}
-                sortField={sortField}
-                sortOrder={sortOrder}
-                searchTerm={searchTerm}
-                filters={filters}
-                setSortField={setSortField}
-                toggleSortOrder={toggleSortOrder}
-                setSearchTerm={setSearchTerm}
-                setFilters={setFilters}
-                filterFields={DECK_FILTER_FIELDS} // ★ DECK用のフィルタフィールド定義
-            />
+
+            {/* ソート・フィルタリングUIの配置 (旧: SortAndFilterControls) は削除 */}
+            {/* <SortAndFilterControls ... /> */}
 
             <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 3 }}>
                 <Typography variant="h6">デッキ一覧 ({displayedDecks.length}件)</Typography>
                 <Box sx={{ display: 'flex', alignItems: 'center', gap: 2 }}>
+                    {/* 💡 SortAndFilterButtonをGridColumnToggleの左隣に配置 */}
+                    <SortAndFilterButton
+                        labelPrefix="デッキ"
+                        sortOptions={DECK_SORT_OPTIONS}
+                        sortField={sortField}
+                        sortOrder={sortOrder}
+                        searchTerm={searchTerm}
+                        filters={filters}
+                        setSortField={setSortField}
+                        toggleSortOrder={toggleSortOrder}
+                        setSearchTerm={setSearchTerm}
+                        setFilters={setFilters}
+                        filterFields={DECK_FILTER_FIELDS}
+                    />
                     <GridColumnToggle
                         currentColumns={gridDisplayProps.columns}
                         setColumns={gridDisplayProps.setColumns}
@@ -184,11 +167,11 @@ const DeckList: React.FC = () => {
             ) : (
                 <Box sx={{ mt: 2 }}>
                     <ReusableItemGrid
-                        items={displayedDecks as any} 
-                        ItemComponent={DeckItem as any} 
+                        items={displayedDecks as any}
+                        ItemComponent={DeckItem as any}
                         itemProps={{
-                            onSelectDeck: handleSelectDeck, 
-                            onDeleteDeck: handlemoveDeckToTrash, 
+                            onSelectDeck: handleSelectDeck,
+                            //onDeleteDeck: handlemoveDeckToTrash, 
                         }}
                         {...gridDisplayProps}
                     />

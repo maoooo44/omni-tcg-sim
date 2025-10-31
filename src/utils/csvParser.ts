@@ -1,9 +1,16 @@
 /**
  * src/utils/csvParser.ts
  *
- * CSV形式の文字列を受け取り、ヘッダー行とデータ行の配列にパースするユーティリティ関数。
- * CSV標準（ダブルクォーテーションによるエスケープ）に対応する。
- * コメント行（# で始まる行）は無視される。
+ * * 汎用的なCSVパースロジックを提供するユーティリティモジュール。
+ * 主な責務は、CSV形式の文字列を受け取り、ヘッダー行とデータ行の配列に正確にパースすることです。
+ * CSV標準（RFC 4180）に準拠したダブルクォーテーションによるフィールドエスケープに対応し、
+ * コメント行（# で始まる行）を適切に無視するロジックを含みます。
+ *
+ * * 責務:
+ * 1. CSVテキスト全体をパースし、ヘッダーとデータ行の二つの要素を持つオブジェクトを返す（parseCSV）。
+ * 2. 行レベルで、空白行、コメント行を無視する。
+ * 3. フィールドレベルで、ダブルクォーテーションで囲まれたフィールド内のカンマ、改行、二重引用符のエスケープに対応する。
+ * 4. 1行目をヘッダーとして扱い、2行目以降をデータとして扱う。
  */
 
 /**
@@ -30,7 +37,7 @@ export const parseCSV = (csvText: string): { headers: string[], data: string[][]
             const trimmed = line.trim();
             return trimmed !== '' && !isCommentLine(trimmed);
         });
-    
+
     if (lines.length === 0) return { headers: [], data: [] };
 
     // --- 補助関数: CSVの行をフィールド配列にパースする ---
@@ -56,32 +63,34 @@ export const parseCSV = (csvText: string): { headers: string[], data: string[][]
                     currentField += char;
                 } else {
                     // フィールドの区切り
-                    fields.push(currentField.trim());
+                    fields.push(currentField);
                     currentField = '';
                 }
             } else {
                 currentField += char;
             }
         }
-        
-        // 最後のフィールドを追加（エスケープされていない最後のフィールドはトリム）
-        fields.push(currentField.trim());
 
-        // フィールド全体が引用符で囲まれていた場合、引用符を外す
+        // 最後のフィールドを追加
+        fields.push(currentField);
+
+        // フィールドのクリーンアップ: 引用符の除去とトリミング
         return fields.map(field => {
-            if (field.startsWith('"') && field.endsWith('"') && field.length > 1) {
-                return field.slice(1, -1).trim();
+            // フィールド全体が引用符で囲まれていて、かつクォーテーションがエスケープされたもの（"""ではない）
+            if (field.length > 1 && field.startsWith('"') && field.endsWith('"')) {
+                // 引用符を外し、内部の二重引用符を単一にデエスケープし、最後にトリム
+                return field.slice(1, -1).replace(/""/g, '"').trim();
             }
-            return field;
+            return field.trim();
         });
     };
     // ----------------------------------------------------
 
     // 1行目をヘッダーとしてパース
     const headers = parseLine(lines[0]);
-    
+
     // 2行目以降をデータ行としてパース
     const data = lines.slice(1).map(parseLine);
-    
+
     return { headers, data };
 };

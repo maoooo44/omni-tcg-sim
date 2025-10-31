@@ -1,15 +1,17 @@
 /**
  * src/features/packs/components/CsvIOModal.tsx
  *
- * カードのCSVインポート機能に対応するモーダルUIコンポーネント。
- * このコンポーネントは、CSVファイルの選択と、インポート実行の確認画面を提供し、
- * useDataFileIOフック（親コンポーネント経由）から渡される状態とハンドラに基づいて表示を制御する。
- * 責務：ファイル選択UIの提供、インポートルールのユーザーへの提示、アクションボタンのレンダリング。
+ * 個々のカードデータ（CardType）のCSVインポート機能に対応するモーダルUIコンポーネント。
+ * * 責務:
+ * 1. CSVファイルの選択用UI（<input type="file">）をユーザーに提供する。
+ * 2. インポート処理のロジック、予約済みフィールド、新規カード追加のロジックに関する**重要なルール**をユーザーに提示する（Alert）。
+ * 3. 編集モード（isEditorMode）とローディング状態（isLoading）に基づき、UI要素の有効/無効を適切に制御する。
+ * 4. 親コンポーネントから渡されるファイル選択、インポート実行、モーダル閉鎖のコールバックを実行する。
  */
 import React from 'react';
-import { 
-    Button, Dialog, DialogTitle, DialogContent, DialogActions, 
-    Alert, Typography, CircularProgress 
+import {
+    Button, Dialog, DialogTitle, DialogContent, DialogActions,
+    Alert, Typography, CircularProgress
 } from '@mui/material';
 
 interface CsvIOModalProps {
@@ -19,7 +21,7 @@ interface CsvIOModalProps {
     fileToImport: File | null;
     onClose: () => void;
     // ファイル変更ハンドラ: 'csv'タイプであることを明示的に渡す
-    handleFileChange: (e: React.ChangeEvent<HTMLInputElement>, type: 'csv') => void; 
+    handleFileChange: (e: React.ChangeEvent<HTMLInputElement>, type: 'csv') => void;
     handleConfirmImport: () => void;
 }
 
@@ -33,8 +35,8 @@ const CsvIOModal: React.FC<CsvIOModalProps> = ({
     handleConfirmImport,
 }) => {
     return (
-        <Dialog 
-            open={open} 
+        <Dialog
+            open={open}
             onClose={onClose}
             maxWidth="sm"
             fullWidth
@@ -47,11 +49,11 @@ const CsvIOModal: React.FC<CsvIOModalProps> = ({
                     **予約済みフィールド (任意)**: `name`, `rarity`, `imageUrl`, `number`<br />
                     **ロジック**: `name`が空欄の場合「新しいカード」と連番が自動付与されます。`rarity`が空欄の場合、パックの最初のレアリティが割り当てられます。**すべての行は新規カードとして追加されます**。
                 </Alert>
-                <input 
-                    type="file" 
-                    accept=".csv" 
+                <input
+                    type="file"
+                    accept=".csv"
                     onChange={(e) => handleFileChange(e, 'csv')}
-                    disabled={!isEditorMode || isLoading} 
+                    disabled={!isEditorMode || isLoading}
                 />
                 {fileToImport && (
                     <Typography variant="body2" sx={{ mt: 1 }}>
@@ -61,13 +63,13 @@ const CsvIOModal: React.FC<CsvIOModalProps> = ({
             </DialogContent>
             <DialogActions>
                 <Button onClick={onClose} disabled={isLoading}>キャンセル</Button>
-                <Button 
-                    onClick={handleConfirmImport} 
-                    variant="contained" 
-                    disabled={!fileToImport || !isEditorMode || isLoading} 
+                <Button
+                    onClick={handleConfirmImport}
+                    variant="contained"
+                    disabled={!fileToImport || !isEditorMode || isLoading}
                 >
                     インポート実行
-                    {isLoading && <CircularProgress size={16} sx={{ ml: 1 }} />} 
+                    {isLoading && <CircularProgress size={16} sx={{ ml: 1 }} />}
                 </Button>
             </DialogActions>
         </Dialog>

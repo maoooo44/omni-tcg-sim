@@ -1,14 +1,23 @@
 /**
  * src/configs/filterDefaults.ts
  *
- * SortAndFilterControlsで使用するフィルタフィールド定義を一元管理するファイル。
- * 各エンティティ（Pack, Deck, Card）のフィルタリング可能なフィールドを定義する。
+ * * アプリケーション内で使用される、各種エンティティ（Pack, Deck, Card）のフィルタリングおよびソートのデフォルト設定を定義するモジュール。
+ * 主に `useSortAndFilter` フックや `SortAndFilterControls` コンポーネントで使用される静的データを提供します。
+ *
+ * * 責務:
+ * 1. 各エンティティリスト（例: パック、デッキ、カードプール）で利用可能なフィルタフィールド（`PACK_FILTER_FIELDS` など）の定義を提供する。
+ * 2. 各リストで利用可能なソートオプション（`PACK_SORT_OPTIONS` など）の定義を提供する。
+ * 3. 各リストの初期表示時に適用されるデフォルトのソート設定（`PACK_DEFAULT_SORT` など）を提供する。
  */
 
 import type { FilterField } from '../hooks/useSortAndFilter';
 import type { SortOption } from '../components/controls/SortAndFilterControls';
 import type { DefaultSortConfig } from '../hooks/useSortAndFilter';
 export type { FilterField, SortOption };
+
+// =========================================================================
+// フィルタフィールド定義
+// =========================================================================
 
 /**
  * パックリスト用のフィルタフィールド定義
@@ -42,7 +51,7 @@ export const DECK_FILTER_FIELDS: FilterField[] = [
  */
 export const CARD_FILTER_FIELDS: FilterField[] = [
     { field: 'name', label: 'カード名', type: 'text' },
-    { field: 'rarity', label: 'レアリティ', type: 'text' }, // selectにする場合は、レアリティのマスタデータが必要
+    { field: 'rarity', label: 'レアリティ', type: 'text' },
     { field: 'number', label: '図鑑No', type: 'number' },
     { field: 'text', label: 'テキスト', type: 'text' },
     { field: 'subtext', label: 'サブテキスト', type: 'text' },
@@ -58,6 +67,17 @@ export const PACK_CARD_FILTER_FIELDS: FilterField[] = [
     { field: 'number', label: '図鑑No', type: 'number' },
     { field: 'text', label: 'テキスト', type: 'text' },
 ];
+
+/**
+ * アーカイブリスト用のフィルタフィールド定義
+ */
+export const ARCHIVE_FILTER_FIELDS: FilterField[] = [
+    { field: 'name', label: 'アーカイブ名', type: 'text' },
+];
+
+// =========================================================================
+// ソートオプション定義
+// =========================================================================
 
 /**
  * パックリスト用のソートオプション
@@ -79,6 +99,9 @@ export const DECK_SORT_OPTIONS: SortOption[] = [
     { label: 'ID', value: 'deckId' },
 ];
 
+/**
+ * カード（パック編集画面やデッキ編集画面など、汎用的なカードリスト）用のソートオプション
+ */
 export const CARD_SORT_OPTIONS: SortOption[] = [
     { label: 'No. (デフォルト)', value: 'number' },
     { label: 'カード名', value: 'name' },
@@ -97,11 +120,31 @@ export const CARD_POOL_SORT_OPTIONS: SortOption[] = [
 ];
 
 /**
- * カードプール用のソートオプション（枚数を含む、DTCGリストモード限定）
+ * カードプール用のソートオプション（枚数を含む、DTCGリストモード限定など）
  */
 export const CARD_POOL_SORT_OPTIONS_WITH_COUNT: SortOption[] = [
     ...CARD_POOL_SORT_OPTIONS,
     { label: '枚数', value: 'count' },
+];
+
+/**
+ * パックリスト用のソートオプション
+ */
+export const ARCHIVE_PACK_SORT_OPTIONS: SortOption[] = [
+    { label: '図鑑 No. (デフォルト)', value: 'number' },
+    { label: 'パック名', value: 'name' },
+    { label: 'ID', value: 'packId' },
+    { label: 'シリーズ', value: 'series' },
+];
+
+/**
+ * デッキリスト用のソートオプション
+ */
+export const ARCHIVE_DECK_SORT_OPTIONS: SortOption[] = [
+    { label: '図鑑 No. (デフォルト)', value: 'number' },
+    { label: 'デッキ名', value: 'name' },
+    { label: 'カード枚数', value: 'cardCount' },
+    { label: 'ID', value: 'deckId' },
 ];
 
 // =========================================================================
@@ -125,7 +168,7 @@ export const DECK_DEFAULT_SORT: DefaultSortConfig = {
 };
 
 /**
- * カード（パック編集画面）用のデフォルトソート設定
+ * カード（汎用）用のデフォルトソート設定
  */
 export const CARD_DEFAULT_SORT: DefaultSortConfig = {
     defaultSortField: 'number',
@@ -136,6 +179,11 @@ export const CARD_DEFAULT_SORT: DefaultSortConfig = {
  * カードプール用のデフォルトソート設定
  */
 export const CARD_POOL_DEFAULT_SORT: DefaultSortConfig = {
+    defaultSortField: 'number',
+    defaultSortOrder: 'asc',
+};
+
+export const ARCHIVE_DEFAULT_SORT: DefaultSortConfig = {
     defaultSortField: 'number',
     defaultSortOrder: 'asc',
 };

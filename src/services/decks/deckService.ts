@@ -1,35 +1,30 @@
 /**
  * src/services/decks/deckService.ts
  *
- * Deck（デッキ）データに関するサービス層。
- * 責務:
- * 1. メインコレクション（'decks'）における Deck データの CRUD 操作（キャッシュ同期を含む）。
- * 2. DBコア層（dbCore）とデータマッパー（dbMappers）の橋渡し。
- * 3. ❌ アーカイブコレクションへの操作ロジックは削除し、**'decks'コレクション専用**とする。
- * 4. ID指定または全件取得時のキャッシュからの高速アクセスを提供。
- * 5. ❌ 論理削除/復元のオーケストレーションはarchiveServiceに分離。
- * 6. 全ての永続化・削除操作を**バルク処理**に一本化する。
+ * * Deck（デッキ）データに関するサービス層モジュール。
+ * * 責務:
+ * 1. メインコレクション（'decks'）における Deck データの CRUD 操作（**バルク処理を基本**とする）。
+ * 2. Deck データのインメモリキャッシュ（_deckCache）のロード、読み取り、同期。
+ * 3. DBコア層（dbCore）とデータマッパー（dbMappers）を結合し、ドメインモデル（Deck）の永続化と取得を担う。
+ * 4. DB操作のロギングとエラーハンドリングを行う。
  */
 import type { Deck } from "../../models/deck";
-import { 
-    fetchAllItemsFromCollection, 
+import {
+    fetchAllItemsFromCollection,
     bulkPutItemsToCollection,
     bulkDeleteItemsFromCollection,
     bulkFetchItemsByIdsFromCollection,
-    // DbCollectionName は使用しないため削除
+    bulkUpdateItemFieldToCollection
 } from '../database/dbCore';
-import { 
-    deckToDBDeck, 
-    dbDeckToDeck, 
-    // dbArchiveToDeck のインポートを削除
+import {
+    deckToDBDeck,
+    dbDeckToDeck,
 } from '../database/dbMappers';
-import type { DBDeck /* DBArchive, ArchiveItemType のインポートを削除 */ } from "../../models/db-types";
-// archiveService, ArchiveCollectionKey のインポートを削除
+import type { DBDeck } from "../../models/db-types";
 
-let _deckCache: Map<string, Deck> | null = null; 
+let _deckCache: Map<string, Deck> | null = null;
 
-export type CollectionKey = 'decks'; // ArchiveCollectionKey を削除
-// const ARCHIVE_ITEM_TYPE: ArchiveItemType = 'deck'; // 削除
+export type CollectionKey = 'decks';
 
 
 export const deckService = {
@@ -38,12 +33,12 @@ export const deckService = {
     // [1] Cache Load / Read (キャッシュ/DBからの取得)
     // ----------------------------------------
 
-    getAllDecksFromCache(): Deck[] { 
-        return _deckCache ? Array.from(_deckCache.values()) : []; 
+    getAllDecksFromCache(): Deck[] {
+        return _deckCache ? Array.from(_deckCache.values()) : [];
     },
-    
-    getDeckByIdFromCache(deckId: string): Deck | undefined { 
-        return _deckCache?.get(deckId); 
+
+    getDeckByIdFromCache(deckId: string): Deck | undefined {
+        return _deckCache?.get(deckId);
     },
 
     /**
@@ -54,9 +49,9 @@ export const deckService = {
      */
     async fetchDecksByIds(ids: string[]): Promise<(Deck | null)[]> {
         if (ids.length === 0) return [];
-        
+
         const collectionKey: CollectionKey = 'decks';
-        console.log(`[DeckService:fetchDecksByIds] 🔍 Fetching ${ids.length} packs from ${collectionKey} (Bulk).`);
+        console.log(`[DeckService:fetchDecksByIds] 🔍 Fetching ${ids.length} decks from ${collectionKey} (Bulk).`); // 修正適用箇所
 
         // 1. キャッシュヒットしたDeckと、DBからフェッチが必要なIDを分離
         const resultsMap = new Map<string, Deck>();
@@ -74,14 +69,14 @@ export const deckService = {
         // 2. DBからのバルク取得が必要な場合
         if (idsToFetchFromDB.length > 0) {
             console.log(`[DeckService:fetchDecksByIds] ➡️ Cache miss for ${idsToFetchFromDB.length} IDs. Fetching from DB...`);
-            
+
             // dbCore の正式なバルク取得関数を使用
             const fetchedDecksOrNull = await bulkFetchItemsByIdsFromCollection<Deck, DBDeck>(
-                idsToFetchFromDB, 
+                idsToFetchFromDB,
                 collectionKey,
-                dbDeckToDeck 
+                dbDeckToDeck
             );
-            
+
             // 3. 取得結果を Deck に変換し、キャッシュと結果Mapに追加
             fetchedDecksOrNull.forEach(deck => {
                 if (deck) {
@@ -93,7 +88,7 @@ export const deckService = {
 
         // 4. 元の ids の順序で結果配列を再構成
         const finalDecks: (Deck | null)[] = ids.map(id => resultsMap.get(id) ?? null);
-        
+
         return finalDecks;
     },
 
@@ -104,20 +99,21 @@ export const deckService = {
     async fetchAllDecks(): Promise<Deck[]> {
         const collectionKey: CollectionKey = 'decks';
         console.log(`[DeckService:fetchAllDecks] 🔍 Fetching all decks from ${collectionKey}.`);
-        
+
         if (_deckCache) {
             console.log(`[DeckService:fetchAllDecks] ✅ Cache hit (all decks).`);
             return this.getAllDecksFromCache();
         }
 
         const converter = dbDeckToDeck as (dbRecord: DBDeck) => Deck;
-        
+
         try {
             // dbCore.fetchAllItemsFromCollection はコレクション全体を取得するバルク操作
             const decks = await fetchAllItemsFromCollection<Deck, DBDeck>(
                 collectionKey,
                 converter
             );
+            // キャッシュが未初期化の場合のみ初期化
             if (!_deckCache) {
                 _deckCache = new Map(decks.map(d => [d.deckId, d]));
             }
@@ -129,7 +125,7 @@ export const deckService = {
     },
 
     // ----------------------------------------
-    // [2] CRUD (保存・更新の一本化 - バルク対応)
+    // CRUD (保存・更新の一本化 - バルク対応)
     // ----------------------------------------
 
     /**
@@ -137,12 +133,12 @@ export const deckService = {
      * @param itemsToSave - 保存する Deck モデルの配列。updatedAtは呼び出し元が設定済みである必要があります。
      */
     async saveDecks(itemsToSave: Deck[]): Promise<Deck[]> {
-        
+
         if (itemsToSave.length === 0) return [];
-        
+
         const collectionKey: CollectionKey = 'decks';
         console.log(`[DeckService:saveDecks] 💾 Saving ${itemsToSave.length} items to ${collectionKey}...`);
-        
+
         // updatedAtは呼び出し元（Store）で設定されている前提
         const recordsToSave = itemsToSave.map(deckToDBDeck);
 
@@ -153,7 +149,7 @@ export const deckService = {
             // キャッシュと戻り値を準備
             const savedDecks = recordsToSave.map(dbRecord => dbDeckToDeck(dbRecord));
             savedDecks.forEach(deck => _deckCache?.set(deck.deckId, deck));
-            
+
             console.log(`[DeckService:saveDecks] ✅ Successfully saved ${savedDecks.length} decks to ${collectionKey}.`);
             return savedDecks;
 
@@ -162,9 +158,9 @@ export const deckService = {
             throw error;
         }
     },
-    
+
     // ----------------------------------------
-    // [3] Physical Deletion (物理削除)
+    // Physical Deletion (物理削除)
     // ----------------------------------------
 
     /**
@@ -173,19 +169,19 @@ export const deckService = {
      */
     async deleteDecks(ids: string[]): Promise<void> {
         if (ids.length === 0) return;
-        
+
         const collectionKey: CollectionKey = 'decks';
         console.log(`[DeckService:deleteDecks] 🗑️ Deleting ${ids.length} items from ${collectionKey} (Bulk).`);
-        
+
         try {
             // 1. DeckをDBから一括削除
             await bulkDeleteItemsFromCollection('decks', ids);
 
             // 2. キャッシュを更新
-            ids.forEach(id => _deckCache?.delete(id)); 
-            
+            ids.forEach(id => _deckCache?.delete(id));
+
             // 3. 物理カスケード: デッキには関連エンティティがないため、追加の削除処理は不要。
-            
+
             console.log(`[DeckService:deleteDecks] ✅ Deleted ${ids.length} decks from ${collectionKey}.`);
         } catch (error) {
             console.error(`[DeckService:deleteDecks] ❌ Failed to delete from ${collectionKey}:`, error);
@@ -193,11 +189,61 @@ export const deckService = {
         }
     },
 
-
     // ----------------------------------------
-    // [4] Logical Deletion/Restore/Maintenance (archiveServiceに分離したため削除)
+    // Field Update (ストアアクションから利用されるフィールド更新)
     // ----------------------------------------
 
-    // restoreDecksFromArchive メソッドは削除
-    // runDeckGarbageCollection メソッドは削除
+    /**
+     * 複数のDeckアイテムの特定のフィールドを、すべて同じ値で一括更新します。
+     * @param ids 更新するDeckの主キーの配列
+     * @param field 更新するフィールド名 ('isFavorite', 'updatedAt'など)
+     * @param value 設定する新しい値 (全IDに適用)
+     * @returns 更新されたレコードの総数
+     */
+    async updateDecksField(
+        ids: string[],
+        field: string,
+        value: any
+    ): Promise<number> {
+        // コレクションキーの型は、ファイル先頭で定義されている CollectionKey ('decks' と想定)
+        const collectionKey: CollectionKey = 'decks'; 
+        console.log(`[DeckService:updateDecksField] ⚡️ Bulk updating field '${field}' on ${collectionKey} for ${ids.length} items.`);
+        
+        try {
+            // dbCoreの汎用バルク更新関数をコレクション名 'decks' 固定で呼び出す
+            const numUpdated = await bulkUpdateItemFieldToCollection(
+                ids,
+                collectionKey,
+                field,
+                value
+            );
+            
+            // ★キャッシュ更新ロジック: 必要に応じて追加
+            // 2. キャッシュ更新ロジックの修正: _deckCache が null でないことを確認
+            if (numUpdated > 0 && _deckCache) { // ★ 修正: _deckCache が存在することを保証
+                const cache = _deckCache; // nullでないことが保証されたローカル変数に代入
+                
+                ids.forEach(id => {
+                    const cachedDeck = cache.get(id); // ローカル変数 'cache' を使用
+                    if (cachedDeck) {
+                        // キャッシュ内のオブジェクトの新しいコピーを作成し、特定のフィールドを更新
+                        const updatedDeck: Deck = { 
+                            ...cachedDeck,
+                            [field]: value 
+                        };
+                        // キャッシュに上書き保存
+                        cache.set(id, updatedDeck); // ローカル変数 'cache' を使用
+                        console.log(`[DeckService:updateDecksField] ✅ Cache updated for Deck ID: ${id}.`);
+                    }
+                });
+            }
+            
+            
+            return numUpdated;
+
+        } catch (error) {
+            console.error(`[DeckService:updateDecksField] ❌ Failed to update field ${field}:`, error);
+            throw error;
+        }
+    },
 };

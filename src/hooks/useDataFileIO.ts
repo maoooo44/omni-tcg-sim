@@ -1,12 +1,19 @@
 /**
  * src/hooks/useDataFileIO.ts
  *
- * CSV/JSON/ZIPなどのデータI/O操作に必要な、汎用的なUI状態とメニュー操作を管理するカスタムフック。
- * 特定のフィーチャー（Pack編集, 設定画面など）で共通して利用されます。
+ * * CSV/JSON/ZIPなどのデータI/O操作に必要な、汎用的なUI状態とメニュー操作を管理するカスタムフック。
+ * 特定のフィーチャー（Pack編集, 設定画面など）で共通して利用されるI/O UIのラッパーとして機能します。
+ *
+ * * 責務:
+ * 1. I/Oメニューの開閉状態 (`anchorEl`) を管理するハンドラを提供し、メニュー操作を抽象化する。
+ * 2. 各ファイルタイプ（CSV/JSON）ごとのインポート用モーダル開閉状態を管理する。
+ * 3. 選択されたインポートファイル (`fileToImport`, `jsonFileToImport`) の状態を保持する。
+ * 4. ファイル変更ハンドラ、インポート確定ハンドラなど、UIからI/Oロジック層への橋渡しを行う。
+ * 5. 実際のファイル処理ロジック（例: CSV処理）は、下位の専用フック (`useCardCsvIO`) に委譲する。
  */
 
 import { useState, useMemo, useCallback } from 'react';
-import { useCardCsvIO } from '../features/packs/hooks/useCardCsvIO'; 
+import { useCardCsvIO } from '../features/packs/hooks/useCardCsvIO';
 import type { Pack } from '../models/pack'; // 型情報が必要なためインポート
 
 // CSV/JSON I/O の共通プロパティを Pack 固有のものと分離し、汎用的にする
@@ -37,22 +44,21 @@ export type PackFileIO = {
 
 
 export const useDataFileIO = (
-    packId: string, 
+    packId: string,
     _packData: Pack | null,
-    // 【追加】CSVインポート完了後に実行するカードリスト更新用コールバック
-    onCardListUpdated: () => Promise<void> 
+    // CSVインポート完了後に実行するカードリスト更新用コールバック
+    onCardListUpdated: () => Promise<void>
 ): PackFileIO => {
 
     // --- 既存の CSV 関連フックの利用 ---
-    const { 
-        isLoading: isCsvIOLoading, 
-        statusMessage: csvIOStatusMessage, 
-        // handleImportCsvFile, // 削除
-        // 【修正】CSVインポート確定ハンドラを useCardCsvIO から取得
+    const {
+        isLoading: isCsvIOLoading,
+        statusMessage: csvIOStatusMessage,
+        // CSVインポート確定ハンドラを useCardCsvIO から取得
         handleConfirmImport: handleConfirmImportCsvIO,
-    // 【修正】onCardListUpdated を useCardCsvIO に渡す
-    } = useCardCsvIO(packId, onCardListUpdated); 
-    
+        // onCardListUpdated を useCardCsvIO に渡す
+    } = useCardCsvIO(packId, onCardListUpdated);
+
     // --- UI/I/O 関連の状態（切り出し元） ---
     const [isImportModalOpen, setIsImportModalOpen] = useState(false);
     const [fileToImport, setFileToImport] = useState<File | null>(null);
@@ -83,12 +89,12 @@ export const useDataFileIO = (
         }
         // ZIPは設定画面で処理
         if (type !== 'zip') {
-             console.log(`Exporting pack ${currentPackData?.name} as ${type}...`);
+            console.log(`Exporting pack ${currentPackData?.name} as ${type}...`);
         } else {
-             console.log(`Exporting all data as ZIP...`);
+            console.log(`Exporting all data as ZIP...`);
         }
     };
-    
+
     // --- ファイル変更ハンドラ（切り出し元） ---
     const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>, type: 'csv' | 'json') => {
         const file = e.target.files ? e.target.files[0] : null;
@@ -102,21 +108,21 @@ export const useDataFileIO = (
             console.warn('No CSV file selected or already loading.');
             return;
         }
-        
-        // 【修正】実際のファイル処理とStore更新は useCardCsvIO に委譲
+
+        // 実際のファイル処理とStore更新は useCardCsvIO に委譲
         await handleConfirmImportCsvIO(fileToImport);
-        
+
         // UI状態のリセットはここで実行
-        setIsImportModalOpen(false); 
+        setIsImportModalOpen(false);
         setFileToImport(null);
-        
+
     }, [fileToImport, isCsvIOLoading, handleConfirmImportCsvIO]);
 
     // --- JSON インポート確定ハンドラ（切り出し元） ---
-    const handleConfirmJsonImport = () => { 
+    const handleConfirmJsonImport = () => {
         // ここにJSONインポートのロジック（サービス呼び出し）が入る
-        console.log('JSON Import confirmed - Service call to process jsonFileToImport goes here.'); 
-        setIsJsonImportModalOpen(false); 
+        console.log('JSON Import confirmed - Service call to process jsonFileToImport goes here.');
+        setIsJsonImportModalOpen(false);
         setJsonFileToImport(null);
     };
 

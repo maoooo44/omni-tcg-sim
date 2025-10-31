@@ -1,241 +1,295 @@
 /**
- * src/features/decks/DeckEditor.tsx
+ * src/features/decks/DeckEditor.tsx (最終修正版: Grid構造のモード別切り替え)
  *
- * デッキの編集を行うメインコンポーネント。
- * データ取得はすべて親/フック層に委譲され、自身は**純粋なUI描画**と**イベントハンドラの呼び出し**に専念する。
- * デッキの編集、カードの追加/削除、デッキ情報の更新機能を提供する。
- * 💡 修正: 廃止された isAllViewMode プロップス、および論理削除/復元ロジックに関連するインポートや条件を削除し、コードを簡素化。
+ * デッキの編集を行うメインのUIコンポーネント。
+ * 💡 修正: 
+ * 1. DeckCompactListの呼び出しに、必須となったProps (ownedCards, onCardAdd) を追加。
  */
-
-import React, { useMemo, useState } from 'react';
-import { 
-    Box, Typography, Button, Alert, Grid, Paper, 
-    TextField, IconButton, Divider, List, ListItem, ListItemText,
-    InputAdornment, Avatar,
+import React, { useState, useCallback, useMemo } from 'react';
+import {
+    Box, Grid, Paper, Divider,
 } from '@mui/material';
-import AddIcon from '@mui/icons-material/Add';
-import RemoveIcon from '@mui/icons-material/Remove';
-import SaveIcon from '@mui/icons-material/Save';
-import DeleteIcon from '@mui/icons-material/Delete';
-import SearchIcon from '@mui/icons-material/Search';
 
-import type { Deck, DeckCard } from '../../models/deck';
+// 分割コンポーネントのインポート
+import DeckEditorToolbar from './components/DeckEditorToolbar';
+import DeckInform from './components/DeckInform';
+import DeckCardList from './components/DeckCardList';
+
+import DeckCompactList from './components/DeckCompactList';
+
+import CardPoolDisplay from '../../features/card-pool/components/CardPoolDisplay';
+
+// 💡 必要なコンポーネントをインポート
+import CardPoolControls from '../../features/card-pool/components/CardPoolControls';
+
+// CardPoolのロジックをインポート
+import { useCardPoolDisplay, CARDS_PER_PAGE } from '../../features/card-pool/hooks/useCardPoolDisplay';
+import { useGridDisplay } from '../../hooks/useGridDisplay';
+import { CardPoolGridSettings } from '../../configs/defaults';
+//import { CARD_FILTER_FIELDS } from '../../configs/sortAndFilterDefaults'; // フィルター定義も使用
+
+// ユーザーデータフックをインポート（または再定義）
+const useUserData = () => ({
+    cardPoolGridSettings: {
+        isUserDefaultEnabled: false,
+        globalColumns: null,
+        advancedResponsive: {
+            isEnabled: false,
+            columns: {}
+        }
+    },
+    // 💡 CardPoolControls のために isDTCGEnabled を追加（仮定）
+    isDTCGEnabled: true,
+});
+import type { Deck } from '../../models/deck';
 import type { Card } from '../../models/card';
-import { mapToDeckCardList } from '../decks/deckUtils'; 
 
-// DeckEditorに必要なPropsを定義
+
+type DeckArea = 'mainDeck' | 'sideDeck' | 'extraDeck';
+
 interface DeckEditorProps {
+    // ... (Propsは変更なし)
     deck: Deck;
-    allCards: Card[]; 
-    ownedCards: Map<string, number>; // cardId -> count
-    onSave: () => Promise<void>;
-    onDelete: () => Promise<void>; // 💡 論理削除 (ゴミ箱への移動)
-    updateDeckInfo: (info: Partial<Deck>) => void;
+    allCards: Card[];
+    ownedCards: Map<string, number>;
+    isNewDeck: boolean;
+    isDirty: boolean; // ダーティーチェック
     saveMessage: string | null;
-    // 💡 削除: isAllViewMode は廃止
+
+    onSave: () => Promise<void>;
+    onDelete: () => Promise<void>;
+    updateDeckInfo: (info: Partial<Deck>) => void;
+    handleCardAdd: (cardId: string, deckArea: DeckArea) => void;
+    handleCardRemove: (cardId: string, deckArea: DeckArea) => void;
 }
 
-const DeckEditor: React.FC<DeckEditorProps> = ({ 
-    deck, 
-    allCards, 
-    ownedCards, 
-    onSave, 
-    onDelete, 
-    updateDeckInfo, 
+
+const DeckEditor: React.FC<DeckEditorProps> = ({
+    deck,
+    allCards,
+    ownedCards,
+    isNewDeck,
+    isDirty,
+    onSave,
+    onDelete,
+    updateDeckInfo,
     saveMessage,
+    handleCardAdd,
+    handleCardRemove,
 }) => {
-    // 検索フィルタリング用ローカル状態
-    const [searchTerm, setSearchTerm] = useState('');
+    const [selectedDeckArea, setSelectedDeckArea] = useState<DeckArea>('mainDeck');
+    // 💡 isEditMode: デッキ情報 (DeckInform) の編集を制御
+    const [isEditMode, setIsEditMode] = useState<boolean>(isNewDeck);
 
-    // --- カードプール (左側) のフィルタリングロジック ---
-    const filteredCardPool = useMemo(() => {
-        if (!searchTerm) {
-            return allCards;
+    // 💡 修正: isCardPoolVisible から isDeckBuildingMode へ変更
+    // 新規作成時はデッキ構築モードをデフォルトとする
+    const [isDeckBuildingMode, setIsDeckBuildingMode] = useState<boolean>(isNewDeck);
+
+    // 💡 CardPoolControlsに必要なロジックを全て取得
+    const {
+        filteredCards,
+        currentPage,
+        totalPages,
+        setCurrentPage,
+        // CardPoolControls に必要な Props
+        viewMode,
+        setViewMode,
+        sortField,
+        sortOrder,
+        setSortField,
+        toggleSortOrder,
+        searchTerm,
+        setSearchTerm,
+        filters,
+        setFilters,
+    } = useCardPoolDisplay();
+
+    // 💡 グリッド表示に必要なロジックを取得
+    const { cardPoolGridSettings, isDTCGEnabled } = useUserData(); // isDTCGEnabledを仮で取得
+    const {
+        columns,
+        setColumns, // 💡 CardPoolControls のために setColumns も取得
+        minColumns, // 💡 CardPoolControls のために minColumns も取得
+        maxColumns, // 💡 CardPoolControls のために maxColumns も取得
+        sxOverride,
+        aspectRatio,
+        gap,
+    } = useGridDisplay({
+        settings: CardPoolGridSettings,
+        storageKey: 'deck-editor-card-pool-cols',
+        userGlobalDefault: cardPoolGridSettings
+    });
+
+    // ページ表示に必要なリストを計算
+    const totalCount = useMemo(() => filteredCards.length, [filteredCards]);
+    const startIndex = (currentPage - 1) * CARDS_PER_PAGE;
+    const endIndex = startIndex + CARDS_PER_PAGE;
+    const cardsOnPage = useMemo(() => filteredCards.slice(startIndex, endIndex), [filteredCards, startIndex, endIndex]);
+
+    // ... (ハンドラ関数は変更なし) ...
+    const handleAreaChange = useCallback((newArea: DeckArea) => {
+        setSelectedDeckArea(newArea);
+    }, []);
+
+    // 💡 修正: DeckEditorToolbarの「編集」ボタンが押されたとき -> isEditMode のみ切り替え
+    const handleToggleEditMode = useCallback(() => {
+        // ダーティチェックがtrueのときはボタン自体を disabled にしているため、ここではロジックのみ
+        
+        // 💡 修正: isEditMode が true (編集モード) の場合、閲覧モードへ移行するため isDeckBuildingMode も false にリセットする
+        if (isEditMode) {
+            setIsDeckBuildingMode(false); // ビルディングモードも強制終了
         }
-        const lowerSearchTerm = searchTerm.toLowerCase();
-        return allCards.filter(card => 
-            card.name.toLowerCase().includes(lowerSearchTerm) ||
-            card.rarity.toLowerCase().includes(lowerSearchTerm)
-        );
-    }, [allCards, searchTerm]);
+        
+        setIsEditMode(prev => !prev);
+    }, [isEditMode]);
 
-    // --- デッキリスト (右側) のレンダリングロジック ---
-    /**
-     * 💡 修正: 以前のエラーで指摘された未使用の引数 deckType を削除
-     */
-    const renderDeckList = (cards: DeckCard[], title: string) => (
-        <Box sx={{ mb: 2 }}>
-            <Typography variant="h6" gutterBottom>{title} ({cards.length}枚)</Typography>
-            <List dense>
-                {cards.map((deckCard) => { 
-                    const card = allCards.find(c => c.cardId === deckCard.cardId);
-                    if (!card) return null;
-                    const isOwned = (ownedCards.get(card.cardId) || 0) >= deckCard.count;
-                    
-                    return (
-                        <ListItem
-                            key={card.cardId}
-                            secondaryAction={
-                                <>
-                                    <IconButton edge="end" aria-label="remove" size="small" /*onClick={() => removeCard(card.cardId, deckType)}*/>
-                                        <RemoveIcon fontSize="inherit" />
-                                    </IconButton>
-                                    <IconButton edge="end" aria-label="add" size="small" /*onClick={() => addCard(card.cardId, deckType)} sx={{ ml: 1 }}*/>
-                                        <AddIcon fontSize="inherit" />
-                                    </IconButton>
-                                </>
-                            }
-                        >
-                            <Avatar 
-                                sx={{ 
-                                    width: 30, height: 42, mr: 1, 
-                                    filter: isOwned ? 'none' : 'grayscale(100%)' 
-                                }} 
-                            />
-                            <ListItemText
-                                primary={`${deckCard.count}x ${card.name}`}
-                                secondary={card.rarity + (isOwned ? '' : ' (枚数が不足)')}
-                            />
-                        </ListItem>
-                    );
-                })}
-            </List>
-        </Box>
-    );
+    // 💡 修正: DeckCardListの「デッキを編集」ボタンが押されたとき -> isDeckBuildingMode のみ切り替え
+    const handleToggleDeckBuildingMode = useCallback(() => {
+        setIsDeckBuildingMode(prev => !prev);
+    }, []);
 
-    // --- メインレイアウト ---
+    const handleCardSelectionFromPool = useCallback((cardId: string) => {
+        // 💡 isDeckBuildingMode が true の時にのみカード追加を許可
+        if (isDeckBuildingMode) {
+            handleCardAdd(cardId, selectedDeckArea);
+        }
+    }, [handleCardAdd, selectedDeckArea, isDeckBuildingMode]);
+
+    // 💡 追加: DeckCardList からカードがクリックされた時のハンドラ (閲覧モード専用)
+    const handleOpenCardViewModal = useCallback((card: Card) => {
+        // TODO: ここにカード閲覧モーダルを開くロジックを実装
+        console.log("Card View Modalを開きます:", card.name);
+    }, []);
+
+
     return (
-        <Box sx={{ p: 3, flexGrow: 1 }}>
-            {/* ... (ヘッダー、ボタン、アラート部分) */}
-            <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 2 }}>
-                {/* 💡 修正: deck.isInStore の表示ロジックを削除 */}
-                <Typography variant="h5">{deck.name}</Typography>
-                <Box>
-                    {/* 💡 削除: 復元ボタンのロジック (isInStore === false の条件が不要になったため削除) */}
-                    
-                    {/* 保存ボタン */}
-                    <Button
-                        variant="contained"
-                        startIcon={<SaveIcon />}
-                        onClick={onSave}
-                        sx={{ mr: 1 }}
-                        // 💡 修正: disabled条件から isInStore 関連を削除し、純粋な新規作成判定のみ残す
-                        disabled={!deck.deckId} 
-                    >
-                        保存
-                    </Button>
-                    
-                    {/* 論理削除ボタン (ゴミ箱への移動) */}
-                    {/* 💡 修正: 既存のデッキであれば削除可能とするために条件を簡素化 */}
-                    {deck.deckId && (
-                        <Button
-                            variant="outlined"
-                            color="error"
-                            startIcon={<DeleteIcon />}
-                            onClick={onDelete}
-                        >
-                            ゴミ箱へ移動
-                        </Button>
-                    )}
-                    
-                    {/* 💡 削除: 物理削除ボタンのロジック (isInStore === false の条件が不要になったため削除) */}
+        <Box sx={{ flexGrow: 1, height: '100vh', display: 'flex', flexDirection: 'column' }}>
+
+            {/* 1. 固定ヘッダ部 (ツールバー + モード別UI) */}
+            <Paper
+                elevation={3}
+                sx={{
+                    position: 'sticky',
+                    top: 0,
+                    zIndex: 1000,
+                    p: 1,
+                    backgroundColor: 'background.paper',
+                    flexShrink: 0,
+                }}
+            >
+                {/* 1.1. ツールバー（中略） */}
+                <DeckEditorToolbar
+                    deck={deck}
+                    isNewDeck={isNewDeck}
+                    isDirty={isDirty}
+                    onSave={onSave}
+                    onDelete={onDelete}
+                    saveMessage={saveMessage}
+                    selectedDeckArea={selectedDeckArea}
+                    onAreaChange={handleAreaChange}
+                    isEditMode={isEditMode}
+                    onToggleEditMode={handleToggleEditMode}
+                />
+
+                {/* 1.2. モード別のUI配置切り替え */}
+                {isDeckBuildingMode ? (
+                    // 💡 構築モード時の Grid 構造: コンパクトリスト (12) の下にコントロール (12) を縦に並べる
+                    <Grid container spacing={2}>
+                        <Grid size={{xs: 12}}> {/* Grid size={{xs: 12}} は Grid item xs={12} に修正 */}
+                            {/* 💡 修正: DeckCompactList に ownedCards と onCardAdd を追加 */}
+                            <DeckCompactList
+                                deck={deck}
+                                allCards={allCards}
+                                ownedCards={ownedCards} // ★ 修正: ownedCards を追加
+                                selectedDeckArea={selectedDeckArea}
+                                onCardRemove={handleCardRemove}
+                                isEditMode={true}
+                                onToggleDeckBuildingMode={handleToggleDeckBuildingMode}
+                                // ★ 修正: onCardAdd を追加。DeckCompactListは DeckArea も含めてハンドラを要求する
+                                onCardAdd={(cardId, deckArea) => handleCardAdd(cardId, deckArea)}
+                            />
+                        </Grid>
+                        {/* CardPoolControls */}
+                        <Grid size={{xs: 12}}> {/* Grid size={{xs: 12}} は Grid item xs={12} に修正 */}
+                            <CardPoolControls
+                                totalCount={totalCount}
+                                viewMode={viewMode}
+                                setViewMode={setViewMode}
+                                sortField={sortField}
+                                sortOrder={sortOrder}
+                                setSortField={setSortField}
+                                toggleSortOrder={toggleSortOrder}
+                                searchTerm={searchTerm}
+                                setSearchTerm={setSearchTerm}
+                                filters={filters}
+                                setFilters={setFilters}
+                                columns={columns}
+                                setColumns={setColumns}
+                                minColumns={minColumns}
+                                maxColumns={maxColumns}
+                                isDTCGEnabled={isDTCGEnabled}
+                                setCurrentPage={setCurrentPage}
+                            />
+                        </Grid>
+                    </Grid>
+                ) : (
+                    // 💡 閲覧モード時の Grid 構造
+                    <Grid container spacing={2}>
+                        <Grid size={{xs: 12, md: 4}}> {/* Grid size={{ xs: 12, md: 4 }} は Grid item xs={12} md={4} に修正 */}
+                            <DeckInform
+                                deck={deck}
+                                updateDeckInfo={updateDeckInfo}
+                                isEditMode={isEditMode}
+                            />
+                        </Grid>
+                        <Grid size={{xs: 12, md: 8}}> {/* Grid size={{xs: 12, md: 8}} は Grid item xs={12} md={8} に修正 */}
+                            <DeckCardList
+                                deck={deck}
+                                allCards={allCards}
+                                ownedCards={ownedCards}
+                                onOpenViewModal={handleOpenCardViewModal}
+                                deckArea={selectedDeckArea}
+                                onToggleDeckBuildingMode={handleToggleDeckBuildingMode}
+                                /* 💡 修正: DeckCardList に isEditMode とカード増減ハンドラを渡す */
+                                isEditMode={isEditMode}
+                                isDirty={isDirty} 
+                                // DeckCardList の onCardAdd/onCardRemove は cardId のみを受け取る (DeckAreaは不要)
+                                onCardAdd={(cardId) => handleCardAdd(cardId, selectedDeckArea)}
+                                onCardRemove={(cardId) => handleCardRemove(cardId, selectedDeckArea)}
+                            />
+                        </Grid>
+                    </Grid>
+                )}
+            </Paper>
+
+            <Divider />
+
+            {/* 2. メインコンテンツ部 (カードプール) */}
+            {/* 💡 isDeckBuildingMode が ON のときのみ、CardPoolDisplay を表示 */}
+            {isDeckBuildingMode ? (
+                <Box sx={{ flexGrow: 1, overflowY: 'auto', p: 0 }}>
+                    <CardPoolDisplay
+                        // カードプールのデータとページネーション
+                        totalCount={totalCount}
+                        totalPages={totalPages}
+                        currentPage={currentPage}
+                        cardsOnPage={cardsOnPage}
+                        setCurrentPage={setCurrentPage}
+                        // グリッド設定
+                        columns={columns}
+                        sxOverride={sxOverride}
+                        aspectRatio={aspectRatio}
+                        gap={gap}
+                        // クリックハンドラ
+                        onOpenCardViewModal={handleCardSelectionFromPool}
+                    />
                 </Box>
-            </Box>
-
-            {saveMessage && (
-                <Alert severity={saveMessage.includes('失敗') ? 'error' : 'success'} sx={{ mb: 2 }}>
-                    {saveMessage}
-                </Alert>
+            ) : (
+                // 💡 閲覧モード時はデッキカードリストの内容に依存
+                <Box sx={{ flexGrow: 1, p: 2 }}>
+                    {/* デッキ構築モードではない場合、コンテンツはヘッダー内の DeckCardList によって占められている */}
+                </Box>
             )}
-            
-            {/* デッキ情報編集フィールド */}
-            <TextField
-                fullWidth
-                label="デッキ No. (ソート順)"
-                type="number"
-                value={deck.number ?? ''} 
-                onChange={(e) => updateDeckInfo({ number: e.target.value === '' ? null : Number(e.target.value) })}
-                helperText="デッキの表示順を指定します。空欄の場合、自動採番されます。"
-                inputProps={{ min: 0 }}
-                sx={{ mb: 2 }}
-            />
-            <TextField
-                fullWidth
-                label="デッキ名"
-                value={deck.name}
-                onChange={(e) => updateDeckInfo({ name: e.target.value })}
-                sx={{ mb: 2 }}
-            />
-            <TextField
-                fullWidth
-                label="説明"
-                value={deck.description}
-                onChange={(e) => updateDeckInfo({ description: e.target.value })}
-                multiline
-                rows={2}
-                sx={{ mb: 3 }}
-            />
-
-            {/* MaterialUI Grid の記法を維持 */}
-            <Grid container spacing={3}>
-                {/* 1. カードプールリスト (左側) */}
-                <Grid size={{md:4,xs:12}}>
-                    <Paper elevation={3} sx={{ p: 2 }}>
-                        <TextField
-                            fullWidth
-                            label="カードを検索"
-                            value={searchTerm}
-                            onChange={(e) => setSearchTerm(e.target.value)}
-                            InputProps={{
-                                startAdornment: (
-                                    <InputAdornment position="start">
-                                        <SearchIcon />
-                                    </InputAdornment>
-                                ),
-                            }}
-                            sx={{ mb: 1 }}
-                        />
-                        <List dense sx={{ maxHeight: 600, overflow: 'auto' }}>
-                            {filteredCardPool.map((card) => {
-                                const isOwned = (ownedCards.get(card.cardId) || 0) > 0; 
-                                return (
-                                    <ListItem
-                                        key={card.cardId}
-                                        secondaryAction={
-                                            <IconButton edge="end" aria-label="add" /*onClick={() => addCard(card.cardId, 'mainDeck')}*/>
-                                                <AddIcon />
-                                            </IconButton>
-                                        }
-                                    >
-                                        <Avatar 
-                                            sx={{ 
-                                                width: 30, height: 42, mr: 1, 
-                                                filter: isOwned ? 'none' : 'grayscale(100%)' 
-                                            }} 
-                                        />
-                                        <ListItemText
-                                            primary={card.name}
-                                            secondary={card.rarity + (isOwned ? '' : ' (未所持)')}
-                                        />
-                                    </ListItem>
-                                );
-                            })}
-                        </List>
-                        {filteredCardPool.length === 0 && <Alert severity="warning" sx={{ mt: 1 }}>カードが見つかりません。</Alert>}
-                    </Paper>
-                </Grid>
-
-                {/* 2. デッキカードリスト (右側) */}
-                <Grid size={{md:8,xs:12}}>
-                    <Paper elevation={3} sx={{ p: 2 }}>
-                        {renderDeckList(mapToDeckCardList(deck.mainDeck), 'メインデッキ')}
-                        <Divider sx={{ my: 2 }} />
-                        {renderDeckList(mapToDeckCardList(deck.sideDeck), 'サイドデッキ')}
-                        <Divider sx={{ my: 2 }} />
-                        {renderDeckList(mapToDeckCardList(deck.extraDeck), 'エクストラデッキ')}
-                    </Paper>
-                </Grid>
-            </Grid>
         </Box>
     );
 };

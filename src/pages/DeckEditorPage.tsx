@@ -1,22 +1,28 @@
 /**
  * src/pages/DeckEditorPage.tsx
  *
- * デッキの新規作成または編集を行うためのメインページコンポーネントです。
- * URLパラメータからIDを取得し、全てのロジックをuseDeckEditorカスタムフックに委譲します。
+ * * デッキの新規作成または編集を行うためのメインページコンポーネント。
+ * このページは、URLパラメータからデッキIDを取得し、全てのロジックを専用のカスタムフック（useDeckEditor）に委譲します。
+ * 責務は、IDの取得、ロード状態/エラー状態の表示、および機能コンポーネント（DeckEditor）へのデータとロジックの受け渡しに限定されます。
+ *
+ * * 責務:
+ * 1. URLパラメータ（deckId）を取得し、キーとして子コンポーネントを再マウントする。
+ * 2. カスタムフック（useDeckEditor）からロジックとデータを取得する。
+ * 3. ローディング中またはエラー（データNotFound）の状態を処理し、UIに表示する。
+ * 4. 実際の編集機能を提供するコンポーネント（DeckEditor）をレンダリングし、必要なPropsを渡す。
  */
 
 import React from 'react';
-import { useParams} from '@tanstack/react-router'; 
-import { Box, Alert } from '@mui/material'; 
-import DeckEditor from '../features/decks/DeckEditor'; 
-import { useDeckEditor } from '../features/decks/hooks/useDeckEditor'; 
-// useDeckEditor, DeckEditor, Card, Deck などの型定義インポートは省略
+import { useParams } from '@tanstack/react-router';
+import { Box, Alert } from '@mui/material';
+import DeckEditor from '../features/decks/DeckEditor';
+import { useDeckEditor } from '../features/decks/hooks/useDeckEditor';
 
 const DeckEditorPage: React.FC = () => {
 
-    // 1. URLパラメータからdeckIdを取得
+    // URLパラメータからdeckIdを取得
     const { deckId } = useParams({ strict: false }) as { deckId: string };
-    // 2. DeckEditorContent コンポーネントをレンダリング
+    // DeckEditorContent コンポーネントをレンダリング
     // key={deckId} を設定することで、URLパラメータが変わった際にフックを強制リセット
     return (
         <DeckEditorContent key={deckId} deckId={deckId} />
@@ -28,20 +34,22 @@ interface DeckEditorContentProps {
 }
 
 const DeckEditorContent: React.FC<DeckEditorContentProps> = ({ deckId }) => {
-    
- 
+
     // useDeckEditor hookから全てのロジックとデータを取得 (ビジネスロジックの分離)
     const {
         isLoading,
         currentDeck,
         saveMessage,
         updateDeckInfo,
-        // 💡 修正: useDeckEditor の新しい戻り値名に合わせる
-        onSave, // handlesaveCurrentDeck から onSave に変更
-        onDelete, // handleDeleteDeck から onDelete に変更
+        onSave,
+        onDelete,
         allCards,
         ownedCards,
-    } = useDeckEditor(deckId); 
+        // 修正: DeckEditorに必要だが元のコードで取得されていなかったPropsを仮定して追加
+        isDirty,
+        handleCardAdd,
+        handleCardRemove,
+    } = useDeckEditor(deckId);
 
     // ロード中表示
     if (isLoading) {
@@ -63,20 +71,26 @@ const DeckEditorContent: React.FC<DeckEditorContentProps> = ({ deckId }) => {
             </Box>
         );
     }
+    
+    // 修正: isNewDeckの判定ロジックを仮定
+    const isNewDeck = deckId === 'new'; 
 
     // Featureコンポーネントをレンダリングし、必要なPropsを渡す (UI/機能の分離)
     return (
         <Box sx={{ flexGrow: 1 }}>
             <DeckEditor
-                deck={currentDeck} 
-                // 💡 修正: 新しいプロパティ名で渡す
-                onSave={onSave} 
-                onDelete={onDelete} 
-                // 💡 追加: DeckEditorPropsに必要な復元/物理削除アクションを渡す             
-                updateDeckInfo={updateDeckInfo} 
-                saveMessage={saveMessage} 
-                allCards={allCards} 
-                ownedCards={ownedCards} 
+                deck={currentDeck}
+                onSave={onSave}
+                onDelete={onDelete}
+                updateDeckInfo={updateDeckInfo}
+                saveMessage={saveMessage}
+                allCards={allCards}
+                ownedCards={ownedCards}
+                // 修正: 不足していたPropsを追加
+                isNewDeck={isNewDeck}
+                isDirty={isDirty || false} // useDeckEditorからの取得を想定
+                handleCardAdd={handleCardAdd} // useDeckEditorからの取得を想定
+                handleCardRemove={handleCardRemove} // useDeckEditorからの取得を想定
             />
         </Box>
     );

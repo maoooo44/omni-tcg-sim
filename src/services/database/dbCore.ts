@@ -1,18 +1,20 @@
 /**
-* src/services/database/dbCore.ts
-*
-* IndexedDB (Dexie) の**コアなデータ永続化層**への低レベルな汎用アクセス、
-* 採番ユーティリティ、およびガベージコレクションロジックを提供します。
-*
-* このファイルは、dbUtils.tsから切り分けられました。
-*/
+ * src/services/database/dbCore.ts
+ *
+ * * IndexedDB (Dexie) のコアなデータ永続化層への低レベルな汎用アクセスを提供するモジュール。
+ * * 責務:
+ * 1. DB接続（db）へのアクセスを抽象化し、CRUD操作（一括操作を含む）の低レベルな共通ユーティリティを提供する。
+ * 2. ドメインモデルへの変換ロジック（converter）を受け取り、DBレコードとドメインモデル間のブリッジングを行う。
+ * 3. 採番ユーティリティ（getMaxNumberByCollection）を提供する。
+ * 4. アーカイブコレクション（history/trash）に特化したガベージコレクション（GC）ロジックを提供する。
+ */
 
 import { db } from './db';
 import type { Collection, Table } from 'dexie';
-import type { ArchiveItemType } from '../../models/archive'; 
+import type { ArchiveItemType } from '../../models/archive';
 
 // DBコレクション名の共通型
-export type DbCollectionName = 'cards' | 'packs' | 'cardPool' | 'decks' | 'userSettings' | 'presets' | 'history' | 'trash'; 
+export type DbCollectionName = 'cards' | 'packs' | 'cardPool' | 'decks' | 'userSettings' | 'presets' | 'history' | 'trash';
 
 
 // =========================================================================
@@ -35,7 +37,7 @@ export const fetchAllItemsFromCollection = async <T, D>(
 
         const dbRecords = await table.toArray();
         const items = dbRecords.map(converter);
-        
+
         return items;
     } catch (error) {
         console.error(`[dbCore] Error fetching all items from ${collectionName}:`, error);
@@ -48,8 +50,8 @@ export const fetchAllItemsFromCollection = async <T, D>(
  * 汎用的なコレクションから単一アイテムをID指定で取得し、適切なアプリケーションモデルに変換します。
  */
 export const fetchItemByIdFromCollection = async <T, D>(
-    itemId: string, 
-    collectionName: DbCollectionName, 
+    itemId: string,
+    collectionName: DbCollectionName,
     converter: (dbRecord: D) => T
 ): Promise<T | null> => {
     try {
@@ -60,11 +62,11 @@ export const fetchItemByIdFromCollection = async <T, D>(
         }
 
         const dbRecord = await table.get(itemId);
-        
+
         if (!dbRecord) return null;
 
         return converter(dbRecord);
-        
+
     } catch (error) {
         console.error(`[dbCore] Error fetching item ${itemId} from ${collectionName}:`, error);
         throw error;
@@ -83,23 +85,23 @@ export const bulkFetchItemsByIdsFromCollection = async <T, D>(
     converter: (dbRecord: D) => T
 ): Promise<(T | null)[]> => {
     if (itemIds.length === 0) return [];
-    
+
     try {
         const table = (db as any)[collectionName] as Table<D, any> | undefined;
         if (!table) {
             console.error(`[dbCore] Collection not found: ${collectionName}`);
             // null埋めされた配列を返す
-            return itemIds.map(() => null); 
+            return itemIds.map(() => null);
         }
 
         // DexieのbulkGet操作を実行
         const dbRecords = await table.bulkGet(itemIds);
-        
+
         // 取得されたレコードを変換
         const items = dbRecords.map(dbRecord => dbRecord ? converter(dbRecord) : null);
 
         return items;
-        
+
     } catch (error) {
         console.error(`[dbCore] Error fetching items with IDs [${itemIds.slice(0, 3).join(', ')}, ...] from ${collectionName}:`, error);
         throw error;
@@ -126,7 +128,7 @@ export const putItemToCollection = async <T extends { [key: string]: any }>(
         if (!collection) throw new Error(`Collection ${collectionName} not found.`);
 
         // Dexieのput操作を実行
-        await collection.put(item); 
+        await collection.put(item);
         return item;
     } catch (error) {
         console.error(`[dbCore] Failed to put item to ${collectionName}:`, error);
@@ -210,11 +212,12 @@ export const bulkDeleteItemsFromCollection = async (
  * @param collectionName 対象のDBコレクション名
  * @param field 更新するフィールド名 ('updatedAt'など)
  * @param value 設定する新しい値
+ * @returns 更新が成功したかどうか
  */
 export const updateItemFieldToCollection = async (
-    id: string, 
-    collectionName: DbCollectionName, 
-    field: string, 
+    id: string,
+    collectionName: DbCollectionName,
+    field: string,
     value: any
 ): Promise<boolean> => {
     try {
@@ -226,10 +229,10 @@ export const updateItemFieldToCollection = async (
 
         // DexieのTable.update(key, changes)を使用
         const numUpdated = await table.update(id, { [field]: value });
-        
+
         // 更新されたレコード数が1であれば成功
         return numUpdated === 1;
-        
+
     } catch (error) {
         console.error(`[dbCore] Error updating field ${field} for item ${id} in ${collectionName}:`, error);
         throw error;
@@ -245,13 +248,13 @@ export const updateItemFieldToCollection = async (
  * @returns 更新されたレコードの総数
  */
 export const bulkUpdateItemFieldToCollection = async (
-    ids: string[], 
-    collectionName: DbCollectionName, 
-    field: string, 
+    ids: string[],
+    collectionName: DbCollectionName,
+    field: string,
     value: any
 ): Promise<number> => {
     if (ids.length === 0) return 0;
-    
+
     try {
         const table = (db as any)[collectionName] as Table<any, any> | undefined;
         if (!table) {
@@ -259,15 +262,14 @@ export const bulkUpdateItemFieldToCollection = async (
             return 0;
         }
 
-        // DexieのCollection.modify(changes)またはTable.where().anyOf().modify(changes)を使用
-        // 主キー配列での一括指定には、where().anyOf()が効率的
+        // 主キー配列での一括指定には、where(':id').anyOf()が効率的
         const numUpdated = await table
             .where(':id') // 主キーインデックスを使用
             .anyOf(ids)
             .modify({ [field]: value });
-            
+
         return numUpdated;
-        
+
     } catch (error) {
         console.error(`[dbCore] Error bulk updating field ${field} in ${collectionName}:`, error);
         throw error;
@@ -300,7 +302,7 @@ export const getMaxNumberByCollection = async (
         console.warn(`[dbCore] getMaxNumber called on non-numbering collection: ${collectionName}. Returning 0.`);
         return 0;
     }
-    
+
     const table = db.table(collectionName);
     if (!table) {
         console.error(`[dbCore] Collection not found: ${collectionName}`);
@@ -315,9 +317,9 @@ export const getMaxNumberByCollection = async (
         if (filterKeys.length > 0) {
             const key = filterKeys[0];
             const value = filterConditions[key];
-            
+
             // where句でインデックス検索を実行
-            collection = table.where(key).equals(value); 
+            collection = table.where(key).equals(value);
         }
 
         // フィルタリング後のコレクションに対して、numberFieldNameで逆順にソートし、最初の1件を取得
@@ -328,8 +330,12 @@ export const getMaxNumberByCollection = async (
                 item[numberFieldName] !== null &&
                 typeof item[numberFieldName] === 'number'
             )
-            .reverse() // 降順ソート
-            .sortBy(numberFieldName) // numberFieldName でのソート (数値の最大値取得に最適化)
+            // Dexieで最大の数値を取得する最も効率的な方法は、インデックスが張られているフィールドを
+            // reverse().limit(1).toArray()で取得することだが、numberFieldNameにインデックスが
+            // 張られている保証がないため、ここではsortBy(numberFieldName)と逆順の組み合わせで
+            // 'number'フィールドを対象として降順にソート（数値の最大値取得に最適化）
+            .reverse()
+            .sortBy(numberFieldName)
             .then(records => records[0]); // 配列の最初の要素を取得
 
         if (item && item[numberFieldName] !== undefined && item[numberFieldName] !== null) {
@@ -338,9 +344,9 @@ export const getMaxNumberByCollection = async (
                 return maxValue;
             }
         }
-        
+
         return 0;
-        
+
     } catch (error) {
         console.error(`[dbCore] Error fetching max number from ${collectionName}:`, error);
         // エラー発生時も 0 を返す
@@ -357,7 +363,7 @@ export const getMaxNumberByCollection = async (
  * 指定されたコレクションに対して、サイズ制限と時間経過によるガベージコレクションを実行します。
  * この関数は、isFavorite=falseのレコードのみを削除対象とし、時間経過による削除を優先し、
  * その後サイズ制限を超過した場合に古いレコードを削除します。
- * * @param collectionName 対象のDBコレクション名 ('trash' or 'history'などの履歴系コレクション)
+ * @param collectionName 対象のDBコレクション名 ('trash' or 'history'などの履歴系コレクション)
  * @param dateKey 日付フィールドのキー ('archivedAt'を想定)
  * @param timeLimitDays 期間による削除のしきい値（日数）。この値を超えた isFavorite=false のレコードを削除。
  * @param maxSizeCount サイズによる削除のしきい値（レコード数）。この値を超過した場合に isFavorite=false の古い順に削除。
@@ -369,9 +375,9 @@ export const runGarbageCollectionForCollection = async (
     dateKey: string, // 'archivedAt'を想定
     timeLimitDays: number,
     maxSizeCount: number,
-    itemType: ArchiveItemType 
+    itemType: ArchiveItemType
 ): Promise<number> => {
-    
+
     const now = new Date();
     // ここでは DB コレクションの型を仮に Table<any, any> とします
     const collection = (db as any)[collectionName] as Table<any, any> | undefined;
@@ -379,18 +385,18 @@ export const runGarbageCollectionForCollection = async (
         console.warn(`[dbCore:GC] Collection ${collectionName} not found.`);
         return 0;
     }
-    
+
     let deletedCount = 0;
-    
+
     // 1. 時間による削除 (定数値を越えた場合)
     if (timeLimitDays > 0) {
         try {
             const timeLimit = new Date(now.getTime() - timeLimitDays * 24 * 60 * 60 * 1000);
-            
-            // itemTypeで絞り込み、isFavoriteがfalseかつdateKeyが期限より古いレコードの主キー(archiveId)を取得
+
+            // isFavorite=false のレコードのみを削除対象とし、時間による条件を満たすものをフィルタ
             const timeLimitIso = timeLimit.toISOString();
             const oldRecordsKeys: any[] = await collection
-                .where('itemType').equals(itemType) 
+                .where('itemType').equals(itemType)
                 // isFavorite=false で絞り込み、かつ dateKey が期限より古いレコードに限定
                 .and(record => record.isFavorite === false && record[dateKey] < timeLimitIso)
                 .primaryKeys(); // 主キー (archiveId) の配列を取得
@@ -415,14 +421,12 @@ export const runGarbageCollectionForCollection = async (
                 .equals(itemType)
                 .and(record => record.isFavorite === false) // isFavorite=false のレコードのみカウント
                 .count();
-                
+
             const itemsToDelete = currentItemCount - maxSizeCount;
-            
+
             if (itemsToDelete > 0) {
                 // 2-2. 古い順にソート (dateKey asc) して超過分を取得し、削除
-                // reverse() + sortBy(key) は最新順ソートになるため、古い順に取得するには逆のロジックが必要。
-                // Dexieの仕様上、sortBy()は昇順。降順はreverse()が必要だが、ここでsortBy('dateKey')単独では昇順。
-                
+
                 // 正しいロジック： dateKeyで昇順ソートして、itemsToDelete分を取得
                 const oldestRecordsKeys: any[] = await collection
                     .where('itemType')
@@ -441,6 +445,6 @@ export const runGarbageCollectionForCollection = async (
             console.error(`[dbCore:GC:${collectionName} (${itemType})] Error during size-based GC:`, error);
         }
     }
-    
+
     return deletedCount;
 };

@@ -1,21 +1,21 @@
 /**
  * src/services/data-io/cardCsvIO.ts
  *
- * CardデータのCSVインポート/エクスポートを行うI/Oサービス層。
- * CSVパース/フォーマットのロジックと、Cardオブジェクトへのマッピングを担う。
- * 
- * 【仕様】
- * - カスタムフィールドは物理フィールド名（bool_1, num_1, str_1等）で指定
- * - ユーザーフレンドリー名のマッピングは行わない
- * - コメント行（# で始まる行）は無視される
+ * * CardデータのCSVインポート/エクスポートを行うI/Oサービス層モジュール。
+ * * 責務:
+ * 1. CSVテキストをパースし、Cardオブジェクトの配列に変換する（インポート）。
+ * 2. Cardオブジェクトの配列をCSVテキストにフォーマットする（エクスポート）。
+ * 3. CSVヘッダーの検証（予約済みシステムフィールドの禁止、固定/カスタムフィールドの識別）。
+ * 4. CSV値からCardオブジェクトの型への変換とマッピング（パイプ区切り値の展開、数値/ブーリアンの型変換）。
+ * 5. Card IDの生成、packIdの割り当て、およびデフォルト値の設定（createDefaultCardの利用）。
+ * 6. ユーザーフレンドリー名ではなく、Cardオブジェクトの物理フィールド名（name, rarity, bool_1, num_1など）で処理を統一する。
  */
 
 import type { Card } from '../../models/card';
 import { formatCardsToCsv } from '../../utils/csvFormatter';
-import { parseCSV } from '../..//utils/csvParser';
-import { generateId, createDefaultCard } from '../../utils/dataUtils'; 
-// 💡 修正: CustomFieldDefinitionは不要になったが、インターフェース互換性のため一旦残す
-import type { CustomFieldDefinition } from './dataIOUtils';
+import { parseCSV } from '../../utils/csvParser';
+import { generateId, createDefaultCard } from '../../utils/dataUtils';
+import type { CustomFieldDefinition } from './dataIOUtils'; // 互換性のため残す
 
 type CsvCustomFieldType = 'bool' | 'num' | 'str';
 
@@ -25,18 +25,18 @@ type CsvCustomFieldType = 'bool' | 'num' | 'str';
 
 // ユーザーが意図的に値を指定することを許容する固定フィールド (小文字で定義)
 const FIXED_FIELDS_LOWER: string[] = [
-    'name', 
-    'rarity', 
-    'imageurl', 
-    'number', 
-    'isfavorite', 
+    'name',
+    'rarity',
+    'imageurl',
+    'number',
+    'isfavorite',
     'imagecolor',
 ];
 
 // システム予約語 (CSVで値を設定すべきでないフィールド)
 const SYSTEM_RESERVED_FIELDS: (keyof Card)[] = [
-    'cardId', 
-    'packId', 
+    'cardId',
+    'packId',
     'createdAt',
     'updatedAt',
 ];
@@ -50,7 +50,7 @@ const CHECK_RESERVED_FIELDS: string[] = SYSTEM_RESERVED_FIELDS
     .filter(f => !FIXED_FIELDS_LOWER.includes(f.toLowerCase()));
 
 // =========================================================================
-// ヘルパー関数 (変更なし)
+// ヘルパー関数
 // =========================================================================
 
 const splitPipeSeparatedValue = (value: string | null | undefined): string[] => {
@@ -68,26 +68,26 @@ const splitPipeSeparatedValue = (value: string | null | undefined): string[] => 
  * CSVテキストをパースし、Cardオブジェクトの配列に変換します。
  * @param packId - 割り当てるPack ID
  * @param csvText - CSV形式の文字列
- * @param customFieldDefs - （互換性のため残すが使用しない）
+ * @param _customFieldDefs - （互換性のため残すが使用しない）
  * @returns Cardオブジェクトの配列
  */
 export const importCardsFromCsv = async (
-    packId: string, 
+    packId: string,
     csvText: string,
-    _customFieldDefs: CustomFieldDefinition[] // 使用しないが互換性のため残す
+    _customFieldDefs: CustomFieldDefinition[]
 ): Promise<Card[]> => {
-    
+
     // 1. CSVパース（コメント行は自動的に除外される）
     const { headers, data } = parseCSV(csvText);
 
     if (headers.length === 0 || data.length === 0) {
         return [];
     }
-    
+
     // 2. 予約語チェック（cardId, packId, createdAt, updatedAtのみ）
     for (const header of headers) {
         const lowerCaseHeader = header.toLowerCase().trim();
-        
+
         if (CHECK_RESERVED_FIELDS.includes(lowerCaseHeader)) {
             throw new Error(`予約済みのシステムフィールド名 "${header}" はCSVで指定できません。`);
         }
@@ -96,18 +96,18 @@ export const importCardsFromCsv = async (
     // 3. ヘッダーを分類し、インデックスを保持
     const fixedHeaderIndices: { [key: string]: number } = {};
     const customHeaderIndices: { header: keyof Card, index: number, type: CsvCustomFieldType }[] = [];
-    
+
     headers.forEach((header, index) => {
         const lowerCaseHeader = header.toLowerCase().trim();
-        
+
         // --- (A) 標準固定フィールドの処理 ---
         if (FIXED_FIELDS_LOWER.includes(lowerCaseHeader)) {
-            const fieldName = 
+            const fieldName =
                 lowerCaseHeader === 'imageurl' ? 'imageUrl' :
-                lowerCaseHeader === 'isfavorite' ? 'isFavorite' :
-                lowerCaseHeader === 'imagecolor' ? 'imageColor' :
-                lowerCaseHeader;
-                
+                    lowerCaseHeader === 'isfavorite' ? 'isFavorite' :
+                        lowerCaseHeader === 'imagecolor' ? 'imageColor' :
+                            lowerCaseHeader;
+
             fixedHeaderIndices[fieldName] = index;
             return;
         }
@@ -117,56 +117,57 @@ export const importCardsFromCsv = async (
         if (customMatch) {
             const type = customMatch[1] as CsvCustomFieldType;
             const fieldKey = lowerCaseHeader as keyof Card; // 例: "bool_1"
-            
-            customHeaderIndices.push({ 
-                header: fieldKey, 
-                index: index, 
-                type: type 
+
+            customHeaderIndices.push({
+                header: fieldKey,
+                index: index,
+                type: type
             });
             return;
         }
-        
+
         // (A), (B) のいずれにもマッチしないヘッダーは無視される
         console.warn(`[cardCsvIO] Unknown CSV header "${header}" will be ignored.`);
     });
 
-    // 4. データ行をCardオブジェクトに変換 (中略、ロジック変更なし)
+    // 4. データ行をCardオブジェクトに変換
     const cardsToImport: Card[] = [];
     let cardNameCounter = 1;
 
     for (const row of data) {
         if (row.length !== headers.length) {
             console.warn(`[cardCsvIO] Skipping row due to column count mismatch: ${row.join(',')}`);
-            continue; 
+            continue;
         }
-        
+
         // --- CSV値の抽出と固定フィールドの上書き ---
         const nameIndex = fixedHeaderIndices['name'];
         const rarityIndex = fixedHeaderIndices['rarity'];
         const imageUrlIndex = fixedHeaderIndices['imageUrl'];
-        const numberIndex = fixedHeaderIndices['number']; 
+        const numberIndex = fixedHeaderIndices['number'];
         const isFavoriteIndex = fixedHeaderIndices['isFavorite'];
         const imageColorIndex = fixedHeaderIndices['imageColor'];
 
         const rawCardName = nameIndex !== undefined ? row[nameIndex] : '';
         const rawRarity = rarityIndex !== undefined ? row[rarityIndex] : '';
-        
+
         const cardNames = splitPipeSeparatedValue(rawCardName);
         const cardRarities = splitPipeSeparatedValue(rawRarity);
-        
+
         if (cardNames.length === 0) {
+            // パイプ区切り値の分割後、名前が空の場合もカウントアップして仮名を設定
             cardNames.push(`新しいカード_${cardNameCounter++}`);
         }
-        
+
         const cardImageUrl = (imageUrlIndex !== undefined && row[imageUrlIndex]) ? row[imageUrlIndex] : '';
         const cardImageColor = (imageColorIndex !== undefined && row[imageColorIndex]) ? row[imageColorIndex] : undefined;
-        
+
         let baseIsFavorite = false;
         if (isFavoriteIndex !== undefined && row[isFavoriteIndex]) {
             const rawIsFavorite = row[isFavoriteIndex].toLowerCase().trim();
             baseIsFavorite = ['true', '1', 't', 'yes'].includes(rawIsFavorite);
         }
-        
+
         let baseCardNumber: number | undefined = undefined;
         if (numberIndex !== undefined && row[numberIndex]) {
             const rawNumber = row[numberIndex];
@@ -176,35 +177,35 @@ export const importCardsFromCsv = async (
             }
         }
 
-        const cardCountInRow = Math.max(cardNames.length, cardRarities.length, 1); 
+        const cardCountInRow = Math.max(cardNames.length, cardRarities.length, 1);
 
         for (let i = 0; i < cardCountInRow; i++) {
-            
+
             const finalCardName = cardNames[i] || cardNames[0] || `新しいカード_${cardNameCounter++}`;
             const rawFinalRarity = cardRarities[i] || cardRarities[0] || '';
-            
+
             let newCard: Card = createDefaultCard(packId);
 
-            newCard.cardId = generateId(); 
+            newCard.cardId = generateId();
             newCard.name = finalCardName;
-            newCard.rarity = rawFinalRarity; 
+            newCard.rarity = rawFinalRarity;
             newCard.imageUrl = cardImageUrl;
-            newCard.imageColor = cardImageColor; 
-            newCard.isFavorite = baseIsFavorite; 
-            newCard.number = baseCardNumber; 
-            newCard.updatedAt = new Date().toISOString(); 
-            newCard.createdAt = newCard.createdAt || newCard.updatedAt; 
+            newCard.imageColor = cardImageColor;
+            newCard.isFavorite = baseIsFavorite;
+            newCard.number = baseCardNumber;
+            newCard.updatedAt = new Date().toISOString();
+            newCard.createdAt = newCard.createdAt || newCard.updatedAt;
 
             // 5. カスタムプロパティをマッピング 
             customHeaderIndices.forEach(({ header, index, type }) => {
                 const value = row[index];
                 if (!value) return;
 
-                const fieldName = header; 
-                
+                const fieldName = header;
+
                 if (type === 'bool') {
                     const boolValue = ['true', '1', 't', 'yes'].includes(value.toLowerCase().trim());
-                    (newCard as any)[fieldName] = boolValue; 
+                    (newCard as any)[fieldName] = boolValue;
                 } else if (type === 'num') {
                     const parsedNumber = parseFloat(value);
                     if (!isNaN(parsedNumber)) {
@@ -218,14 +219,19 @@ export const importCardsFromCsv = async (
             cardsToImport.push(newCard);
         }
     }
-    
+
     return cardsToImport;
 };
 
 // =========================================================================
-// エクスポート処理 (変更なし)
+// エクスポート処理
 // =========================================================================
 
+/**
+ * Cardオブジェクトの配列をCSVテキストに変換します。
+ * @param cards - Cardオブジェクトの配列
+ * @returns CSV形式の文字列
+ */
 export const exportCardsToCsv = (cards: Card[]): string => {
     return formatCardsToCsv(cards);
 };

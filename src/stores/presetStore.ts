@@ -1,8 +1,15 @@
 /**
  * src/stores/presetStore.ts
  *
- * Zustandを使用してパックのカスタムプロパティのプリセットを管理するストア。
- * 責務は、プリセットリストの保持、DBサービスを介したIndexedDBへの永続化、およびメモリ状態の同期を行う。
+ * * Packのカスタムプロパティのプリセットを管理するZustandストア。
+ * 責務は、Packプリセットのリスト（packPresets）の保持、DBサービス（presetService）を
+ * 介したIndexedDBへの永続化、およびメモリ状態の同期を行うことです。
+ *
+ * * 責務:
+ * 1. Packプリセットの状態（packPresets: PackPreset[]）を保持する。
+ * 2. 永続化層（presetService）を介して、プリセットの初期ロード、新規作成・保存、および削除を実行する。
+ * 3. DBが空の場合に初期データを投入する処理（initializePresets）をトリガーする。
+ * 4. DB操作後のメモリ状態（packPresets）を同期する。
  */
 
 import { create } from 'zustand';
@@ -13,7 +20,6 @@ import { presetService } from '../services/user-data/presetService';
 
 export interface PresetStore {
     packPresets: PackPreset[];
-    // cardCustomPresets: CardCustomPreset[] は廃止
 
     // アクション
     /** DBからプリセットをロードし、ストアを初期化する */
@@ -23,9 +29,8 @@ export interface PresetStore {
         data: Omit<PackPreset, 'id' | 'createdAt' | 'updatedAt' | 'name'>,
         name: string
     ) => Promise<void>
-    // saveCardCustomPreset は廃止
     /** プリセットをDBとストアから削除する */
-    deletePreset: (id: string, type: 'pack') => Promise<void>; // typeから'card'を削除
+    deletePreset: (id: string, type: 'pack') => Promise<void>;
 }
 
 // 簡易的な初期データ (デモ用)
@@ -47,16 +52,12 @@ const INITIAL_PACK_PRESETS: PackPreset[] = [{
     ],
 }];
 
-// CardCustomPresetの初期データは廃止
-// const INITIAL_CARD_PRESETS: CardCustomPreset[] = [...];
-
 // 初期化時にDBに投入するためのプリセットリスト (PackPresetのみ)
 const INITIAL_PRESETS: Preset[] = [...INITIAL_PACK_PRESETS] as Preset[];
 
 
 export const usePresetStore = create<PresetStore>((set, _get) => ({
     packPresets: [],
-    // cardCustomPresets: [], // 廃止
 
     /**
      * IndexedDBからプリセットをロードし、ストアを初期化する
@@ -70,17 +71,14 @@ export const usePresetStore = create<PresetStore>((set, _get) => ({
             const loadedPresets = await presetService.loadAllPresets();
 
             // ロードしたデータを Pack のみにフィルタリングして状態にセット
-            // CardCustomPresetのフィルタリングは不要になった
             const packPresets = loadedPresets.filter((p): p is PackPreset => 'cardsPerPack' in p);
-            // const cardCustomPresets = loadedPresets.filter((p): p is CardCustomPreset => 'customFields' in p); // 廃止
 
-            set({ packPresets }); // cardCustomPresets を削除
+            set({ packPresets });
         } catch (error) {
             console.error('Failed to load presets from DB:', error);
             // ロード失敗時: フォールバックとしてハードコードされた初期データを使用
             set({
                 packPresets: INITIAL_PACK_PRESETS,
-                // cardCustomPresets のフォールバックも削除
             });
         }
     },
@@ -105,13 +103,9 @@ export const usePresetStore = create<PresetStore>((set, _get) => ({
         set(state => ({ packPresets: [...state.packPresets, newPreset] }));
     },
 
-    // saveCardCustomPreset は廃止
-    // saveCardCustomPreset: async (customFields, name) => { ... },
-
     /**
      * プリセットをDBとストアから削除する
      */
-    // type から 'card' を削除
     deletePreset: async (id, type) => {
 
         // 永続化ロジック (DBサービスを呼び出し)
@@ -121,9 +115,7 @@ export const usePresetStore = create<PresetStore>((set, _get) => ({
         if (type === 'pack') {
             set(state => ({ packPresets: state.packPresets.filter(p => p.id !== id) }));
         } else {
-            // CardCustomPreset 関連のロジックは削除
-            // set(state => ({ cardCustomPresets: state.cardCustomPresets.filter(c => c.id !== id) }));
-            console.warn(`Attempted to delete a preset of type: ${type}. Only 'pack' is supported.`);
+            console.warn(`Attempted to delete a preset of unsupported type: ${type}. Only 'pack' is supported.`);
         }
     },
 }));

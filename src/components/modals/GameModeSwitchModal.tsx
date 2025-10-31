@@ -4,17 +4,19 @@
  * useModeSwitcherフックで管理されるGameモード切り替えのための
  * 全てのダイアログ（モード選択、警告、二重確認）をレンダリングするコンポーネント。
  * 純粋にUI表示の責務のみを持ち、ロジックはフックから提供されるプロパティに依存する。
- * * 💡 修正: useModeSwitcher.ts から新しいデータ構造をインポートし、JSXを組み立てる。
+ *
+ * * 責務:
+ * 1. Mode切り替えに必要な3種類のダイアログ（選択、警告、二重確認）のJSX構造を定義し、フックからのProps（開閉状態、コンテンツ、ハンドラ）に基づいてレンダリングする。
+ * 2. モード選択ダイアログにおいて、利用可能なモードの表示（`MODE_OPTIONS`）と、現在のモードの強調表示、遷移禁止のUI表現を行う。
+ * 3. ダイアログコンテンツ（警告、二重確認）のメッセージ内のマークダウン類似の強調表示（`**text**`）をHTMLに変換して表示する。
  */
 import React from 'react';
 import {
     Dialog, DialogTitle, DialogContent, DialogActions,
-    Button, Box, Typography, Alert, 
+    Button, Box, Typography, Alert,
 } from '@mui/material';
-// 💡 useModeSwitcher.tsから型定義とフックの戻り値の型をインポート
-import type { CurrentGameMode } from '../../models/userData'; 
-// ModeSwitcher (フックの戻り値の型) と DialogContentData をインポート
-import type { DialogContentData, ModeSwitcher } from '../../hooks/useModeSwitcher'; 
+import type { CurrentGameMode } from '../../models/userData';
+import type { DialogContentData, ModeSwitcher } from '../../hooks/useModeSwitcher';
 
 
 // モードオプションの定義はフック側ではなく、UIコンポーネント側に残す
@@ -27,7 +29,7 @@ const MODE_OPTIONS: { label: string; value: CurrentGameMode; helperText: string 
 // ★ 修正箇所: Propsの型を ModeSwitcher をベースに定義する
 interface GameModeSwitcherPropsFromParent extends ModeSwitcher {
     // ModeSwitcherの戻り値には含まれないが、親コンポーネントから渡されるプロパティを追加
-    coins: number; 
+    coins: number;
 }
 
 
@@ -35,7 +37,7 @@ interface GameModeSwitcherPropsFromParent extends ModeSwitcher {
  * 汎用的なダイアログコンテンツをレンダリングするヘルパーコンポーネント
  */
 const DialogContentRenderer: React.FC<{ content: DialogContentData }> = ({ content }) => {
-    
+
     const { message } = content;
     // **テキスト**を<strong>タグに置換する簡易ヘルパー
     const replaceBold = (text: string) => text.replace(/\*\*(.*?)\*\*/g, '<strong>$1</strong>');
@@ -66,7 +68,7 @@ const DialogContentRenderer: React.FC<{ content: DialogContentData }> = ({ conte
 
 
 const GameModeSwitchModal: React.FC<GameModeSwitcherPropsFromParent> = (props) => {
-    
+
     // ロジックと状態は全てPropsから分割代入
     const {
         currentMode,
@@ -82,7 +84,7 @@ const GameModeSwitchModal: React.FC<GameModeSwitcherPropsFromParent> = (props) =
         handleFirstConfirmation,
         handleCancel,
         handleModeChangeConfirmed,
-    } = props; 
+    } = props;
 
     // --- モード選択ダイアログ ---
     const ModeSelectDialog = (
@@ -128,7 +130,7 @@ const GameModeSwitchModal: React.FC<GameModeSwitcherPropsFromParent> = (props) =
             onClose={handleCancel}
         >
             <DialogTitle>{warningContent.title}</DialogTitle>
-            <DialogContentRenderer content={warningContent} /> {/* 💡 修正: レンダラーを使用 */}
+            <DialogContentRenderer content={warningContent} />
             <DialogActions>
                 <Button onClick={handleCancel}>
                     キャンセル
@@ -137,7 +139,7 @@ const GameModeSwitchModal: React.FC<GameModeSwitcherPropsFromParent> = (props) =
                     onClick={handleFirstConfirmation}
                     variant="contained"
                     // targetModeに基づいて色を決定
-                    color={targetMode === 'god' ? 'error' : (targetMode === 'free' ? 'warning' : 'primary')} 
+                    color={targetMode === 'god' ? 'error' : (targetMode === 'free' ? 'warning' : 'primary')}
                     disabled={warningContent.disabled}
                 >
                     {warningContent.confirmText}
@@ -153,7 +155,7 @@ const GameModeSwitchModal: React.FC<GameModeSwitcherPropsFromParent> = (props) =
             onClose={handleCancel}
         >
             <DialogTitle color="error.main">{doubleConfirmContent.title}</DialogTitle>
-            <DialogContentRenderer content={doubleConfirmContent} /> {/* 💡 修正: レンダラーを使用 */}
+            <DialogContentRenderer content={doubleConfirmContent} />
             <DialogActions>
                 <Button onClick={handleCancel}>
                     キャンセル

@@ -1,13 +1,21 @@
 /**
  * src/hooks/useCardData.ts
+ *
+ * * アプリケーションのグローバルなカードデータアクセスを一元管理するためのカスタムフック。
+ * データの初期ロード状態を追跡し、IDをキーとした非同期的なカード情報および関連パック情報の取得機能を提供します。
+ *
+ * * 責務:
+ * 1. 初期ロード時に `cardService` を介して全カードデータをロードし、状態 (`isLoaded`) を管理する。
+ * 2. IDから単一または複数のカード情報を非同期で取得するラッパー関数 (`fetchCardInfo`) を提供する。
+ * 3. カードIDから、そのカードが属するパック全体の情報を非同期で取得する複合関数 (`fetchPackInfoForCard`) を提供する。
+ * 4. UI表示用のカード名取得ヘルパー関数 (`fetchCardName`) を提供する。
  */
 
 import { useEffect, useState, useCallback } from 'react';
 import { cardService } from '../services/cards/cardService';
 import type { Card } from '../models/card';
 import { packService } from '../services/packs/packService';
-// ★ CardFieldSettings に加えて Pack もインポート
-import type { Pack } from '../models/pack'; 
+import type { Pack } from '../models/pack';
 
 /**
  * アプリケーション全体のカードデータを扱うためのフック
@@ -15,16 +23,17 @@ import type { Pack } from '../models/pack';
 export const useCardData = () => {
     // データがロードされたかどうかを追跡
     const [isLoaded, setIsLoaded] = useState(false);
-    
+
     useEffect(() => {
-        // ロードロジックは変更なし
-        cardService.fetchAllCards() 
-            .then(() => { 
+        // ロードロジック
+        cardService.fetchAllCards()
+            .then(() => {
                 setIsLoaded(true);
             })
-            .catch((error: any) => { 
+            .catch((error: any) => {
                 console.error('カードデータロード中に予期せぬエラーが発生しました:', error);
-                setIsLoaded(true); 
+                // エラーが発生した場合もUIを表示するためロード完了とする
+                setIsLoaded(true);
             });
     }, []);
 
@@ -39,13 +48,13 @@ export const useCardData = () => {
     }, []);
 
     /**
-     * ★ 修正: カードIDから、そのカードが属するパックの**情報全体**を非同期で取得する。
+     * カードIDから、そのカードが属するパックの**情報全体**を非同期で取得する。
      * @param cardId カードID
      */
     const fetchPackInfoForCard = useCallback(async (cardId: string): Promise<Pack | undefined> => {
         // 1. cardId からカード情報を取得
-        const card = await fetchCardInfo(cardId); 
-        
+        const card = await fetchCardInfo(cardId);
+
         if (!card) {
             console.warn(`Card data not found for ID: ${cardId}`);
             return undefined;
@@ -54,7 +63,7 @@ export const useCardData = () => {
         try {
             // 2. card.packId を使ってパック情報を非同期で取得
             const packs = await packService.fetchPacksByIds([card.packId]);
-            
+
             const pack = packs[0];
 
             if (!pack) {
@@ -83,7 +92,6 @@ export const useCardData = () => {
         isLoaded,
         fetchCardInfo,
         fetchCardName,
-        // ★ fetchCardFieldSettings を fetchPackInfoForCard に置き換え
         fetchPackInfoForCard,
     };
 };

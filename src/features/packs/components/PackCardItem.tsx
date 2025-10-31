@@ -1,12 +1,16 @@
 /**
  * src/features/packs/components/PackCardItem.tsx
  *
- * パック編集画面で個々のカードを表示するコンポーネント
- * ReusableItemGridのItemComponentとして使用
+ * PackCardList（ReusableItemGrid）内で使用される、個々のカードを視覚的に表示するコンポーネント。
+ * * 責務:
+ * 1. 渡されたカードデータ（CardType）に基づき、カードの画像（imageUrl）または代替画像（プレースホルダー）を CardMedia で表示する。
+ * 2. クリック可能な領域（CardActionArea）を提供し、カードが選択された際に親から渡されたコールバック `onSelectCard` を実行する。
+ * 3. カードの縦横比（63:88）を維持するためのスタイルを適用する。
  */
 import React from 'react';
 import { Card, CardActionArea, CardMedia } from '@mui/material';
-import { getDisplayImageUrl, DEFAULT_PACK_DECK_WIDTH, DEFAULT_PACK_DECK_HEIGHT } from '../../../utils/imageUtils';
+// 【修正点】DEFAULT_PACK_DECK_WIDTH, DEFAULT_PACK_DECK_HEIGHT のインポートを削除
+import { getDisplayImageUrl } from '../../../utils/imageUtils';
 import type { Card as CardType } from '../../../models/card';
 
 interface PackCardItemProps {
@@ -16,17 +20,11 @@ interface PackCardItemProps {
     onSelectCard?: (card: CardType) => void;
 }
 
-const CARD_PLACEHOLDER_OPTIONS = {
-    width: DEFAULT_PACK_DECK_WIDTH,
-    height: DEFAULT_PACK_DECK_HEIGHT,
-    bgColor: '2c3e50',
-};
-
-const PackCardItem: React.FC<PackCardItemProps> = ({ 
-    item: card, 
+const PackCardItem: React.FC<PackCardItemProps> = ({
+    item: card,
     index: _index,
     aspectRatio: _aspectRatio,
-    onSelectCard 
+    onSelectCard
 }) => {
     return (
         <Card
@@ -44,12 +42,14 @@ const PackCardItem: React.FC<PackCardItemProps> = ({
                     image={getDisplayImageUrl(
                         card.imageUrl,
                         {
-                            ...CARD_PLACEHOLDER_OPTIONS,
-                            text: card.name
+                            // 【修正点】width, heightの指定を削除
+                            // textとimageColorはCardデータから渡す
+                            text: card.name,
+                            imageColor: card.imageColor,
                         }
                     )}
                     alt={card.name}
-                    sx={{ 
+                    sx={{
                         width: '100%',
                         height: '100%',
                         aspectRatio: '63 / 88',

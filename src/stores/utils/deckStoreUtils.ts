@@ -1,11 +1,13 @@
 /**
  * src/stores/utils/deckStoreUtils.ts
- * * DeckStoreに関連する、他のStoreへの依存を含むビジネスロジックを分離。
- * 主にDeckの有効性チェック（カードの所有状況など）を行う。
+ *
+ * * DeckStoreに関連する、他のStore（主にCardPoolStore）への依存を含むビジネスロジックを分離・カプセル化するユーティリティモジュール。
+ * * 責務:
+ * 1. Deckに含まれるカードが、ユーザーのカードプールに十分な数存在するかどうか（未所持カードの存在）をチェックする（checkHasUnownedCards）。
+ * 2. 依存するStoreから必要な状態を直接取得することで、DeckStoreアクションからの呼び出しを簡潔にする。
  */
 import type { Deck } from '../../models/deck';
-// 💡 追加: カード所有情報を取得するため useCardPoolStore をインポート
-import { useCardPoolStore } from '../cardPoolStore'; 
+import { useCardPoolStore } from '../cardPoolStore';
 
 /**
  * デッキに含まれるカードが、ユーザーのカードプールに十分な数存在するかをチェックする。
@@ -13,21 +15,21 @@ import { useCardPoolStore } from '../cardPoolStore';
  * @param deck チェック対象のDeckオブジェクト
  * @returns 1枚でも必要な枚数に対して所有数が不足しているカードがあれば true
  */
-export const checkHasUnownedCards = ( // 💡 修正: ownedCards 引数を削除
-    deck: Deck 
-): boolean => { 
-    
-    // 💡 修正: 関数内部で useCardPoolStore から所有カードリストを取得
+export const checkHasUnownedCards = (
+    deck: Deck
+): boolean => {
+
+    // 関数内部で useCardPoolStore から所有カードリストを取得
     const ownedCards = useCardPoolStore.getState().ownedCards;
-    
+
     // mainDeck, sideDeck, extraDeck のすべてのカードと枚数を取得
     const allDeckCardEntries = [
         ...deck.mainDeck.entries(),
         ...deck.sideDeck.entries(),
         ...deck.extraDeck.entries(),
     ];
-    
-    for (const [cardId, requiredCount] of allDeckCardEntries) { 
+
+    for (const [cardId, requiredCount] of allDeckCardEntries) {
         // 必要な枚数が 0 より大きく、かつ所有枚数が不足している場合
         // ownedCards.get(cardId) は undefined の場合があるため、|| 0 で安全に処理
         if (requiredCount > 0 && (ownedCards.get(cardId) || 0) < requiredCount) {

@@ -1,29 +1,33 @@
 /**
  * src/features/pack-opener/components/OpenerCard.tsx
  *
- * パック開封シミュレーション機能で使用される、カードのフリップアニメーションを伴うコンポーネントです。
- * CardFaceヘルパーを使用し、isRevealedとdelayに基づき、裏面から表面へカードが回転するアニメーションを表現します。
- * ★ 修正点: Paper から Material UI の Card コンポーネントに置き換えました。
+ * パック開封シミュレーションのカード表示とフリップアニメーションを担当するプレゼンテーションコンポーネント。
+ * * 責務:
+ * 1. 3D CSSプロパティ (`perspective`, `transformStyle: 'preserve-3d'`) を使用し、カードのフリップアニメーションを実装する。
+ * 2. `isRevealed` (表裏状態) と `delay` (シーケンシャルアニメーションのための遅延) に基づき、回転状態とアニメーション実行を制御する。
+ * 3. ユーティリティ関数を介してカード表面/裏面の画像URLを取得し、ヘルパーコンポーネント `CardFace` に描画を委譲する。
+ * 4. `useFixedSize` プロパティによって、固定のパックカードサイズまたは親コンテナに合わせた可変サイズを適用する。
+ * 5. カードが表になっている場合のみクリックイベント (`onClick`) を発火させる。
  */
 
 import React from 'react';
-import { Box, Paper, CardMedia } from '@mui/material'; //Cardだとフリップアニメが上手くいかないためPaperを使用
-import type { OpenerCardData } from '../../../models/packOpener'; 
+import { Box, Paper, CardMedia } from '@mui/material';
+import type { OpenerCardData } from '../../../models/packOpener';
 
 interface OpenerCardProps {
     cardData: OpenerCardData | null;
-    cardBackImageUrl: string;       // パックの裏面画像
-    isRevealed: boolean;       // カードが表になっているか (フリップ状態)
-    delay: number;             // アニメーション遅延時間 (シーケンシャル開封用)
-    onClick?: (card: OpenerCardData)  => void;
-    useFixedSize?: boolean;    // 💡 追加: 固定サイズを使用するか（デフォルト: true、パック開封用）
+    cardBackImageUrl: string;       // パックの裏面画像
+    isRevealed: boolean;       // カードが表になっているか (フリップ状態)
+    delay: number;             // アニメーション遅延時間 (シーケンシャル開封用)
+    onClick?: (card: OpenerCardData) => void;
+    useFixedSize?: boolean;
 }
 
-import { 
+import {
     DEFAULT_PACK_DECK_WIDTH as PACK_CARD_WIDTH,
     DEFAULT_PACK_DECK_HEIGHT as PACK_CARD_HEIGHT,
     getDisplayImageUrl
-} from '../../../utils/imageUtils'; 
+} from '../../../utils/imageUtils';
 
 
 // カードの表面・裏面を描画するヘルパーコンポーネント
@@ -64,7 +68,7 @@ const OpenerCard: React.FC<OpenerCardProps> = ({
     isRevealed,
     delay,
     onClick,
-    useFixedSize = true, // 💡 デフォルトは固定サイズ(パック開封用)
+    useFixedSize = true,
 }) => {
     // 裏面画像: getDisplayImageUrlを使用してプレースホルダーまたは実際の画像URLを取得
     const backImage = getDisplayImageUrl(cardBackImageUrl, {
@@ -72,7 +76,7 @@ const OpenerCard: React.FC<OpenerCardProps> = ({
         height: PACK_CARD_HEIGHT,
         text: 'BACK',
     });
-    
+
     // 表面画像: カードデータの画像URL、なければプレースホルダーを使用
     const frontImage = cardData?.imageUrl || getDisplayImageUrl(null, {
         width: PACK_CARD_WIDTH,
@@ -100,11 +104,10 @@ const OpenerCard: React.FC<OpenerCardProps> = ({
         <Box
             sx={{
                 perspective: '1000px', // 3D効果の基点
-                // 💡 修正: useFixedSizeがtrueなら固定サイズ、falseなら親コンテナに合わせる
-                width: useFixedSize ? PACK_CARD_WIDTH : '100%', 
+                width: useFixedSize ? PACK_CARD_WIDTH : '100%',
                 height: useFixedSize ? PACK_CARD_HEIGHT : 'auto',
                 aspectRatio: useFixedSize ? undefined : '63 / 88', // 親サイズに合わせる場合はアスペクト比を使用
-                
+
                 cursor: isRevealed && cardData ? 'pointer' : 'default',
             }}
             onClick={handleClick}

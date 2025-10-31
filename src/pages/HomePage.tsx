@@ -1,53 +1,60 @@
 /**
  * src/pages/HomePage.tsx
  *
- * アプリケーションのランディングページ。主要機能への導線と、
- * アプリケーションの重要なステータス（パック数、資産、通貨など）の概要を提供する。
+ * * アプリケーションのランディングページおよびダッシュボードコンポーネント。
+ * このコンポーネントは、主要機能（パック管理、開封、カードプール、デッキ管理など）への明確な導線を提供し、
+ * アプリケーションの重要なステータス（パック数、資産、通貨、モード）の概要を一覧で表示する役割を担います。
+ * 状態ストアから必要なデータを抽出し、UIコンポーネントに反映させます。
+ *
+ * * 責務:
+ * 1. ページ全体のレイアウト（Box、Grid）を定義する。
+ * 2. 複数の Zustand ストアから必要なサマリーデータを取得する。
+ * 3. アプリケーションの重要な警告/免責事項を表示する。
+ * 4. 主要機能への導線となる FeatureCard コンポーネントを定義し、レンダリングする。
+ * 5. その他の重要なステータス（通貨、モード）を表示する。
  */
 
 import React from 'react';
 import { Box, Grid, Typography, Paper, Button, Alert, Divider } from '@mui/material';
-import CardGiftcardIcon from '@mui/icons-material/CardGiftcard'; // パック管理
-import OpenInNewIcon from '@mui/icons-material/OpenInNew';      // パック開封
-import InventoryIcon from '@mui/icons-material/Inventory';      // カードプール
-import StyleIcon from '@mui/icons-material/Style';              // デッキ管理
-import SettingsIcon from '@mui/icons-material/Settings';        // 設定・データ管理
+import CardGiftcardIcon from '@mui/icons-material/CardGiftcard';
+import OpenInNewIcon from '@mui/icons-material/OpenInNew';
+import InventoryIcon from '@mui/icons-material/Inventory';
+import StyleIcon from '@mui/icons-material/Style';
+import SettingsIcon from '@mui/icons-material/Settings';
 
-import { Link } from '@tanstack/react-router'; 
+import { Link } from '@tanstack/react-router';
 import { useShallow } from 'zustand/react/shallow';
 // 状態ストア
 import { useCardPoolStore } from '../stores/cardPoolStore';
 import { useCurrencyStore } from '../stores/currencyStore';
 import { useDeckStore } from '../stores/deckStore';
 import { useUserDataStore } from '../stores/userDataStore';
-import { usePackStore } from '../stores/packStore'; 
+import { usePackStore } from '../stores/packStore';
 
 const HomePage: React.FC = () => {
     // 状態の取得
-    const { packs } = usePackStore(useShallow(state => ({ packs: state.packs }))); 
+    const { packs } = usePackStore(useShallow(state => ({ packs: state.packs })));
     const { totalOwnedCards, ownedCardsSize } = useCardPoolStore(useShallow(state => ({
         totalOwnedCards: state.totalOwnedCards,
         ownedCardsSize: state.ownedCards.size,
     })));
     const { decksCount } = useDeckStore(useShallow(state => ({ decksCount: state.decks.length })));
     const { coins } = useCurrencyStore(useShallow(state => ({ coins: state.coins })));
-    const { isGodMode, /*isDTCGEnabled*/ } = useUserDataStore(useShallow(state => ({ 
+    const { isGodMode } = useUserDataStore(useShallow(state => ({
         isGodMode: state.isGodMode,
-        isDTCGEnabled: state.isDTCGEnabled,
     })));
-    
+
     // 機能カードの共通コンポーネント (コードの簡略化のため内部で定義)
-    const FeatureCard: React.FC<{ 
-        title: string, 
-        subtitle: string, 
-        stat: React.ReactNode, // 統計情報（文字列またはコンポーネント）
-        path: string, 
-        buttonText: string, 
-        icon: React.ReactElement<any> // ★ 修正 2: 型エラー回避のため any を使用
+    const FeatureCard: React.FC<{
+        title: string,
+        subtitle: string,
+        stat: React.ReactNode,
+        path: string,
+        buttonText: string,
+        icon: React.ReactElement<any>
     }> = ({ title, subtitle, stat, path, buttonText, icon }) => (
         <Paper elevation={2} sx={{ p: 3, height: '100%', display: 'flex', flexDirection: 'column' }}>
             <Box sx={{ display: 'flex', alignItems: 'center', mb: 1 }}>
-                {/* ★ 修正 2: cloneElement の呼び出しに問題なし。型定義の変更でエラー回避 */}
                 {React.cloneElement(icon, { sx: { mr: 1, fontSize: 30, color: 'primary.main' } })}
                 <Typography variant="h5" component="h2">
                     {title}
@@ -59,11 +66,11 @@ const HomePage: React.FC = () => {
             <Typography variant="h6" color="text.primary" sx={{ my: 1, flexGrow: 1 }}>
                 {stat}
             </Typography>
-            <Button 
-                component={Link} 
-                to={path} 
-                fullWidth 
-                variant="contained" 
+            <Button
+                component={Link}
+                to={path}
+                fullWidth
+                variant="contained"
                 size="medium"
             >
                 {buttonText}
@@ -89,14 +96,14 @@ const HomePage: React.FC = () => {
 
             {/* 2. 主要機能ブロック (指定された順序で2x2グリッドに配置) */}
             <Grid container spacing={4}>
-                
+
                 {/* 1. パック管理 - 左上 */}
                 <Grid size={6}>
-                    <FeatureCard 
-                        title="パック管理" 
-                        subtitle="シミュレータのベースデータを作成・編集します。" 
+                    <FeatureCard
+                        title="パック管理"
+                        subtitle="シミュレータのベースデータを作成・編集します。"
                         stat={`収録データ: ${packs.length.toLocaleString()} 種類`}
-                        path="/data/packs"
+                        path="/packs"
                         buttonText="パック一覧へ"
                         icon={<CardGiftcardIcon />}
                     />
@@ -104,11 +111,11 @@ const HomePage: React.FC = () => {
 
                 {/* 2. パック開封 - 右上 */}
                 <Grid size={6}>
-                    <FeatureCard 
-                        title="パック開封" 
-                        subtitle="作成したパックの開封シミュレーションを実行します。" 
+                    <FeatureCard
+                        title="パック開封"
+                        subtitle="作成したパックの開封シミュレーションを実行します。"
                         stat="あなたの資産を増やす"
-                        path="/user/open"
+                        path="/open"
                         buttonText="開封シミュレータへ"
                         icon={<OpenInNewIcon />}
                     />
@@ -116,17 +123,17 @@ const HomePage: React.FC = () => {
 
                 {/* 3. カードプール - 左下 */}
                 <Grid size={6}>
-                    <FeatureCard 
-                        title="カードプール" 
-                        subtitle="開封結果がここに反映されます。所有カードの資産状況です。" 
+                    <FeatureCard
+                        title="カードプール"
+                        subtitle="開封結果がここに反映されます。所有カードの資産状況です。"
                         stat={
                             <>
                                 総所有枚数: **{totalOwnedCards.toLocaleString()}枚**
-                                <br/>
+                                <br />
                                 ユニーク種数: {ownedCardsSize.toLocaleString()}種
                             </>
                         }
-                        path="/user/pool"
+                        path="/pool"
                         buttonText="カードプールを確認"
                         icon={<InventoryIcon />}
                     />
@@ -134,11 +141,11 @@ const HomePage: React.FC = () => {
 
                 {/* 4. デッキ管理 - 右下 */}
                 <Grid size={6}>
-                    <FeatureCard 
-                        title="デッキ管理" 
-                        subtitle="所有カードからデッキを構築・保存します。" 
+                    <FeatureCard
+                        title="デッキ管理"
+                        subtitle="所有カードからデッキを構築・保存します。"
                         stat={`構築済みデッキ: ${decksCount.toLocaleString()}個`}
-                        path="/user/decks"
+                        path="/decks"
                         buttonText="デッキ編集へ"
                         icon={<StyleIcon />}
                     />

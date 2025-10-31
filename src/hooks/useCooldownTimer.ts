@@ -1,8 +1,15 @@
 /**
  * src/hooks/useCooldownTimer.ts
- * 
- * 指定された秒数のクールダウンタイマーを管理する汎用フック。
- * 最後にアクションが実行された時刻を基準に、残り時間を計算し、タイマーのドリフトを最小限に抑える。
+ *
+ * * 指定された秒数のクールダウンタイマーを管理する汎用的なカスタムフック。
+ * 最後にアクションが実行された時刻を基準に残り時間を正確に計算することで、
+ * 標準的な `setInterval` の使用によるタイマーのドリフト（時間のズレ）を最小限に抑えます。
+ *
+ * * 責務:
+ * 1. クールダウン開始時刻 (`lastActionTimestamp`) と残り時間 (`secondsRemaining`) の状態を管理する。
+ * 2. `startCooldown` 関数を提供し、タイマーの起動をトリガーする。
+ * 3. 実行時刻と現在の時刻の差分に基づき、残り時間を毎秒更新するロジックを実装する。
+ * 4. タイマーが完了した時点でタイマーを停止する。
  */
 import { useState, useEffect, useCallback } from 'react';
 
@@ -30,17 +37,17 @@ export const useCooldownTimer = (cooldownSeconds: number) => {
         // lastActionTimestampが0の場合はクールダウンタイマーを起動しない
         if (lastActionTimestamp === 0) return;
 
-        let timerId: number; 
+        let timerId: number;
 
         /**
          * 残り時間を計算し、状態を更新する再帰関数
          */
         const calculateRemainingTime = () => {
             const timeElapsed = Date.now() - lastActionTimestamp; // 経過時間 (ms)
-            
+
             // 残り時間を計算 (秒単位で切り上げ、最小値は0)
             const remainingTime = Math.max(0, cooldownSeconds - Math.ceil(timeElapsed / 1000));
-            
+
             setSecondsRemaining(remainingTime);
 
             if (remainingTime > 0) {
@@ -48,7 +55,7 @@ export const useCooldownTimer = (cooldownSeconds: number) => {
                 timerId = window.setTimeout(calculateRemainingTime, 1000);
             }
         };
-        
+
         // 初回実行
         calculateRemainingTime();
 

@@ -1,19 +1,24 @@
 /**
  * src/hooks/useModeSwitcher.ts
  *
- * アプリケーションのGameモード（DTCG/FREE/GOD）の切り替えに関する
- * 全ての状態管理、ビジネスロジック、およびストア操作をカプセル化するカスタムフック。
- * 複雑な多段階の確認ダイアログ（警告、二重確認）の制御ロジックを内包し、
- * UIコンポーネント（NavbarやGameModeSwitchDialogs）にシンプルなインターフェースを提供する。
+ * * アプリケーションのGameモード（DTCG/FREE/GOD）の切り替えに関する状態管理とビジネスロジックをカプセル化するカスタムフック。
+ * ユーザーのモード選択から、警告、二重確認、そして最終的なストア操作（モード変更、カードプール削除など）に至るまでの多段階のフローを制御します。
+ *
+ * * 責務:
+ * 1. 現在のゲームモード、コイン残高、チートカウントなどのストア状態を取得する。
+ * 2. モード切り替えのための多段階ダイアログ（選択、警告、二重確認）の開閉状態とターゲットモードを管理する。
+ * 3. 遷移パターン（例: FREE -> GOD の禁止）に基づくロジックを実行し、UIに表示するコンテンツデータを生成する。
+ * 4. 最終確認後、Zustandストアのアクションを呼び出し、モード変更と付随する破壊的操作（カードプール削除）を実行する。
+ * 5. UIコンポーネントがモード切り替えフローを簡潔に利用できるインターフェースを提供する。
  */
 import { useState, useCallback } from 'react';
 import { useShallow } from 'zustand/react/shallow';
-import { useUserDataStore} from '../stores/userDataStore';
-import {  type CurrentGameMode } from '../models/userData';
+import { useUserDataStore } from '../stores/userDataStore';
+import { type CurrentGameMode } from '../models/userData';
 import { useCardPoolStore } from '../stores/cardPoolStore';
 
 
-// 💡 修正: ダイアログのコンテンツの型定義を、JSXを含まないデータ構造に統一
+// ダイアログのコンテンツの型定義を、JSXを含まないデータ構造に統一
 
 interface DialogMessageData {
     mainText: string;
@@ -55,12 +60,12 @@ export interface ModeSwitcher { // 外部コンポーネントで利用するた
 }
 
 export const useModeSwitcher = (coins: number): ModeSwitcher => {
-    
+
     // ストアの取得
-    const { 
-        getCurrentMode, 
-        cheatCount, 
-        setDTCGMode, 
+    const {
+        getCurrentMode,
+        cheatCount,
+        setDTCGMode,
         setGodMode,
     } = useUserDataStore(useShallow(state => ({
         getCurrentMode: state.getCurrentMode,
@@ -70,7 +75,7 @@ export const useModeSwitcher = (coins: number): ModeSwitcher => {
     })));
     // カードプール削除アクションを直接取得
     const clearCardPool = useCardPoolStore.getState().deleteCardPool;
-    
+
     // UIの状態
     const [isModeSelectOpen, setIsModeSelectOpen] = useState(false);
     const [isWarningOpen, setIsWarningOpen] = useState(false);
@@ -115,7 +120,7 @@ export const useModeSwitcher = (coins: number): ModeSwitcher => {
             await setDTCGMode(false);
             await setGodMode(false);
         } else if (mode === 'god') {
-            await setGodMode(true); 
+            await setGodMode(true);
         }
 
         // UIの状態をリセット
@@ -155,19 +160,19 @@ export const useModeSwitcher = (coins: number): ModeSwitcher => {
             setIsDoubleConfirmOpen(true); // 二重確認ダイアログを開く
         } else {
             // それ以外の遷移 (FREE/GOD -> DTCG, GOD -> FREE) は一発実行
-            setIsWarningOpen(false); 
+            setIsWarningOpen(false);
             handleModeChangeConfirmed();
         }
     }, [targetMode, currentMode, handleModeChangeConfirmed]);
-    
+
     // ダイアログのコンテンツ生成ロジック
     const getWarningContent = (mode: CurrentGameMode | null): DialogContentData => {
-        if (!mode) return { 
-            title: 'エラー', 
-            message: { mainText: '', alertText: 'ターゲットモードが設定されていません。', alertSeverity: 'error' }, 
-            confirmText: '続行' 
+        if (!mode) return {
+            title: 'エラー',
+            message: { mainText: '', alertText: 'ターゲットモードが設定されていません。', alertSeverity: 'error' },
+            confirmText: '続行'
         };
-        
+
         const transition = `${currentMode} -> ${mode}`;
 
         if (transition === 'dtcg -> free') {
@@ -190,8 +195,8 @@ export const useModeSwitcher = (coins: number): ModeSwitcher => {
                     alertSeverity: 'warning',
                     alertText: `**ゴッドモード**は、デバッグ・検証用のチート機能です。このモードに切り替えると、**チートカウンタが1増加**し、あなたの活動履歴として記録されます。（現在のカウント: **${cheatCount}**）`,
                     mainText: '開封結果などのシミュレーション結果を自由に操作できるようになります。よろしいですか？',
-                    secondaryAlert: isDisabled 
-                        ? { text: '⚠️ **この遷移は禁止されています。キャンセルしてください。**', severity: 'error' } 
+                    secondaryAlert: isDisabled
+                        ? { text: '⚠️ **この遷移は禁止されています。キャンセルしてください。**', severity: 'error' }
                         : null,
                 },
                 confirmText: isDisabled ? '続行 (禁止)' : '記録して続行',
@@ -210,7 +215,7 @@ export const useModeSwitcher = (coins: number): ModeSwitcher => {
                 confirmText: '切り替える',
             };
         }
-        
+
         if (transition === 'god -> free') {
             return {
                 title: '⚠️ フリーモードへの切り替え確認',
@@ -223,29 +228,29 @@ export const useModeSwitcher = (coins: number): ModeSwitcher => {
             };
         }
 
-        return { 
-            title: 'モード切り替え確認', 
-            message: { 
-                mainText: '本当に切り替えますか？', 
-                alertText: '', 
-                alertSeverity: 'info' 
-            }, 
-            confirmText: '切り替える' 
+        return {
+            title: 'モード切り替え確認',
+            message: {
+                mainText: '本当に切り替えますか？',
+                alertText: '',
+                alertSeverity: 'info'
+            },
+            confirmText: '切り替える'
         };
     };
-    
+
     // 二重確認ダイアログのコンテンツ生成 (DTCGからの離脱時のみ)
     const getDoubleConfirmContent = (mode: CurrentGameMode | null): DialogContentData => {
         if (!mode || currentMode !== 'dtcg' || (mode !== 'free' && mode !== 'god')) {
-            return { 
-                title: '', 
-                message: { mainText: '', alertText: '', alertSeverity: 'info' }, 
-                confirmText: '' 
+            return {
+                title: '',
+                message: { mainText: '', alertText: '', alertSeverity: 'info' },
+                confirmText: ''
             };
         }
-        
+
         const isToFree = mode === 'free';
-        
+
         return {
             title: `🚨 最終確認：本当に${isToFree ? 'フリー' : 'ゴッド'}モードへ変更しますか？`,
             message: {

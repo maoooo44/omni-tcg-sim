@@ -1,10 +1,14 @@
 /**
  * src/features/packs/hooks/useCardCsvIO.ts
  *
- * カードデータの一括インポート・エクスポート (CSV形式) を管理するカスタムフック。
- * * 責務: ファイル操作、UI状態管理、カスタムフィールド設定の取得、
- * そして Store のインポート/エクスポートアクションのトリガーに限定される。
- * CSVパース/マッピングロジックは CardCsvIO サービスに委譲する。
+ * カードデータの一括インポート・エクスポート (CSV形式) のためのカスタムフック。
+ * * 責務:
+ * 1. UIの状態（ローディング、ステータスメッセージ）を管理する。
+ * 2. `CardStore` および `PackStore` から必要なデータとアクション（インポート/エクスポート）を取得する。
+ * 3. ユーザーがアップロードしたCSVファイルの内容を読み込む（`FileReader`）。
+ * 4. CSVインポート/エクスポート処理をStore/Service層に委譲し、その結果に基づきUIの状態を更新する。
+ * 5. CSVファイルのエクスポート時、ブラウザのダウンロード処理（Blob生成とファイルリンクのクリック）を実行する。
+ * 6. Packの設定情報に基づきカスタムフィールド定義を生成する。
  */
 
 import { useState, useCallback } from 'react';
@@ -12,8 +16,8 @@ import { useCardStore } from '../../../stores/cardStore';
 import { usePackStore } from '../../../stores/packStore';
 import { useShallow } from 'zustand/react/shallow';
 
-import { createCardCustomFieldDefinitions } from '../../../services/data-io/dataIOUtils'; 
-import type { ImportResult } from '../../../stores/cardStore'; 
+import { createCardCustomFieldDefinitions } from '../../../services/data-io/dataIOUtils';
+import type { ImportResult } from '../../../stores/cardStore';
 
 
 // =========================================================================
@@ -25,19 +29,15 @@ import type { ImportResult } from '../../../stores/cardStore';
  * @param packId - 対象のパックID
  * @param onCardListUpdated - インポート成功時に実行するカードリスト更新コールバック
  */
-export const useCardCsvIO = (packId: string, onCardListUpdated: () => Promise<void>) => { 
-    
-    // 💡 修正: Storeアクションを新しい importCardsFromCsv に変更
+export const useCardCsvIO = (packId: string, onCardListUpdated: () => Promise<void>) => {
+
     const { importCardsFromCsv, exportCardsToCsv } = useCardStore(useShallow(state => ({
-        importCardsFromCsv: state.importCardsFromCsv, 
+        importCardsFromCsv: state.importCardsFromCsv,
         exportCardsToCsv: state.exportCardsToCsv,
     })));
-    
-    // カスタムフィールド設定はパックごとの cardFieldSettings に移動したため、
-    // currentPack.cardFieldSettings を利用します。
 
-    // 💡 修正: editingPackの廃止に伴い、packsリストからpackIdに一致するものを探すロジックのみ残す
-    const currentPack = usePackStore(state => 
+    // カスタムフィールド設定はパックごとの cardFieldSettings を利用
+    const currentPack = usePackStore(state =>
         state.packs.find(p => p.packId === packId)
     );
     const [isLoading, setIsLoading] = useState(false);
@@ -48,23 +48,23 @@ export const useCardCsvIO = (packId: string, onCardListUpdated: () => Promise<vo
      * CSVファイルを読み込み、Storeアクション経由でService層にインポートを依頼します。
      * @param file - ユーザーがアップロードした File オブジェクト
      */
-    const handleConfirmImport = useCallback(async (file: File) => { 
-        
+    const handleConfirmImport = useCallback(async (file: File) => {
+
         // currentPackが取得できない場合はエラーとする
-        if (!file || !currentPack) { 
+        if (!file || !currentPack) {
             setStatusMessage("❌ エラー: ファイルまたはパック情報が無効です。");
             return;
         }
 
         setIsLoading(true);
         setStatusMessage("インポート処理を開始しています...");
-        
+
         const reader = new FileReader();
         reader.onload = async (e) => {
             let result: ImportResult | undefined = undefined;
             try {
                 const fileText = e.target?.result as string;
-                
+
                 if (!fileText.trim()) {
                     setStatusMessage("⚠️ 警告: CSVファイルにデータが含まれていません。");
                     return;
@@ -75,19 +75,17 @@ export const useCardCsvIO = (packId: string, onCardListUpdated: () => Promise<vo
 
                 // 2. Store のアクション経由で Service 層にCSVテキストと定義を渡して処理を委譲
                 result = await importCardsFromCsv(
-                    packId, 
-                    fileText, 
+                    packId,
+                    fileText,
                     customFieldDefs
-                ); 
+                );
 
                 // 3. 結果メッセージの生成
                 const importedCount = result.importedCount;
                 const updatedCount = result.updatedCount;
                 let successMessage = `✅ ${importedCount}枚の新規カードをインポートし、${updatedCount}枚の既存カードを更新しました。`;
-                
+
                 const exceptionMessages: string[] = [];
-                // 💡 Service層が例外情報を返せるようになれば、ここに表示ロジックを追加
-                // 例: if (result.pipeSplitCardCount > 0) { ... }
 
                 if (exceptionMessages.length > 0) {
                     successMessage += `\n\n**⚠️ 例外処理 ${exceptionMessages.length}件**`;
@@ -95,10 +93,10 @@ export const useCardCsvIO = (packId: string, onCardListUpdated: () => Promise<vo
                 } else {
                     setStatusMessage(successMessage);
                 }
-                
+
                 // 【最重要】Store更新完了後、親コンポーネントのローカル状態を更新するコールバックを実行
-                await onCardListUpdated(); 
-                
+                await onCardListUpdated();
+
             } catch (error) {
                 // Service/Store層からスローされたエラーをキャッチ
                 const message = error instanceof Error ? error.message : '不明なエラー';
@@ -115,9 +113,8 @@ export const useCardCsvIO = (packId: string, onCardListUpdated: () => Promise<vo
 
         reader.readAsText(file);
     }, [packId, currentPack, importCardsFromCsv, onCardListUpdated]);
-    
-    
-    // --- handleExportCards の定義 (変更なし) ---
+
+
     const handleExportCards = useCallback(async () => {
         setIsLoading(true);
         setStatusMessage(null);
@@ -125,7 +122,7 @@ export const useCardCsvIO = (packId: string, onCardListUpdated: () => Promise<vo
         try {
             // Service層経由でデータを取得
             const csvData = await exportCardsToCsv(packId);
-            
+
             if (!csvData || csvData.length < 100) { // ヘッダーのみの場合を考慮し、適当なサイズでチェック
                 setStatusMessage('⚠️ エクスポート対象のカードがありません。');
                 setIsLoading(false);
@@ -137,14 +134,14 @@ export const useCardCsvIO = (packId: string, onCardListUpdated: () => Promise<vo
             const url = URL.createObjectURL(blob);
             const link = document.createElement('a');
             link.setAttribute('href', url);
-            link.setAttribute('download', `${packId}_cards_export.csv`); 
+            link.setAttribute('download', `${packId}_cards_export.csv`);
             document.body.appendChild(link);
             link.click();
             document.body.removeChild(link);
             URL.revokeObjectURL(url);
-            
+
             setStatusMessage('✅ カードデータのエクスポートが完了しました。');
-            
+
         } catch (error) {
             const message = error instanceof Error ? error.message : "未知のエラー";
             setStatusMessage(`❌ エクスポート失敗: ${message}`);
@@ -156,7 +153,7 @@ export const useCardCsvIO = (packId: string, onCardListUpdated: () => Promise<vo
     return {
         isLoading,
         statusMessage,
-        handleConfirmImport, 
+        handleConfirmImport,
         handleExportCards,
         setStatusMessage,
     };

@@ -1,8 +1,14 @@
 /**
  * src/models/deck.ts
  *
- * デッキエンティティの型定義ファイルです。
- * TCGシミュレータで使用されるデッキデータ構造（カードリスト、枚数、メタデータ）を定義します。
+ * * デッキエンティティのデータ構造と関連型を定義するモデル層モジュール。
+ * TCGシミュレータで使用されるデッキデータ（デッキ構成、メタデータ、カスタムフィールド設定）を表現します。
+ *
+ * * 責務:
+ * 1. デッキの構成タイプ（DeckType）を定義する。
+ * 2. デッキのカスタムフィールドの表示設定（DeckFieldSettings）を定義する。
+ * 3. デッキ本体のデータ構造（Deck）を定義する（ID、カードリスト、枚数、メタデータ、状態フラグ）。
+ * 4. デッキ内のカードの最小単位（DeckCard）を定義する。
  */
 
 export type DeckType = 'MainOnly' | 'MainSide' | 'MainSideExtra';
@@ -27,42 +33,41 @@ export interface DeckFieldSettings {
 export interface Deck {
     deckId: string;
     name: string;
-    number?: number | null; 
-    imageUrl: string; // オプションとし、デフォルトでは空または undefined を想定
-    imageColor?: string; // 例: 'red', 'blue'
-    ruleId?: string; // このデッキが準拠するカスタムルールセットのID（オプション）
-    deckType: DeckType; // デッキの構成要素
+    number?: number | null;
+    imageUrl: string;
+    imageColor?: string;
+    ruleId?: string;
+    deckType: DeckType;
     totalCards: number;
-    series: string; // デッキが属するTCGシリーズ名
+    series: string;
     description: string;
-    keycard_1?: string; //キーカードのcardId
+    keycard_1?: string;
     keycard_2?: string;
     keycard_3?: string;
-    isLegal: boolean; // 準拠するruleSetに基づき、デッキが形式的に有効か
-    hasUnownedCards: boolean;     // デッキに未所有カードが含まれているかどうかの状態
+    isLegal: boolean;
+    hasUnownedCards: boolean;
     isFavorite: boolean;
-    createdAt: string; // ISO 8601形式のタイムスタンプ
-    updatedAt: string; // ISO 8601形式のタイムスタンプ
+    createdAt: string;
+    updatedAt: string;
     // デッキに含まれるカードと枚数
     // key: cardId (string), value: count (number)
-    // Mapを使用して、編集時や検索時に高速なアクセスを可能にする
     mainDeck: Map<string, number>;
     sideDeck: Map<string, number>;
-    extraDeck: Map<string, number>; // TCGによってはエクストラデッキ
+    extraDeck: Map<string, number>;
 
-    num_1?: number | null; 
+    num_1?: number | null;
     num_2?: number | null;
-    num_3?: number | null; 
-    num_4?: number | null; 
-    str_1?: string; 
-    str_2?: string; 
-    str_3?: string; 
-    str_4?: string; 
+    num_3?: number | null;
+    num_4?: number | null;
+    str_1?: string;
+    str_2?: string;
+    str_3?: string;
+    str_4?: string;
 
     fieldSettings: DeckFieldSettings;
 
     /** ユーザー定義のタグ/その他の属性。カスタムフィールドの代わり。 */
-    tag?: Record<string, string>;
+    tag?: string[];
     /** 全文検索用の連結文字列（tagを結合） */
     searchText?: string;
 }

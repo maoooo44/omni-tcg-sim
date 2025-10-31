@@ -1,9 +1,13 @@
 /**
  * src/services/user-data/presetService.ts
  *
- * IndexedDB (Dexie) の 'presets' テーブルに対するプリセットデータ
- * (PackPreset, CardCustomPreset) の永続化操作を扱うサービス。
- * CRUD操作および初期データ投入ロジックを提供する。
+ * * IndexedDB (Dexie) の 'presets' テーブルに対するプリセットデータ
+ * * (PackPreset, CardCustomPreset) の永続化操作を扱うサービス層モジュール。
+ * * 責務:
+ * 1. DBコア層（Dexie）を介した 'presets' コレクションへのCRUD操作を提供する。
+ * 2. プリセットデータ（Preset）のロード、保存（Upsert）、ID指定による削除操作を担う。
+ * 3. アプリケーション初回起動時などに、DBが空の場合にのみ初期データをバルク投入するロジック（initializePresets）を提供する。
+ * 4. Presetモデルのデータ永続化に関する関心を完全に分離する。
  */
 
 import { db } from '../database/db'; // DexieのDBインスタンスを参照
@@ -16,7 +20,7 @@ const PRESET_TABLE = 'presets';
  * プリセットデータ (PackPreset, CardCustomPreset) の IndexedDB 操作を扱うサービス
  */
 export const presetService = {
-    
+
     /**
      * 全てのプリセットをIndexedDBからロード
      */
@@ -39,9 +43,9 @@ export const presetService = {
     deletePresetById: async (id: string): Promise<void> => {
         await db.table<Preset, string>(PRESET_TABLE).delete(id);
     },
-    
+
     /**
-     * (オプション) プリセットの初期データ投入 (DBが空の場合にのみ実行)
+     * プリセットの初期データ投入 (DBが空の場合にのみ実行)
      */
     initializePresets: async (initialData: Preset[]): Promise<void> => {
         const count = await db.table<Preset, string>(PRESET_TABLE).count();

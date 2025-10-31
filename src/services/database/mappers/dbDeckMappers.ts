@@ -1,11 +1,19 @@
-
+/**
+ * src/services/database/mappers/dbDeckMappers.ts
+ *
+ * * Deck モデル、ArchiveDeck モデルとデータベースレコード（DBDeck、DBArchive）間の相互マッピングを管理するモジュール。
+ * * 責務:
+ * 1. アプリケーションモデル（Deck）とDBレコード（DBDeck）の相互変換（Map構造とRecord構造の相互変換を含む）。
+ * 2. Deck.number の undefined と DBDeck.number の null の相互変換など、DB格納形式に合わせた型の調整。
+ * 3. Deckモデルをアーカイブレコード形式（DBArchive）にラップする変換（deckToDBArchive）。
+ * 4. DBArchiveからDeckモデル、およびArchiveDeckモデルへの抽出・復元（dbArchiveToDeck, dbArchiveToArchiveDeck）。
+ */
 import type { Deck } from '../../../models/deck';
-import type { ArchiveDeck } from '../../../models/archive'; 
-import type { DBDeck,  DBArchive } from '../../../models/db-types'; 
-//import { mapCustomIndexes } from '../dbMappers';
+import type { ArchiveDeck } from '../../../models/archive';
+import type { DBDeck, DBArchive } from '../../../models/db-types';
 
 // =========================================================================
-// 3. Deck <-> DBDeck マッピング (カスタムインデックス30枠をヘルパー関数に置き換え)
+// Map <-> Record ユーティリティ
 // =========================================================================
 
 /**
@@ -26,6 +34,14 @@ const recordToMap = (record: Record<string, number>): Map<string, number> => {
     return new Map(Object.entries(record));
 };
 
+// =========================================================================
+// Tag ユーティリティ (削除: 型が string[] に統一されたため不要)
+// =========================================================================
+// 以前の Tag ユーティリティ関数は削除されます。
+
+// =========================================================================
+// Deck <-> DBDeck マッピング
+// =========================================================================
 
 export const deckToDBDeck = (deck: Deck): DBDeck => {
     const dbDeck: DBDeck = {
@@ -46,19 +62,21 @@ export const deckToDBDeck = (deck: Deck): DBDeck => {
         isFavorite: deck.isFavorite,
         createdAt: deck.createdAt,
         updatedAt: deck.updatedAt,
-        
+
         // MapをRecordに変換
-        mainDeck: mapToRecord(deck.mainDeck), 
+        mainDeck: mapToRecord(deck.mainDeck),
         sideDeck: mapToRecord(deck.sideDeck),
         extraDeck: mapToRecord(deck.extraDeck),
-        
+
+        // カスタムフィールド
         num_1: deck.num_1, num_2: deck.num_2, num_3: deck.num_3,
         num_4: deck.num_4,
         str_1: deck.str_1, str_2: deck.str_2, str_3: deck.str_3,
         str_4: deck.str_4,
         fieldSettings: deck.fieldSettings,
-        tag:deck.tag,
-        searchText:deck.searchText,
+        // 修正: 型が一致したため、直接代入
+        tag: deck.tag,
+        searchText: deck.searchText,
     }
     return dbDeck;
 };
@@ -84,20 +102,26 @@ export const dbDeckToDeck = (dbDeck: DBDeck): Deck => {
         updatedAt: dbDeck.updatedAt,
 
         // RecordをMapに変換
-        mainDeck: recordToMap(dbDeck.mainDeck), 
+        mainDeck: recordToMap(dbDeck.mainDeck),
         sideDeck: recordToMap(dbDeck.sideDeck),
-        extraDeck: recordToMap(dbDeck.extraDeck), 
+        extraDeck: recordToMap(dbDeck.extraDeck),
 
+        // カスタムフィールド
         num_1: dbDeck.num_1, num_2: dbDeck.num_2, num_3: dbDeck.num_3,
         num_4: dbDeck.num_4,
         str_1: dbDeck.str_1, str_2: dbDeck.str_2, str_3: dbDeck.str_3,
         str_4: dbDeck.str_4,
         fieldSettings: dbDeck.fieldSettings,
-        tag:dbDeck.tag,
-        searchText:dbDeck.searchText,
+        // 修正: 型が一致したため、直接代入
+        tag: dbDeck.tag,
+        searchText: dbDeck.searchText,
     }
     return deck;
 };
+
+// =========================================================================
+// Archive への/からのマッピング
+// =========================================================================
 
 /**
  * Deckモデルを DBArchive の形式に変換します。
@@ -105,15 +129,13 @@ export const dbDeckToDeck = (dbDeck: DBDeck): Deck => {
  * @returns DBArchive モデル
  */
 export const deckToDBArchive = (deck: Deck): DBArchive => {
-    // 💡 修正: collectionKey の固定値設定を削除（ただし、DBArchiveでは必須フィールドのため、呼び出し側で解決される前提）
     return {
         // DBArchive 型のフィールド順序に従う
         archiveId: deck.deckId,
         itemId: deck.deckId,
         itemType: 'deck',
-        // collectionKey: ... 👈 必須だが、ここでは設定しない
         archivedAt: new Date().toISOString(),
-        itemData: deckToDBDeck(deck), // 💡 deckToDBDeckが修正されたため、ここは間接的に修正済
+        itemData: deckToDBDeck(deck),
         isFavorite: deck.isFavorite,
         isManual: true,
     };
@@ -127,7 +149,7 @@ export const deckToDBArchive = (deck: Deck): DBArchive => {
 export const dbArchiveToDeck = (dbArchive: DBArchive): Deck => {
     const dbDeck = dbArchive.itemData as DBDeck;
     const deck = dbDeckToDeck(dbDeck);
-    deck.isFavorite = dbArchive.isFavorite;
+    deck.isFavorite = dbArchive.isFavorite; // ArchiveのisFavoriteで上書き
     return deck;
 };
 
@@ -140,25 +162,22 @@ export const dbArchiveToDeck = (dbArchive: DBArchive): Deck => {
 export const dbArchiveToArchiveDeck = (dbArchive: DBArchive): ArchiveDeck => {
     // itemData は DBDeck を期待
     const dbDeck = dbArchive.itemData as DBDeck;
-    
+
     // 1. DBDeck を基本の Deck モデルに変換
-    const deck = dbDeckToDeck(dbDeck); // すべてのカスタムインデックスがマッピングされている
+    const deck = dbDeckToDeck(dbDeck);
 
-    // 2. ArchiveDeck 型のフィールド順序に従い、DBArchiveのメタデータを統合
+    // 2. ArchiveDeck の構造に従い、Deckデータと meta メタデータを統合
     return {
-        // 💡 修正: deck のほぼ全てのプロパティ（カスタムインデックスを含む）をスプレッド構文で展開
+        // deck のプロパティを展開
         ...deck,
-        
-        // ⚠️ 上書きが必要なフィールドや、展開前に Deck に存在しなかったフィールドを後から記述
-        
-        // Map型はJSON互換ではないため、DeckからArchiveDeckへの変換でRecordのMapへの再変換は不要
-        
-        // Archive メタデータ (deckに存在しないフィールド)
-        archiveId: dbArchive.archiveId,
-        archivedAt: dbArchive.archivedAt,
-        isManual: dbArchive.isManual,
 
-        // isFavorite は Archive の値で上書きする (必須: isFavoriteがDeckとArchiveで重複)
-        isFavorite: dbArchive.isFavorite, 
+        // 修正: Archive メタデータは meta プロパティにネスト
+        meta: {
+            archiveId: dbArchive.archiveId,
+            archivedAt: dbArchive.archivedAt,
+            isManual: dbArchive.isManual,
+            // isFavorite は Archive の値を使用 (Deckの isFavorite と重複するが、Archiveの情報を採用)
+            isFavorite: dbArchive.isFavorite,
+        }
     };
 };

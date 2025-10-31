@@ -1,20 +1,20 @@
 /**
  * src/services/card-pools/CardPoolService.ts
  *
- * CardPool（所有カード資産）データに関する**ドメインロジック**と**データ永続化（IndexedDB）**を担うサービス層。
- * 責務は以下の通り：
+ * * CardPool（ユーザーの所有カード資産）データに関する**ドメインロジック**と**データ永続化（IndexedDB）**を担うサービス層モジュール。
+ * * 責務:
  * 1. DBからのデータロードと**グローバルキャッシュ（cardPoolCache）**の構築・提供。
  * 2. 所有枚数の**更新/削除（CRUD）**ロジックの実行。
- * 3. 一括更新（バルク処理）の提供。
- * 4. カードプール全体のクリア。
+ * 3. IndexedDB（Dexie）を介した永続化層への直接的な書き込み操作（put/delete/bulkPut/bulkDelete/clear）を実行する。
+ * 4. DBとキャッシュ（cardPoolCache）の整合性を保つ。
  */
 
 import { db } from "../database/db";
-import type { DBCardPool } from '../../models/db-types'; 
-import { cardPoolSearchService } from './cardPoolSearchService'; 
+import type { DBCardPool } from '../../models/db-types';
+import { cardPoolSearchService } from './cardPoolSearchService';
 
-// 💡 キャッシュ層を導入
-let cardPoolCache: Map<string, number> | null = null; // Map<cardId, count>
+// キャッシュ層を導入 (Map<cardId, count>)
+let cardPoolCache: Map<string, number> | null = null;
 
 // ----------------------------------------------------
 // 責務: DB/キャッシュ操作と更新ロジック
@@ -28,7 +28,6 @@ export const cardPoolService = {
         console.log(`[CardPoolService] 🚀 START loading all card pool data.`);
         try {
             // SearchService経由でDBから取得
-            // (SearchServiceがDBから取得し、Map形式に変換する責務を持つと想定)
             cardPoolCache = await cardPoolSearchService.getOwnedCardsMap();
             console.log(`[CardPoolService] ✅ Loaded ${cardPoolCache.size} unique cards.`);
             return true;
@@ -42,7 +41,7 @@ export const cardPoolService = {
     /**
      * キャッシュから全カードプールを取得する
      */
-    getAllCardPoolFromCache(): Map<string, number> { 
+    getAllCardPoolFromCache(): Map<string, number> {
         return cardPoolCache || new Map();
     },
 
@@ -74,7 +73,7 @@ export const cardPoolService = {
      */
     async bulkSaveCardPoolEntries(updates: Map<string, number>): Promise<void> {
         if (updates.size === 0) return;
-        
+
         const dataToPut: DBCardPool[] = [];
         const idsToDelete: string[] = [];
 
@@ -107,13 +106,13 @@ export const cardPoolService = {
             throw new Error("カード資産の一括DB更新に失敗しました。");
         }
     },
-    
+
     /**
      * カードプール全体をDBから物理的にクリアする
      */
     async deleteCardPool(): Promise<void> {
         try {
-            await db.cardPool.clear(); 
+            await db.cardPool.clear();
             cardPoolCache = new Map(); // キャッシュもクリア
             console.log("[CardPoolService] IndexedDB cardPool cleared.");
         } catch (error) {
@@ -124,7 +123,6 @@ export const cardPoolService = {
 
     /**
      * Deck削除時のCardPoolエントリ削除ロジック（現時点では実装保留）
-     * 💡 Deckに紐づくカードがCardPoolから完全に削除されるわけではないため、このアクションは保留または再検討が必要。
      */
     async bulkDeleteCardPoolEntriesByDeckId(_deckId: string): Promise<void> {
         // DeckServiceからの呼び出しに備え、アクション名は定義。

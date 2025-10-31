@@ -1,8 +1,14 @@
 /**
  * src/utils/genericJsonIO.ts
  *
- * JSONシリアライズ/デシリアライズの汎用ロジックを提供するユーティリティ。
- * MapなどJSON非互換構造を扱うためのSerializer/Deserializer関数の実行をラップする。
+ * * JSONシリアライズ/デシリアライズの汎用ロジックを提供するユーティリティモジュール。
+ * 主な責務は、Mapなどの標準JSONではサポートされないカスタムなデータ構造を持つオブジェクトに対し、
+ * 専用のSerializer/Deserializer関数を適用して、安全かつ読みやすいJSON入出力操作をラップすることです。
+ *
+ * * 責務:
+ * 1. データのJSONシリアライズ（エクスポート）処理をラップする（exportDataToJson）。
+ * 2. JSON文字列のパースとデータ型へのデシリアライズ（インポート）処理をラップし、パース失敗時のエラー処理を提供する（importDataFromJson）。
+ * 3. 汎用的なSerializer/Deserializer関数の型定義を提供する。
  */
 
 // シリアライザ関数の型定義: T型のデータを受け取り、JSON互換なオブジェクトを返す
@@ -19,7 +25,7 @@ export type Deserializer<T> = (json: any) => T;
  * @returns 整形されたJSON文字列
  */
 export const exportDataToJson = <T>(
-    data: T, 
+    data: T,
     serializer: Serializer<T> = (d) => d // デフォルトはTをそのままJSON化
 ): string => {
     const jsonCompatibleData = serializer(data);
@@ -33,15 +39,16 @@ export const exportDataToJson = <T>(
  * @returns 復元されたデータT
  */
 export const importDataFromJson = <T>(
-    jsonText: string, 
+    jsonText: string,
     deserializer: Deserializer<T> = (d) => d as T // デフォルトはパース結果をT型としてそのまま返す
 ): T => {
     const parsedData: any = JSON.parse(jsonText);
-    if (!parsedData) {
-        // JSON.parseがnullを返した場合（ただし通常はエラーになる）
-        throw new Error('JSONのパースに失敗しました。');
+
+    if (parsedData === null || parsedData === undefined) {
+        // JSON.parse(null) は null を返すため、それを失敗と見なす
+        throw new Error('JSONのパースに失敗しました。無効なJSON形式です。');
     }
-    
+
     // デシリアライザを適用してMapなどの構造を復元
     return deserializer(parsedData);
 };

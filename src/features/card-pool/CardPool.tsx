@@ -1,47 +1,50 @@
 /**
  * src/features/card-pool/CardPool.tsx
  *
- * カードコレクションの表示と管理を行うメインコンポーネント（ビュー）。
- * フィルタリング、並び替え、ページネーションのUIと、全体のレイアウトを管理します。
- * 個々のカード表示ロジックは OwnedCardItem コンポーネントに委譲されます。
+ * * カードコレクションの表示と管理を行うメインコンポーネント（ビュー）。
+ * * 責務:
+ * 1. フィルタリング、並び替え、表示モード切り替えなどのUIコントロールと、全体のレイアウトを提供する。
+ * 2. useCardPoolDisplayフックから、表示用に準備されたカードリスト、ソート/フィルタの状態、ページネーション情報を取得する。
+ * 3. useGridDisplayフックから、ユーザー設定に基づいたグリッドの列数とスタイルを取得し、ReusableItemGridに適用する。
+ * 4. 個々のカードアイテムのクリックイベントを受け取り、CardModalを表示するための状態と非同期データ取得ロジックを管理する（モーダル表示ロジックのカプセル化）。
+ * 5. 取得したデータを、切り出したコンポーネント（CardPoolDisplay）に適切に渡す。
  */
 
-import React, { useMemo, useCallback, useState, useEffect } from 'react'; // ★ useEffect を追加
-import { 
-    Box, Typography, Alert, 
-    ToggleButtonGroup, ToggleButton, Tooltip, Pagination
+import React, { useMemo, useCallback, useState, useEffect } from 'react';
+import {
+    Box, Typography, Alert,
+    // 💡 修正: ToggleButtonGroup, ToggleButton, Tooltip, ViewModuleIcon, ViewListIcon は CardPoolControls に移動
 } from '@mui/material';
-import ViewModuleIcon from '@mui/icons-material/ViewModule';
-import ViewListIcon from '@mui/icons-material/ViewList';
+// 💡 修正: ToggleButton 関連のインポートは CardPoolControls に移動したため削除
+// import ViewModuleIcon from '@mui/icons-material/ViewModule';
+// import ViewListIcon from '@mui/icons-material/ViewList';
 
-// 💡 共通ロジックと設定をインポート 
-import { useGridDisplay } from '../../hooks/useGridDisplay'; 
-import { CardPoolGridSettings } from '../../configs/defaults'; 
-import GridColumnToggle from '../../components/controls/GridColumnToggle'; 
-import ReusableItemGrid from '../../components/common/ReusableItemGrid'; 
-import SortAndFilterControls from '../../components/controls/SortAndFilterControls';
+import { useGridDisplay } from '../../hooks/useGridDisplay';
+import { CardPoolGridSettings } from '../../configs/defaults';
+// 💡 修正: GridColumnToggle, SortAndFilterControls は CardPoolControls に移動したため削除
+// import GridColumnToggle from '../../components/controls/GridColumnToggle';
+// import SortAndFilterControls from '../../components/controls/SortAndFilterControls';
 
-// ★ CardModal とその Props のインポートを追加
-import CardModal from '../../components/modals/CardModal'; 
+import CardModal from '../../components/modals/CardModal';
 import type { CardModalProps } from '../../components/modals/CardModal';
 
-// ★ useCardData と Card, Pack のインポートを修正
 import { useCardData } from '../../hooks/useCardData';
 import type { Card } from '../../models/card';
-import type { Pack } from '../../models/pack'; // ★ Pack 型をインポート
+import type { Pack } from '../../models/pack';
 
-// 💡 既存のインポート
-// ★ OwnedCardDisplay の型をインポート
-import { useCardPoolDisplay, CARDS_PER_PAGE, type ViewMode, type OwnedCardDisplay } from './hooks/useCardPoolDisplay'; 
-import OwnedCardItem from './components/OwnedCard'; 
-import { 
-    CARD_POOL_SORT_OPTIONS, 
-    CARD_POOL_SORT_OPTIONS_WITH_COUNT,
-    CARD_FILTER_FIELDS 
-} from '../../configs/sortAndFilterDefaults'; 
+import { useCardPoolDisplay, CARDS_PER_PAGE } from './hooks/useCardPoolDisplay'; // 💡 ViewMode は CardPoolControls に移動したため削除
+// 💡 修正: CARD_POOL_SORT_OPTIONS, CARD_POOL_SORT_OPTIONS_WITH_COUNT, CARD_FILTER_FIELDS は CardPoolControls に移動したため削除
+// import {
+//     CARD_POOL_SORT_OPTIONS,
+//     CARD_POOL_SORT_OPTIONS_WITH_COUNT,
+//     CARD_FILTER_FIELDS
+// } from '../../configs/sortAndFilterDefaults';
+
+import CardPoolDisplay from './components/CardPoolDisplay';
+import CardPoolControls from './components/CardPoolControls'; // 💡 新規インポート
 
 
-// 💡 仮のUser Dataフック (本来はDB/Contextから取得)
+// 仮のUser Dataフック (本来はDB/Contextから取得)
 const useUserData = () => ({
     // UserDataState.gridSettings.cardPool の仮のデータ構造
     cardPoolGridSettings: {
@@ -54,38 +57,32 @@ const useUserData = () => ({
     }
 });
 
-// ★ CardModal の表示に必要な Props の型を定義
-type CardItemCustomProps = {
-    onOpenCardViewModal: (cardId: string) => void;
-}
-
 
 const CardPool: React.FC = () => {
     // useCardDataフックを呼び出し、カード情報取得関数を取得
-    // ★ fetchCardFieldSettings を fetchPackInfoForCard に変更
     const { fetchCardInfo, fetchPackInfoForCard } = useCardData();
 
-    // ★ モーダル制御ロジック
+    // モーダル制御ロジック
     const [isModalOpen, setIsModalOpen] = useState(false);
     const [selectedCardId, setSelectedCardId] = useState<string | null>(null);
     const [selectedCardForModal, setSelectedCardForModal] = useState<Card | null>(null);
-    // ★ Pack 情報を保持する State を追加
+    // Pack 情報を保持する State 
     const [packInfo, setPackInfo] = useState<Pack | null>(null);
 
-    
-    // IDがセットされたら、非同期でカードとパック情報を取得
+
+    // IDがセットされたら、非同期でカードとパック情報を取得 (中略: 変更なし)
     useEffect(() => {
         const loadCardData = async () => {
             if (selectedCardId) {
                 // カード情報とパック情報を非同期で同時に取得
                 const [card, pack] = await Promise.all([
                     fetchCardInfo(selectedCardId),
-                    fetchPackInfoForCard(selectedCardId), // ★ パック情報全体を取得
+                    fetchPackInfoForCard(selectedCardId),
                 ]);
-                
+
                 setSelectedCardForModal(card ?? null);
                 setPackInfo(pack ?? null);
-                
+
                 // カードとパックの両方があればモーダルを開く
                 if (card && pack) {
                     setIsModalOpen(true);
@@ -95,33 +92,32 @@ const CardPool: React.FC = () => {
             }
         };
         loadCardData();
-    }, [selectedCardId, fetchCardInfo, fetchPackInfoForCard]); // ★ 依存配列を修正
+    }, [selectedCardId, fetchCardInfo, fetchPackInfoForCard]);
 
 
     const handleOpenCardViewModal = useCallback((cardId: string) => {
         setSelectedCardId(cardId);
         // setIsModalOpen(true) は useEffect に任せる
     }, []);
-    
+
     const handleCloseModal = useCallback(() => {
         setIsModalOpen(false);
         setSelectedCardId(null);
         setSelectedCardForModal(null);
-        // ★ packInfo もリセット
+        // packInfo もリセット
         setPackInfo(null);
     }, []);
-    
-    // ★ CardModal のダミー保存/削除ハンドラ
+
+    // CardModal のダミー保存/削除ハンドラ
     const handleCardSave: CardModalProps['onSave'] = useCallback((cardToSave) => {
         console.warn("Card Save called from CardPool. Operation ignored in view mode.", cardToSave);
     }, []);
-    
+
     const handleCardRemove: CardModalProps['onRemove'] = useCallback(async (cardId) => {
         console.warn("Card Remove called from CardPool. Operation ignored in view mode.", cardId);
     }, []);
 
 
- 
     // 従来のロジックフックから状態とハンドラを取得
     const {
         isLoading,
@@ -138,52 +134,54 @@ const CardPool: React.FC = () => {
         setSortField,
         sortOrder,
         toggleSortOrder,
-        viewMode, 
-        setViewMode, 
+        viewMode,
+        setViewMode,
         isDTCGEnabled,
     } = useCardPoolDisplay();
-    
+
     // DBから永続化されたユーザー設定を取得 (仮)
     const { cardPoolGridSettings } = useUserData();
 
-    // 1. 💡 修正: グリッド表示のロジックと設定をフックから取得
-    const { 
-        columns, 
-        setColumns, 
-        minColumns, 
+    // グリッド表示のロジックと設定をフックから取得
+    const {
+        columns,
+        setColumns,
+        minColumns,
         maxColumns,
-        sxOverride, 
+        sxOverride,
         aspectRatio,
-        gap, // 💡 変更: spacingではなくgap（px単位、小数点対応）
-    } = useGridDisplay({ 
-        settings: CardPoolGridSettings, 
-        storageKey: 'card-pool-list-cols', 
-        userGlobalDefault: cardPoolGridSettings 
-    }); 
+        gap,
+    } = useGridDisplay({
+        settings: CardPoolGridSettings,
+        // 💡 ポイント: storageKey を指定することで、このページの列数設定を独立させる
+        storageKey: 'card-pool-list-cols',
+        userGlobalDefault: cardPoolGridSettings
+    });
 
     const totalCount = useMemo(() => filteredCards.length, [filteredCards]);
     const startIndex = (currentPage - 1) * CARDS_PER_PAGE;
     const endIndex = startIndex + CARDS_PER_PAGE;
     const cardsOnPage = useMemo(() => filteredCards.slice(startIndex, endIndex), [filteredCards, startIndex, endIndex]);
 
-    const handleViewModeChange = (
-        _event: React.MouseEvent<HTMLElement>,
-        newMode: ViewMode | null,
-    ) => {
-        if (newMode) {
-            setViewMode(newMode);
-            setCurrentPage(1); 
-        }
-    };
+    // 💡 修正: CardPoolControls にロジックを移動したため削除
+    // const handleViewModeChange = (
+    //     _event: React.MouseEvent<HTMLElement>,
+    //     newMode: ViewMode | null,
+    // ) => {
+    //     if (newMode) {
+    //         setViewMode(newMode);
+    //         setCurrentPage(1);
+    //     }
+    // };
 
-    // ソートオプションを動的に選択（DTCGモードのリスト表示では枚数ソートを含む）
-    const sortOptions = useMemo(() => {
-        return isDTCGEnabled && viewMode === 'list' 
-            ? CARD_POOL_SORT_OPTIONS_WITH_COUNT 
-            : CARD_POOL_SORT_OPTIONS;
-    }, [isDTCGEnabled, viewMode]);
+    // 💡 修正: CardPoolControls にロジックを移動したため削除
+    // const sortOptions = useMemo(() => {
+    //     return isDTCGEnabled && viewMode === 'list'
+    //         ? CARD_POOL_SORT_OPTIONS_WITH_COUNT
+    //         : CARD_POOL_SORT_OPTIONS;
+    // }, [isDTCGEnabled, viewMode]);
 
-    // ロード中、エラー表示
+    // ロード中、エラー表示 (中略: 変更なし)
     if (isLoading) {
         return (
             <Box sx={{ display: 'flex', justifyContent: 'center', p: 3 }}>
@@ -203,114 +201,70 @@ const CardPool: React.FC = () => {
 
     return (
         <Box sx={{ flexGrow: 1, p: 2 }}>
-            {/* ソート＆フィルタコントロール */}
-            <SortAndFilterControls
-                labelPrefix="カード"
-                sortOptions={sortOptions}
+            {/* 💡 新規: 切り出した CardPoolControls コンポーネントを使用 */}
+            <CardPoolControls
+                // useCardPoolDisplay の状態
+                totalCount={totalCount}
+                viewMode={viewMode}
+                setViewMode={setViewMode}
                 sortField={sortField}
                 sortOrder={sortOrder}
-                searchTerm={searchTerm}
-                filters={filters}
                 setSortField={setSortField}
                 toggleSortOrder={toggleSortOrder}
+                searchTerm={searchTerm}
                 setSearchTerm={setSearchTerm}
+                filters={filters}
                 setFilters={setFilters}
-                filterFields={CARD_FILTER_FIELDS}
+                setCurrentPage={setCurrentPage}
+                isDTCGEnabled={isDTCGEnabled}
+                // useGridDisplay の状態（独立性を保つため useGridDisplay の結果を直接渡す）
+                columns={columns}
+                setColumns={setColumns}
+                minColumns={minColumns}
+                maxColumns={maxColumns}
             />
 
-            {/* 件数表示＆コントロール */}
-            <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 3 }}>
-                <Typography variant="h6">
-                    カード一覧 ({totalCount}件)
-                </Typography>
-                <Box sx={{ display: 'flex', alignItems: 'center', gap: 2 }}>
-                    <GridColumnToggle 
-                        currentColumns={columns} 
-                        setColumns={setColumns} 
-                        minColumns={minColumns} 
-                        maxColumns={maxColumns} 
-                        label="列数:"
-                    />
-                    <ToggleButtonGroup
-                        value={viewMode}
-                        exclusive
-                        onChange={handleViewModeChange}
-                        size="medium"
-                        aria-label="view mode"
-                        sx={{ height: '36.5px', width: '180px' }}
-                    >
-                        <Tooltip title="所有カードリスト">
-                            <ToggleButton value="list" aria-label="list" sx={{ height: '36.5px', flex: 1 }}>
-                                <ViewListIcon sx={{ mr: 0.5 }} /> 所持
-                            </ToggleButton>
-                        </Tooltip>
-                        <Tooltip title="図鑑表示 (全カード)">
-                            <ToggleButton value="collection" aria-label="collection" sx={{ height: '36.5px', flex: 1 }}>
-                                <ViewModuleIcon sx={{ mr: 0.5 }} /> 図鑑
-                            </ToggleButton>
-                        </Tooltip>
-                    </ToggleButtonGroup>
-                </Box>
-            </Box>
+            {/* 💡 修正: 以前の ソート＆フィルタコントロール, 件数表示＆コントロール は削除 */}
+            {/* <SortAndFilterControls ... /> */}
+            {/* <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 3 }}> ... </Box> */}
 
-            {/* カード表示エリア */}
-            <Box sx={{ mt: 3, minHeight: 400 }}>
-                {totalCount === 0 ? (
-                    <Alert severity="info">
-                        表示できるカードがありません。フィルターを変更するか、パックを開封してください。
-                    </Alert>
-                ) : (
-                    <>
-                        <ReusableItemGrid<OwnedCardDisplay, CardItemCustomProps>
-                            items={cardsOnPage}
-                            ItemComponent={OwnedCardItem}
-                            // ★ itemProps に onOpenCardViewModal を渡す
-                            itemProps={{
-                                onOpenCardViewModal: handleOpenCardViewModal,
-                            }}
-                            sxOverride={sxOverride}
-                            aspectRatio={aspectRatio}
-                            gap={gap}
-                        />
-                        
-                        {/* Pagination */}
-                        {totalPages > 1 && (
-                            <Box sx={{ display: 'flex', justifyContent: 'center', mt: 4 }}>
-                                <Pagination 
-                                    count={totalPages}
-                                    page={currentPage}
-                                    onChange={(_e, page) => setCurrentPage(page)}
-                                    color="primary"
-                                    showFirstButton 
-                                    showLastButton 
-                                />
-                            </Box>
-                        )}
-                    </>
-                )}
-            </Box>
-            
-            {/* モーダル表示 */}
-            {/* ★ packInfo が存在する場合にのみ CardModal をレンダリング */}
+
+            {/* カード表示エリアを CardPoolDisplay に置き換え (中略: 変更なし) */}
+            <CardPoolDisplay
+                totalCount={totalCount}
+                totalPages={totalPages}
+                currentPage={currentPage}
+                cardsOnPage={cardsOnPage}
+                setCurrentPage={setCurrentPage}
+                sxOverride={sxOverride}
+                aspectRatio={aspectRatio}
+                gap={gap}
+                onOpenCardViewModal={handleOpenCardViewModal}
+                // 💡 修正: columns プロパティを追加
+                columns={columns}
+            />
+
+            {/* モーダル表示 (中略: 変更なし) */}
+            {/* packInfo が存在する場合にのみ CardModal をレンダリング */}
             {isModalOpen && selectedCardForModal && packInfo && (
-                <CardModal 
+                <CardModal
                     open={isModalOpen}
                     onClose={handleCloseModal}
                     card={selectedCardForModal}
-                    
-                    // 💡 packInfo から必要な値を抽出
+
+                    // packInfo から必要な値を抽出
                     packRaritySettings={packInfo.rarityConfig}
                     currentPackName={packInfo.name}
                     currentPackId={packInfo.packId}
-                    
-                    onSave={handleCardSave} 
-                    onRemove={handleCardRemove} 
-                    
-                    // 💡 packInfo から cardFieldSettings を取得
-                    customFieldSettings={packInfo.cardFieldSettings} 
-                    onCustomFieldSettingChange={() => {}} // ReadOnlyなのでダミー
-                    
-                    isReadOnly={true} 
+
+                    onSave={handleCardSave}
+                    onRemove={handleCardRemove}
+
+                    // packInfo から cardFieldSettings を取得
+                    customFieldSettings={packInfo.cardFieldSettings}
+                    onCustomFieldSettingChange={() => { }} // ReadOnlyなのでダミー
+
+                    isReadOnly={true}
                 />
             )}
         </Box>

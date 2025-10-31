@@ -1,23 +1,19 @@
-/**
- * src/features/packs/components/PackInfoForm.tsx
- *
- * パック編集ページで使用される、Packの基本情報（名称、番号、URLなど）を入力するためのフォームコンポーネント。
- * フォーム要素のUI描画と、親コンポーネントからのイベントハンドラへのアクション伝達に責務を限定する。
- */
 import React from 'react';
-import { 
-    TextField, Box, Typography, Select, MenuItem, InputLabel, FormControl, 
-    Button, Divider,
-} from '@mui/material'; 
+import {
+    TextField, Box, Typography, Select, MenuItem, InputLabel, FormControl,
+    Button, Divider, Grid,
+} from '@mui/material';
 
 import type { Pack } from '../../../models/pack';
-// 💡 修正1: Card 型をインポート
 import type { Card } from '../../../models/card';
 import PackPreviewCard from '../components/PackPreviewCard';
-import { PACK_TYPE_OPTIONS } from '../../../models/pack'; 
+import { PACK_TYPE_OPTIONS } from '../../../models/pack';
 
-import CustomFieldManager from '../../../components/controls/CustomFieldManager'; 
+import CustomFieldManager from '../../../components/controls/CustomFieldManager';
 import type { FieldSetting } from '../../../models/customField';
+
+// ColorSelectorをインポート（ファイルパスは仮定）
+import ColorSelector from '../../../components/controls/ColorSelector'; 
 
 
 // PackEditorPageから渡されるPropsの型定義
@@ -26,23 +22,27 @@ interface PackInfoFormProps {
     isEditable: boolean;
     handleInputChange: (e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement>) => void;
     // SelectのonChangeの型
-    handleSelectChange: (e: { target: { name: string; value: unknown } }) => void; 
+    handleSelectChange: (e: { target: { name: string; value: unknown } }) => void;
     handleOpenRarityEditorModal: () => void;
     handleSave: (e: React.FormEvent<HTMLFormElement>) => void;
-    
-    // 💡 修正3: Packカスタムフィールドの変更ハンドラを CustomFieldManagerProps から流用
+
+    // Packカスタムフィールドの変更ハンドラ (汎用的なハンドラとして使用)
     onPackCustomFieldChange: (field: string, value: any) => void;
 
-    // 💡 修正4: Packカスタムフィールドの設定情報を受け取る
+    // Packカスタムフィールドの設定情報を受け取る
     customFieldSettings: Record<string, FieldSetting>;
-    
-    // 💡 修正5: Packカスタムフィールド設定変更ハンドラを CustomFieldManagerProps から流用
+
+    // Packカスタムフィールド設定変更ハンドラ
     onCustomFieldSettingChange: (
         itemType: 'Card' | 'Deck' | 'Pack',
         type: 'num' | 'str',
         index: number,
         settingUpdates: Partial<FieldSetting>
     ) => void;
+    
+    // ⬇️ 削除: ColorSelector専用のハンドラを削除 (onPackCustomFieldChangeで統一)
+    // handleImageColorSelect: (key: string) => void;
+    // handleCardBackImageColorSelect: (key: string) => void;
 }
 
 const PackInfoForm: React.FC<PackInfoFormProps> = ({
@@ -52,38 +52,100 @@ const PackInfoForm: React.FC<PackInfoFormProps> = ({
     handleSelectChange,
     handleOpenRarityEditorModal,
     handleSave,
-    
-    onPackCustomFieldChange,
+
+    onPackCustomFieldChange, // 汎用ハンドラを使用
     customFieldSettings,
     onCustomFieldSettingChange,
+    
+    // ⬇️ 削除: Propsから専用ハンドラを削除
+    // handleImageColorSelect,
+    // handleCardBackImageColorSelect,
 }) => {
 
     // isEditableを使って、disabled状態を統一的に管理
     const isDisabled = !isEditable;
+
+    // ColorSelectorで使う currentKey は packData.imageColor などが入っていると仮定
+    const currentImageColorKey = packData.imageColor || 'default';
+    
+    // ⭐ 修正箇所: currentCardBackImageColorKey の計算ロジックを変更
+    // 画像URLの有無にかかわらず、設定された色を優先する。
+    const currentCardBackImageColorKey = packData.cardBackImageColor || 'default';
+    // 修正前: const currentCardBackImageColorKey = packData.cardBackImageUrl ? (packData.cardBackImageColor || 'default') : 'default';
+
+
+    // InputAdornmentのスタイルを調整（ColorSelectorのサイズに合わせる）
+    // const colorSelectorAdornmentStyle: React.CSSProperties = {
+    //     paddingRight: 4, // TextFieldのpaddingを考慮
+    // };
+
 
     return (
         <>
             <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 2 }}>
                 <Typography variant="h6">基本情報</Typography>
             </Box>
-            
+
             <PackPreviewCard pack={packData} />
 
             <form onSubmit={handleSave}>
-                {/* 1. 図鑑 No. (ソート順) */}
-                <TextField
-                    label="図鑑 No. (ソート順)"
-                    name="number"
-                    type="number"
-                    // null/undefinedの場合は空文字を表示。
-                    value={packData.number ?? ''} 
-                    onChange={handleInputChange}
-                    fullWidth
-                    margin="normal"
-                    helperText="パックの表示順/図鑑番号を指定します。空欄の場合、自動採番されます。"
-                    inputProps={{ min: 0 }}
-                    disabled={isDisabled} 
-                />
+
+                {/* 7. 画像URLとカラー選択のグループ化 (Gridを使用) */}
+                <Grid container spacing={1} alignItems="center" mt={1}>
+                    {/* パック表面画像設定 */}
+                    <Grid size={{ xs: 2 }}> {/* ★ 修正: Grid のサイズを2に変更 */}
+                        <Box sx={{ display: 'flex', justifyContent: 'center', height: '100%' }}>
+                            <ColorSelector
+                                currentKey={currentImageColorKey}
+                                // 修正点 1: 汎用ハンドラ onPackCustomFieldChange を使用
+                                onColorSelect={(key) => onPackCustomFieldChange('imageColor', key)}
+                                disabled={isDisabled}
+                                // ラベルは ColorSelector 内部で非表示に変更済み
+                                label=""
+                            />
+                        </Box>
+                    </Grid>
+                    <Grid size={{xs:10}}>
+                        <TextField
+                            label="パック画像URL"
+                            name="imageUrl"
+                            value={packData.imageUrl || ''}
+                            onChange={handleInputChange}
+                            fullWidth
+                            size="small"
+                            margin="dense"
+                            disabled={isDisabled}
+                        />
+                    </Grid>
+                    
+                    {/* カード裏面画像設定 */}
+                    <Grid size={{ xs: 2 }}> {/* ★ 修正: Grid のサイズを2に変更 */}
+                        <Box sx={{ display: 'flex', justifyContent: 'center', height: '100%' }}>
+                            <ColorSelector
+                                currentKey={currentCardBackImageColorKey} // ⭐ 修正後の値を使用
+                                // 修正点 2: 汎用ハンドラ onPackCustomFieldChange を使用
+                                onColorSelect={(key) => onPackCustomFieldChange('cardBackImageColor', key)}
+                                disabled={isDisabled}
+                                // ラベルは ColorSelector 内部で非表示に変更済み
+                                label=""
+                            />
+                        </Box>
+                    </Grid>
+                    <Grid size={{xs:10}}>
+                        <TextField
+                            label="カード裏面画像URL"
+                            name="cardBackImageUrl"
+                            value={packData.cardBackImageUrl || ''}
+                            onChange={handleInputChange}
+                            fullWidth
+                            size="small"
+                            margin="dense"
+                            disabled={isDisabled}
+                        />
+                    </Grid>
+                </Grid>
+                
+                
 
                 {/* 2. パック名 */}
                 <TextField
@@ -93,10 +155,11 @@ const PackInfoForm: React.FC<PackInfoFormProps> = ({
                     onChange={handleInputChange}
                     fullWidth
                     margin="normal"
+                    size="small"
                     required
-                    disabled={isDisabled} 
+                    disabled={isDisabled}
                 />
-                
+
                 {/* 3. シリーズ名 */}
                 <TextField
                     label="シリーズ/バージョン"
@@ -105,21 +168,22 @@ const PackInfoForm: React.FC<PackInfoFormProps> = ({
                     onChange={handleInputChange}
                     fullWidth
                     margin="normal"
-                    disabled={isDisabled} 
+                    size="small"
+                    disabled={isDisabled}
                 />
-                
-                {/* 4. 封入枚数 */}
+
+                {/* 1. 図鑑 No. (ソート順) */}
                 <TextField
-                    label="1パックの封入枚数"
-                    name="cardsPerPack"
+                    label="図鑑 No. (ソート順)"
+                    name="number"
                     type="number"
-                    value={packData.cardsPerPack}
+                    value={packData.number ?? ''}
                     onChange={handleInputChange}
                     fullWidth
                     margin="normal"
-                    required
-                    inputProps={{ min: 1 }}
-                    disabled={isDisabled} 
+                    size="small"
+                    inputProps={{ min: 0 }}
+                    disabled={isDisabled}
                 />
                 
                 {/* 5. パック種別 (Select) */}
@@ -130,6 +194,7 @@ const PackInfoForm: React.FC<PackInfoFormProps> = ({
                         name="packType"
                         value={packData.packType}
                         onChange={handleSelectChange}
+                        size="small"
                     >
                         {PACK_TYPE_OPTIONS.map(type => (
                             <MenuItem key={type} value={type}>{type}</MenuItem>
@@ -137,27 +202,34 @@ const PackInfoForm: React.FC<PackInfoFormProps> = ({
                     </Select>
                 </FormControl>
 
-                {/* 6. パック表面画像URL */}
+                {/* 6. 封入枚数 */}
                 <TextField
-                    label="パック表面画像URL"
-                    name="imageUrl"
-                    value={packData.imageUrl}
+                    label="1パックの封入枚数"
+                    name="cardsPerPack"
+                    type="number"
+                    value={packData.cardsPerPack}
                     onChange={handleInputChange}
                     fullWidth
                     margin="normal"
-                    disabled={isDisabled} 
+                    size="small"
+                    required
+                    inputProps={{ min: 1 }}
+                    disabled={isDisabled}
                 />
-                
-                {/* 7. カード裏面画像URL */}
+
+                {/* 4. 値段 (新しく追加されたフィールド) */}
                 <TextField
-                    label="カード裏面画像URL"
-                    name="cardBackImageUrl"
-                    value={packData.cardBackImageUrl || ''} 
+                    label="値段"
+                    name="price"
+                    type="number"
+                    value={packData.price}
                     onChange={handleInputChange}
                     fullWidth
                     margin="normal"
-                    helperText="開封時のカードの裏面に表示する画像URLを指定します。"
-                    disabled={isDisabled} 
+                    size="small"
+                    required
+                    inputProps={{ min: 0 }}
+                    disabled={isDisabled}
                 />
                 
                 {/* 8. 説明文 */}
@@ -168,21 +240,22 @@ const PackInfoForm: React.FC<PackInfoFormProps> = ({
                     onChange={handleInputChange}
                     fullWidth
                     margin="normal"
+                    size="small"
                     multiline
                     rows={3}
-                    disabled={isDisabled} 
+                    disabled={isDisabled}
                 />
-                
-                
+
+
                 {/* --------------------------------------------------- */}
                 {/* パックのカスタムフィールドエリアの追加 */}
                 <Box sx={{ mt: 4, mb: 2 }}>
                     <Divider sx={{ my: 2 }} />
                     <Typography variant="h6" gutterBottom>カスタムフィールド</Typography>
-                    
+
                     <CustomFieldManager
                         // 編集対象のデータ（Packオブジェクト全体）
-                        itemData={packData as unknown as Card} // 💡 修正7: Card型をインポートしたため、エラーは解消する
+                        itemData={packData as unknown as Card}
                         // カスタムフィールドの設定情報 (packFieldSettings)
                         customFieldSettings={customFieldSettings}
                         // 編集対象のアイテムタイプ（Pack）
@@ -190,20 +263,20 @@ const PackInfoForm: React.FC<PackInfoFormProps> = ({
                         // フォームの入力変更ハンドラ
                         onFieldChange={onPackCustomFieldChange}
                         // 設定の変更ハンドラ（PackEditorから渡す）
-                        onSettingChange={onCustomFieldSettingChange} 
+                        onSettingChange={onCustomFieldSettingChange}
                         // 編集モード
                         isReadOnly={isDisabled}
                     />
                 </Box>
                 {/* --------------------------------------------------- */}
-                
-                
+
+
                 {/* 9. アクションボタン */}
                 <Box sx={{ mt: 3, display: 'flex', justifyContent: 'space-between' }}>
-                    <Button 
-                        variant="outlined" 
+                    <Button
+                        variant="outlined"
                         onClick={handleOpenRarityEditorModal}
-                        disabled={isDisabled} 
+                        disabled={isDisabled}
                     >
                         レアリティ設定を編集
                     </Button>

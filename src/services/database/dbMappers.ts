@@ -1,66 +1,29 @@
-import type { DBArchive } from '../../models/db-types';
-import type { 
-    ArchiveDisplayData, 
-    ArchiveItemData 
-} from '../../models/archive'; // 💡 必要な型定義のインポート
-
-// 既存のエンティティマッパーから必要な関数をインポート
-// これらの関数は、export * from で既に公開されているファイルに定義されていると仮定
-import { dbArchiveToArchiveDeck } from './mappers/dbDeckMappers';
-import { dbArchiveToArchivePack } from './mappers/dbPackMappers';
-import { dbArchiveToArchivePackBundle } from './mappers/dbPackMappers'; // PackBundleマッパーもPackMappers内にあると仮定
-
-
 /**
  * src/services/database/dbMappers.ts
  *
- * アプリケーションモデル（Card, Pack, Deck, PackBundle）と IndexedDBのデータ構造型（DBCard, DBPack, DBDeck, DBPackBundle, DBArchive）
- * の間で相互にデータを変換するためのマッピングロジックを提供します。
- * このファイルは、各エンティティの永続化形式とアプリケーション内部のデータ形式との関心事の分離を担います。
- * 特に、PackやDeckのアーカイブ（DBArchive）への変換と復元ロジックを含みます。
+ * * データベースマッパー層の統合エントリポイント。
+ * * 責務:
+ * 1. 各エンティティ固有のマッパーモジュール（dbCardMappers, dbPackMappers, dbDeckMappers）の関数を再エクスポートする。
+ * 2. アーカイブ機能（history, trash）で使用されるDBArchiveレコードを、アプリケーションのユニオン表示モデル（ArchiveDisplayData, ArchiveItemData）に変換するルーター/ブリッジング機能を提供する。
+ * 3. itemTypeに応じて適切なエンティティマッパー（dbArchiveToArchiveDeck, dbArchiveToArchivePack, dbArchiveToArchivePackBundle）へ処理を委譲する。
  */
+import type { DBArchive } from '../../models/db-types';
+import type {
+    ArchiveDisplayData,
+    ArchiveItemData
+} from '../../models/archive';
+
+import { dbArchiveToArchiveDeck } from './mappers/dbDeckMappers';
+import { dbArchiveToArchivePack } from './mappers/dbPackMappers';
+import { dbArchiveToArchivePackBundle } from './mappers/dbPackMappers';
+
 
 export * from './mappers/dbCardMappers';
 export * from './mappers/dbPackMappers';
 export * from './mappers/dbDeckMappers';
 
-// T: モデルの型 (Card, Pack, Deckなど)
-// K: DBモデルの型 (DBCard, DBPack, DBDeckなど)
-
-/**
- * カスタムインデックス30枠のマッピングロジックを共通化します。
- * @param source - 変換元のモデル (Card/Pack/Deck)
- * @param target - 変換先のモデル (DBCard/DBPack/DBDeck)
- * @returns target - カスタムインデックスがマッピングされた変換先のモデル
- *
-export const mapCustomIndexes = <T extends Record<string, any>, K extends Record<string, any>>(
-    source: T,
-    target: K
-): K => {
-    for (let i = 1; i <= 10; i++) {
-        // Bool
-        const boolKey = `custom_${i}_bool` as keyof T & keyof K;
-        if (source[boolKey] !== undefined) {
-            target[boolKey] = source[boolKey];
-        }
-        
-        // Num
-        const numKey = `custom_${i}_num` as keyof T & keyof K;
-        if (source[numKey] !== undefined) {
-            target[numKey] = source[numKey];
-        }
-
-        // Str
-        const strKey = `custom_${i}_str` as keyof T & keyof K;
-        if (source[strKey] !== undefined) {
-            target[strKey] = source[strKey];
-        }
-    }
-    return target;
-};*/
-
 // ----------------------------------------------------
-// 💡 追加: Archive Display/Item Data へのユニオン型マッパー
+// Archive Display/Item Data へのユニオン型マッパー
 // ----------------------------------------------------
 
 /**
@@ -72,14 +35,13 @@ export const mapCustomIndexes = <T extends Record<string, any>, K extends Record
 export const dbArchiveToArchiveDisplayData = (dbArchive: DBArchive): ArchiveDisplayData => {
     if (dbArchive.itemType === 'deck') {
         // Deckの場合、ArchiveDeckを返す
-        return dbArchiveToArchiveDeck(dbArchive); 
+        return dbArchiveToArchiveDeck(dbArchive);
 
     } else if (dbArchive.itemType === 'packBundle') {
         // PackBundleの場合、ArchivePackを返す
-        return dbArchiveToArchivePack(dbArchive); 
+        return dbArchiveToArchivePack(dbArchive);
     }
 
-    // 💡 エラーハンドリング: 未対応のタイプはランタイムエラーとする
     throw new Error(`Unsupported archive itemType for ArchiveDisplayData: ${dbArchive.itemType}`);
 };
 
@@ -100,6 +62,5 @@ export const dbArchiveToArchiveItemData = (dbArchive: DBArchive): ArchiveItemDat
         return dbArchiveToArchivePackBundle(dbArchive);
     }
 
-    // 💡 エラーハンドリング: 未対応のタイプはランタイムエラーとする
     throw new Error(`Unsupported archive itemType for ArchiveItemData: ${dbArchive.itemType}`);
 };

@@ -1,9 +1,16 @@
 /**
  * src/models/preset.ts
  *
- * パックやカードのカスタムフィールドなどの設定を一括で管理するためのプリセットデータ構造を定義します。
- * 汎用的な基本構造 (`BasePreset`) を拡張し、パック用 (`PackPreset`)、カードカスタム用 (`CardCustomPreset`)、
- * およびカスタムフィールド定義用 (`CustomFieldDefinitionPreset`) の具体的な型を定義します。
+ * * パックやカードのカスタムフィールドなどの設定を一括で管理するためのプリセットデータ構造を定義するモデル層モジュール。
+ * 汎用的な基本構造（BasePreset）を拡張し、各エンティティ（Pack、Cardカスタム、カスタムフィールド定義）に特化した
+ * 具体的なプリセットの型を定義することで、設定の一元管理と再利用を可能にします。
+ *
+ * * 責務:
+ * 1. プリセット共通のメタデータ構造（BasePreset）を定義する。
+ * 2. パック設定（PackPreset）のデータ構造を定義する。
+ * 3. 古いカードカスタムフィールド初期値（CardCustomPreset）のデータ構造を定義する（現在は非使用）。
+ * 4. カスタムフィールドの表示名定義（CustomFieldDefinitionPreset）のデータ構造を定義する（現在は非使用）。
+ * 5. 現在使用するプリセット型のユニオン型（Preset）を定義する。
  */
 
 //import { type CustomFieldType } from './customField';
@@ -28,7 +35,7 @@ export interface PackPreset extends BasePreset {
     packType: 'Booster' | 'ConstructedDeck' | 'Other';
     imageUrl: string;
     description: string;
-    
+
     rarityConfig: {
         rarityName: string;
         probability: number;
@@ -37,43 +44,38 @@ export interface PackPreset extends BasePreset {
 
 /**
  * カードのユーザーカスタムフィールドの構造を保存するためのプリセットデータ構造です。
- * 💡 この型は、古い「キーと値の初期値」を保存するものであり、表示名定義とは区別します。
- *
-export interface CardCustomPreset extends BasePreset {
-    // userCustomのキーと値を保持（値は空文字列で保存し、フィールド定義用として扱う）
-    customFields: Record<string, string>;
-}
+ */
+// export interface CardCustomPreset extends BasePreset {
+//     // userCustomのキーと値を保持（値は空文字列で保存し、フィールド定義用として扱う）
+//     customFields: Record<string, string>;
+// }
 
 // --------------------------------------------------
-// 💡 新しいカスタムフィールド表示名定義プリセット
+// 新しいカスタムフィールド表示名定義プリセット
 // --------------------------------------------------
 
 
 /**
  * カスタムフィールドの表示名（ユーザーフレンドリー名）の定義を保存するためのプリセットです。
- * これがカスタムフィールド名定義の一元管理を担います。
- *
-export interface CustomFieldDefinitionPreset extends BasePreset {
-    
-    /** フィールド定義の基本構造 *
-    fieldDefinitions: {
-        // 例: 'custom_1_str'
-        cardKey: string; // keyof Card | keyof Pack | keyof Deck などのユニオン型は複雑なので、一旦 string で定義
-        // 例: '種族'
-        fieldName: string; 
-        // 例: 'str'
-        type: CustomFieldType; 
-    }[];
+ */
+// export interface CustomFieldDefinitionPreset extends BasePreset {
 
-    // カード用の表示名定義 (30枠)
-    cardFields: CustomFieldDefinitionPreset['fieldDefinitions'];
-    
-    // パック用の表示名定義 (15枠に削減)
-    packFields: CustomFieldDefinitionPreset['fieldDefinitions'];
-    
-    // デッキ用の表示名定義 (15枠に削減)
-    deckFields: CustomFieldDefinitionPreset['fieldDefinitions'];
-}*/
+//     // フィールド定義の基本構造
+//     fieldDefinitions: {
+//         cardKey: string;
+//         fieldName: string; 
+//         type: CustomFieldType; 
+//     }[];
+
+//     // カード用の表示名定義 (30枠)
+//     cardFields: CustomFieldDefinitionPreset['fieldDefinitions'];
+
+//     // パック用の表示名定義 (15枠に削減)
+//     packFields: CustomFieldDefinitionPreset['fieldDefinitions'];
+
+//     // デッキ用の表示名定義 (15枠に削減)
+//     deckFields: CustomFieldDefinitionPreset['fieldDefinitions'];
+// }
 
 // --------------------------------------------------
 // 統合された最終型

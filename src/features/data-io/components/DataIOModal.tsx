@@ -1,9 +1,14 @@
 /**
  * src/features/data-io/components/DataIOModal.tsx
  *
- * アプリケーションの全データ (パック、デッキ、カードプール、ユーザー設定など) を
- * ZIPファイル形式でインポートおよびエクスポートするためのダイアログコンポーネントです。
- * データ永続化とユーザー間の共有を可能にする主要機能の一つです。
+ * * アプリケーションの全データ (パック、デッキ、カードプール、ユーザー設定など) を
+ * * ZIPファイル形式でインポートおよびエクスポートするためのダイアログコンポーネント。
+ * * 責務:
+ * 1. モーダル（Dialog）の表示と、インポート/エクスポート機能のUIを提供する。
+ * 2. 処理状態（loading/idle）と結果メッセージを管理し、UIに反映する。
+ * 3. サービス層（zipIO）のメソッド（exportData, importData）を呼び出し、データI/O操作をトリガーする。
+ * 4. エクスポート成功時、ブラウザのダウンロード機能を介してファイルを保存する。
+ * 5. インポート成功時、関連ストア（例: useCardPoolStore）のアクションを呼び出し、アプリケーションの状態を最新にリロードする。
  */
 import React, { useState, useRef } from 'react';
 import {
@@ -14,9 +19,8 @@ import {
 import FileUploadIcon from '@mui/icons-material/FileUpload';
 import FileDownloadIcon from '@mui/icons-material/FileDownload';
 
-// パス修正: servicesとstoresへの相対パスが変わります
 import { zipIO } from '../../../services/data-io/zipIO';
-import { useCardPoolStore } from '../../../stores/cardPoolStore'; // データ更新後のリロードに必要
+import { useCardPoolStore } from '../../../stores/cardPoolStore';
 
 interface DataIOModalProps {
     open: boolean;
@@ -27,7 +31,7 @@ const DataIOModal: React.FC<DataIOModalProps> = ({ open, onClose }) => {
     const [status, setStatus] = useState<'idle' | 'loading'>('idle');
     const [message, setMessage] = useState<{ type: 'success' | 'error' | 'info', text: string } | null>(null);
     const fileInputRef = useRef<HTMLInputElement>(null);
-    const fetchCardPools = useCardPoolStore(state => state.fetchCardPool); // 成功後の再ロード
+    const fetchCardPools = useCardPoolStore(state => state.fetchCardPool);
 
     // --------------------------------------------------
     // エクスポート処理

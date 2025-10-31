@@ -1,48 +1,49 @@
 /**
  * src/features/decks/hooks/useDeckEditor.ts
  *
- * デッキ編集画面のコアロジックを提供するカスタムフック。
- * 責務：
- * 1. URLパラメータから取得したdeckIdに基づき、編集対象のデッキデータをZustandストアからロード/初期化し、ローカルで管理する。
- * 2. **ダーティチェック (isDirty)** を実装し、未保存の変更を追跡する。
- * 3. 関連するデータ（全カードリスト、所有カード資産）を他のストアから取得し、コンポーネントに提供する。
- * 4. デッキ情報（名前、説明など）の更新、カードの追加/削除、保存、削除といった永続化アクションを実行する。
- * 5. UIの状態（ローディング、保存メッセージ）を管理する。
+ * * デッキ編集画面のコアロジックを統合したカスタムフック。
+ * * 責務:
+ * 1. URLパラメータのdeckIdに基づき、編集対象のデッキをロード/初期化し、ローカル状態（useState）で管理する。
+ * 2. デッキの初期状態と現在の状態を比較し、**ダーティ状態（isDirty）** を追跡する。
+ * 3. デッキの名称、属性、カード枚数など、あらゆる編集操作（updateDeckInfo, updateCardCount）のハンドラを提供する。
+ * 4. デッキの保存（saveDeck）、ゴミ箱への移動（moveDeckToTrash）、復元、物理削除といった永続化アクションをDeckStore/Archive機能と連携して実行する。
+ * 5. ローディング状態（isLoading）および保存メッセージ（saveMessage）のUIフィードバックを管理する。
+ * 6. デッキ編集に必要な参照データ（全カードリスト、所有カード資産）を他のZustandストアから取得し、コンポーネントに提供する。
  */
 
 import { useEffect, useState, useCallback, useMemo } from 'react';
 import { useDeckStore } from '../../../stores/deckStore';
 import { useCardPoolStore } from '../../../stores/cardPoolStore';
 import { useShallow } from 'zustand/react/shallow';
-import { useNavigate } from '@tanstack/react-router'; 
-import { useCardStore } from '../../../stores/cardStore'; 
+import { useNavigate } from '@tanstack/react-router';
+import { useCardStore } from '../../../stores/cardStore';
 import type { Deck } from '../../../models/deck';
 import { createDefaultDeck } from '../../../utils/dataUtils';
 
-// 💡 修正 1: インポート名とパスを変更
-import { 
-    createDeckArchive, // 💡 useDeckArchive から createDeckArchive に変更
-    type DeckArchiveDependencies 
-} from '../../../stores/utils/createDeckArchive'; // 💡 cDeckArchive から createDeckArchive に変更
+import {
+    createDeckArchive,
+    type DeckArchiveDependencies
+} from '../../../stores/utils/createDeckArchive';
 
 
 // ----------------------------------------------------------------------
-// 💡 Deckのダーティチェック用フィールド定義 (変更なし)
-
+// Deckのダーティチェック用フィールド定義
 
 /**
  * Deck オブジェクトから、編集/保存に関わるフィールドのみを抽出した型。
  */
-type DeckCompareFields = Pick<Deck, 
+type DeckCompareFields = Pick<Deck,
     'name' | 'number' | 'imageUrl' | 'imageColor' | 'ruleId' | 'deckType' | 'series' | 'description' |
-    'keycard_1' | 'keycard_2' | 'keycard_3' | 'isLegal' | 'hasUnownedCards' | 'isFavorite' | 'mainDeck' | 'sideDeck' | 'extraDeck' | 
+    'keycard_1' | 'keycard_2' | 'keycard_3' | 'isLegal' | 'hasUnownedCards' | 'isFavorite' | 'mainDeck' | 'sideDeck' | 'extraDeck' |
     'num_1' | 'num_2' | 'num_3' | 'num_4' | 'str_1' | 'str_2' | 'str_3' | 'str_4' | 'fieldSettings' | 'tag' | 'searchText'>;
 
 /**
  * Deckデータから、DeckCompareFieldsを生成するヘルパー関数。
+ * Map型のゾーンはソートされた配列に変換され、比較可能性を確保する。
  */
 const extractCompareFieldsFromDeck = (deck: Deck): DeckCompareFields => {
-    const mapToArrayAndSort = (map: Map<string, number>): [string, number][] => 
+    // Map<cardId, count> を [cardId, count][] に変換し、cardIdでソート
+    const mapToArrayAndSort = (map: Map<string, number>): [string, number][] =>
         Array.from(map.entries()).sort((a, b) => a[0].localeCompare(b[0]));
 
     const deckFields: DeckCompareFields = {
@@ -60,18 +61,18 @@ const extractCompareFieldsFromDeck = (deck: Deck): DeckCompareFields => {
         isLegal: deck.isLegal,
         hasUnownedCards: deck.hasUnownedCards,
         isFavorite: deck.isFavorite,
-                
+
         // Map型のゾーンを比較可能な配列に変換
         mainDeck: mapToArrayAndSort(deck.mainDeck) as any,
         sideDeck: mapToArrayAndSort(deck.sideDeck) as any,
         extraDeck: mapToArrayAndSort(deck.extraDeck) as any,
-        
-        // カスタムフィールド30個
+
+        // カスタムフィールド
         num_1: deck.num_1, num_2: deck.num_2, num_3: deck.num_3, num_4: deck.num_4,
         str_1: deck.str_1, str_2: deck.str_2, str_3: deck.str_3, str_4: deck.str_4,
-        fieldSettings: deck.fieldSettings, tag:deck.tag, searchText:deck.searchText,
+        fieldSettings: deck.fieldSettings, tag: deck.tag, searchText: deck.searchText,
     };
-    
+
     return deckFields;
 };
 // ----------------------------------------------------------------------
@@ -85,32 +86,32 @@ export const useDeckEditor = (deckId: string) => {
     const [originalDeckData, setOriginalDeckData] = useState<DeckCompareFields | null>(null);
     const [isLoading, setIsLoading] = useState(true);
     const [saveMessage, setSaveMessage] = useState<string | null>(null);
-    const navigate = useNavigate(); 
+    const navigate = useNavigate();
 
     // DeckStoreから必要なアクションと状態を取得
     const {
-        fetchDeckById, 
-        saveDeck, 
-        decks, 
+        fetchDeckById,
+        saveDeck,
+        decks,
     } = useDeckStore(useShallow(state => ({
         fetchDeckById: state.fetchDeckById,
         saveDeck: state.saveDeck,
         decks: state.decks,
     })));
-    
+
     // CardPoolStoreから所有カード資産を取得
     const ownedCards = useCardPoolStore(state => state.ownedCards);
-    
+
     // CardStoreから全カードリストを取得
-    const allCards = useCardStore(useShallow(state => state.cards)); 
-    
+    const allCards = useCardStore(useShallow(state => state.cards));
+
 
     // --- 派生状態 ---
     // DB/Storeに存在しなければ新規作成とみなす
     const isNewDeck = useMemo(() => {
         return deckId && !decks.some(d => d.deckId === deckId);
     }, [deckId, decks]);
-    
+
     /**
      * ダーティチェックロジック
      */
@@ -118,17 +119,19 @@ export const useDeckEditor = (deckId: string) => {
         if (!deckData) return false;
 
         const currentFields = extractCompareFieldsFromDeck(deckData);
+        const currentJson = JSON.stringify(currentFields);
 
         if (isNewDeck) {
+            // 新規作成時: デフォルト状態と比較
             const defaultDeck = createDefaultDeck(deckData.deckId);
             const defaultFields = extractCompareFieldsFromDeck(defaultDeck);
-            
-            return JSON.stringify(currentFields) !== JSON.stringify(defaultFields);
+            return currentJson !== JSON.stringify(defaultFields);
         }
 
+        // 既存デッキ: 初期ロード時のスナップショットと比較
         if (!originalDeckData) return false;
-        
-        return JSON.stringify(currentFields) !== JSON.stringify(originalDeckData);
+
+        return currentJson !== JSON.stringify(originalDeckData);
     }, [deckData, originalDeckData, isNewDeck]);
 
 
@@ -141,7 +144,7 @@ export const useDeckEditor = (deckId: string) => {
         setDeckData(deck);
         setOriginalDeckData(extractCompareFieldsFromDeck(deck));
         setIsLoading(false);
-        console.log(`[useDeckEditor] ✅ Local state set for Deck ID: ${deck.deckId}`);
+        // console.log(`[useDeckEditor] ✅ Local state set for Deck ID: ${deck.deckId}`);
     }, []);
 
 
@@ -165,159 +168,199 @@ export const useDeckEditor = (deckId: string) => {
                 setIsLoading(false);
             }
         };
+        // URLのdeckIdとローカルの状態が一致しない場合のみロードを実行
         if (!deckData || deckData.deckId !== deckId) {
             loadDeck();
         }
-    }, [deckId, fetchDeckById, isNewDeck]);
+    }, [deckId, fetchDeckById, isNewDeck, updateLocalState, deckData]);
 
-    // --- UI/データ更新ハンドラ (変更なし) ---
-    
+    // --- UI/データ更新ハンドラ ---
+
+    /**
+     * デッキ情報（名称、画像URLなど、Map以外のフィールド）を更新
+     */
     const updateDeckInfo = useCallback((info: Partial<Omit<Deck, 'mainDeck' | 'sideDeck' | 'extraDeck' | 'totalCards'>>) => {
         setDeckData(prev => prev ? ({ ...prev, ...info }) : null);
     }, []);
-    
+
+    /**
+     * 指定されたゾーンのカード枚数を更新（追加/削除/変更）
+     */
     const updateCardCount = useCallback((zone: keyof Pick<Deck, 'mainDeck' | 'sideDeck' | 'extraDeck'>, cardId: string, count: number) => {
         setDeckData(prev => {
             if (!prev) return null;
 
+            // 既存のMapをコピー
             const newMap = new Map(prev[zone]);
-            
+
             if (count > 0) {
                 newMap.set(cardId, count);
             } else {
                 newMap.delete(cardId);
             }
-            
-            const newTotalCards = Array.from(prev.mainDeck.values()).reduce((a, b) => a + b, 0) +
-                Array.from(prev.sideDeck.values()).reduce((a, b) => a + b, 0) +
-                Array.from(prev.extraDeck.values()).reduce((a, b) => a + b, 0);
 
-            return { 
-                ...prev, 
-                [zone]: newMap,
-                totalCards: newTotalCards,
+            // totalCardsを再計算 (Mapの更新後に実行)
+            const mainTotal = Array.from(prev.mainDeck.values()).reduce((a, b) => a + b, 0);
+            const sideTotal = Array.from(prev.sideDeck.values()).reduce((a, b) => a + b, 0);
+            const extraTotal = Array.from(prev.extraDeck.values()).reduce((a, b) => a + b, 0);
+            const newTotalCards = mainTotal + sideTotal + extraTotal;
+            
+            // 更新後のオブジェクトを生成
+            return {
+                ...prev,
+                [zone]: newMap, // 更新されたゾーンのMap
+                totalCards: newTotalCards, // 更新された合計枚数
             };
         });
     }, []);
-    
-    
-    // 💡 修正 2: ArchiveDependencies の構築方法を変更 (getState を渡す)
-    // useDeckStore.getState は get 関数と同じ型シグネチャ () => DeckStore を持つ
-const deckArchiveDependencies: DeckArchiveDependencies = {
-    // DeckStore の getState を get として渡す (Zustandの get() と getState() は同じシグネチャ)
-    get: useDeckStore.getState, 
-    // getCardStoreState と getCardPoolStoreState は削除 (createDeckArchiveで不要なため)
-};
 
-    // 💡 修正 3: useDeckArchive から createDeckArchive に変更し、アクションを取得
+    // ----------------------------------------------------------------------
+    // 修正: DeckEditorPage.tsx が期待する handleCardAdd/Remove のラッパー関数
+    // ----------------------------------------------------------------------
+
+    /**
+     * カードを1枚追加
+     */
+    const handleCardAdd = useCallback((cardId: string, deckArea: 'mainDeck' | 'sideDeck' | 'extraDeck') => {
+        const currentCount = deckData ? deckData[deckArea].get(cardId) || 0 : 0;
+        updateCardCount(deckArea, cardId, currentCount + 1);
+    }, [deckData, updateCardCount]);
+
+    /**
+     * カードを1枚削除
+     */
+    const handleCardRemove = useCallback((cardId: string, deckArea: 'mainDeck' | 'sideDeck' | 'extraDeck') => {
+        const currentCount = deckData ? deckData[deckArea].get(cardId) || 0 : 0;
+        updateCardCount(deckArea, cardId, currentCount - 1);
+    }, [deckData, updateCardCount]);
+
+
+    // ArchiveDependencies の構築
+    const deckArchiveDependencies: DeckArchiveDependencies = {
+        // DeckStore の getState を get として渡す 
+        get: useDeckStore.getState,
+    };
+
+    // createDeckArchive を使用してアクションを取得
     const {
         moveDeckToTrash,
         restoreDeckFromTrash,
-        deleteDeckFromTrash: physicalDeleteDeck, 
-    } = createDeckArchive(deckArchiveDependencies); // 💡 createDeckArchive を使用
+        deleteDeckFromTrash: physicalDeleteDeck,
+    } = createDeckArchive(deckArchiveDependencies);
 
 
-    // 3. デッキ保存ロジック (変更なし)
+    // 3. デッキ保存ロジック
     const handleSaveDeck = useCallback(async () => {
         if (!deckData?.name?.trim()) {
-            setSaveMessage('デッキ名を入力してください。');
+            setSaveMessage('❌ デッキ名を入力してください。');
             setTimeout(() => setSaveMessage(null), 3000);
             return;
         }
-        
+
         if (!isDirty) {
-            setSaveMessage('変更がありません。');
+            setSaveMessage('✅ 変更がありません。');
             setTimeout(() => setSaveMessage(null), 3000);
             return;
         }
 
         try {
-            const savedDeck = await saveDeck(deckData); 
-            
-            if (isNewDeck) {
-                navigate({ to: '/user/decks/$deckId', params: { deckId: savedDeck.deckId }, replace: true });
-            } else {
-                updateLocalState(savedDeck);
-            }
+            const savedDeck = await saveDeck(deckData);
 
-            setSaveMessage('デッキを保存しました！');
-            setTimeout(() => setSaveMessage(null), 3000);
+            if (isNewDeck) {
+                // 新規作成の場合、URLを置換してリダイレクト
+                navigate({ to: '/decks/$deckId', params: { deckId: savedDeck.deckId }, replace: true });
+            } else {
+                // 既存デッキの場合、ローカルの状態を保存後の状態に更新
+                updateLocalState(savedDeck);
+                setSaveMessage('✅ デッキを保存しました！');
+                setTimeout(() => setSaveMessage(null), 3000);
+            }
         } catch (error) {
-            setSaveMessage('保存に失敗しました。');
+            setSaveMessage('❌ 保存に失敗しました。');
             console.error('Save failed:', error);
+            setTimeout(() => setSaveMessage(null), 3000);
         }
     }, [deckData, saveDeck, isNewDeck, navigate, updateLocalState, isDirty]);
-    
-    
-    // 4. デッキ削除 (メインDBから削除しゴミ箱に移動) ロジック (変更なし)
+
+
+    // 4. デッキ削除 (メインDBから削除しゴミ箱に移動) ロジック
     const handleDeleteDeck = useCallback(async () => {
-        if (!deckData) return; 
-        
-        if (!window.confirm(`デッキ「${deckData.name}」をゴミ箱に移動しますか？`)) {
+        if (!deckData) return;
+
+        if (!window.confirm(`デッキ「${deckData.name}」をゴミ箱に移動しますか？\n（この操作はいつでも復元可能です）`)) {
             return;
         }
-        
+
         try {
-            await moveDeckToTrash(deckData.deckId); 
-            navigate({ to: '/user/decks' });
+            await moveDeckToTrash(deckData.deckId);
+            setSaveMessage('✅ デッキをゴミ箱に移動しました。');
+            navigate({ to: '/decks' });
         } catch (error) {
-            setSaveMessage('デッキのゴミ箱への移動に失敗しました。');
+            setSaveMessage('❌ デッキのゴミ箱への移動に失敗しました。');
             console.error(error);
         }
     }, [deckData, moveDeckToTrash, navigate]);
-    
-    
-    // 5. デッキ復元 (ゴミ箱から復元) ロジック (変更なし)
-    const handleRestoreDeck = useCallback(async (archiveId: string) => { 
+
+
+    // 5. デッキ復元 (ゴミ箱から復元) ロジック
+    const handleRestoreDeck = useCallback(async (archiveId: string) => {
         if (!window.confirm(`デッキを一覧に復元しますか？`)) {
-             return;
+            return;
         }
-        
+
         try {
-            await restoreDeckFromTrash(archiveId); 
-            setSaveMessage('デッキを一覧に復元しました。');
-            navigate({ to: '/user/decks' });
-            
+            await restoreDeckFromTrash(archiveId);
+            setSaveMessage('✅ デッキを一覧に復元しました。');
+            navigate({ to: '/decks' });
+
         } catch (error) {
-            setSaveMessage('復元に失敗しました。');
+            setSaveMessage('❌ 復元に失敗しました。');
             console.error(error);
         }
     }, [restoreDeckFromTrash, navigate]);
-    
-    
-    // 6. 物理削除ロジック (ゴミ箱からの完全削除) (変更なし)
-    const handlePhysicalDelete = useCallback(async (archiveId: string) => { 
+
+
+    // 6. 物理削除ロジック (ゴミ箱からの完全削除)
+    const handlePhysicalDelete = useCallback(async (archiveId: string) => {
         if (!window.confirm(`【警告】デッキをDBから完全に物理削除しますか？\nこの操作は元に戻せません。`)) {
             return;
         }
-        
+
         try {
-            await physicalDeleteDeck(archiveId); 
-            setSaveMessage('デッキを物理削除しました。');
-            navigate({ to: '/user/decks' });
+            await physicalDeleteDeck(archiveId);
+            setSaveMessage('✅ デッキを物理削除しました。');
+            navigate({ to: '/decks' });
         } catch (error) {
-            setSaveMessage('デッキの物理削除に失敗しました。');
+            setSaveMessage('❌ デッキの物理削除に失敗しました。');
             console.error(error);
         }
     }, [physicalDeleteDeck, navigate]);
 
 
-    // 公開する値とアクション (変更なし)
+    // 公開する値とアクション
     return {
+        deckId,
         isLoading,
-        isDirty, 
+        isDirty,
         saveMessage,
-        currentDeck: deckData, 
-        
-        onSave: handleSaveDeck, 
-        onDelete: handleDeleteDeck, 
-        onRestore: handleRestoreDeck, 
-        onPhysicalDelete: handlePhysicalDelete, 
-        
+        currentDeck: deckData,
+        isNewDeck,
+
+        // デッキ編集アクション
+        onSave: handleSaveDeck,
+        onDelete: handleDeleteDeck,
+        onRestore: handleRestoreDeck,
+        onPhysicalDelete: handlePhysicalDelete,
+
+        // データ更新ハンドラ
         updateDeckInfo,
         updateCardCount,
-        
-        allCards: allCards, 
+        // 修正: DeckEditorPage.tsxで期待されていたプロパティを追加
+        handleCardAdd,
+        handleCardRemove,
+
+        // 参照データ
+        allCards: allCards,
         ownedCards: ownedCards,
     };
 };

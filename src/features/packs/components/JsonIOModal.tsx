@@ -2,13 +2,17 @@
  * src/features/packs/components/JsonIOModal.tsx
  *
  * パック全体（Packデータと収録カードデータ）のJSONインポート機能に対応するモーダルUIコンポーネント。
- * このコンポーネントは、JSONファイルの選択と、インポート実行の確認画面、および処理中のステータスメッセージ表示を提供します。
- * 責務：ファイル選択UI、インポートルールのユーザーへの提示、アクションボタンのレンダリング、ステータスの表示。
+ * * 責務:
+ * 1. JSONファイルの選択用UI（<input type="file">）をユーザーに提供する。
+ * 2. インポートが新規パックとして登録され、既存パックを上書きしないという**重要なルール**をユーザーに提示する（Alert）。
+ * 3. インポート処理の進行状況、成功、失敗を示すステータスメッセージを表示する。
+ * 4. 選択されたファイルが存在し、かつローディング中でない場合に「インポート実行」ボタンを有効化する。
+ * 5. 親コンポーネントから渡されるファイル選択、インポート実行、モーダル閉鎖のコールバックを実行する。
  */
 import React from 'react';
-import { 
-    Button, Dialog, DialogTitle, DialogContent, DialogActions, 
-    Alert, Typography, CircularProgress 
+import {
+    Button, Dialog, DialogTitle, DialogContent, DialogActions,
+    Alert, Typography, CircularProgress
 } from '@mui/material';
 
 interface JsonIOModalProps {
@@ -45,8 +49,8 @@ const JsonIOModal: React.FC<JsonIOModalProps> = ({
                     **既存のパックへの上書きは行いません**。JSON内のパックIDは新しいIDに自動で置き換えられます。
                 </Alert>
                 {statusMessage && (
-                    <Alert 
-                        severity={statusMessage.startsWith('❌') ? 'error' : (statusMessage.startsWith('⚠️') ? 'warning' : 'success')} 
+                    <Alert
+                        severity={statusMessage.startsWith('❌') ? 'error' : (statusMessage.startsWith('⚠️') ? 'warning' : 'success')}
                         sx={{ mb: 2 }}
                     >
                         {statusMessage}
@@ -56,7 +60,7 @@ const JsonIOModal: React.FC<JsonIOModalProps> = ({
                     type="file"
                     accept=".json"
                     onChange={(e) => handleFileChange(e, 'json')}
-                    disabled={isLoading} 
+                    disabled={isLoading}
                 />
                 {fileToImport && (
                     <Typography variant="body2" sx={{ mt: 1 }}>

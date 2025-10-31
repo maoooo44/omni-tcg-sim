@@ -1,24 +1,26 @@
-/* src/services/user-data/userDataService.ts
+/**
+ * src/services/user-data/userDataService.ts
  *
- * IndexedDB (Dexie) の 'userSettings' テーブルに対して、
- * コイン以外のユーザー設定（isDTCGEnabled, isGodMode, cheatCountなど）
- * のロードと保存を行うサービス。設定は単一のキーで管理される。
+ * * IndexedDB (Dexie) の 'userSettings' テーブルに対するユーザー設定データ
+ * * （isDTCGEnabled, gcSettings, gridSettingsなど）の永続化操作を扱うサービス層モジュール。
+ * * 責務:
+ * 1. IndexedDBの単一キー（'userSettings'）で管理される設定データ（PersistedUserSettings）のロードと保存（Upsert）。
+ * 2. 設定のロード時、DBからの読み込みデータとデフォルト設定（DEFAULT_SETTINGS）をディープマージし、データ構造の互換性を保証する。
+ * 3. DB操作に関するエラーハンドリングを提供する。
  */
 
 import { db } from '../database/db';
-import type { DBSetting } from '../../models/db-types'; 
-// 💡 既存: DEFAULT_SETTINGS のみインポート
+import type { DBSetting } from '../../models/db-types';
 import { DEFAULT_SETTINGS } from '../../configs/defaults';
 
-// 💡 修正: CustomFieldConfig のインポートを削除
-import type { 
-    GridDisplayDefault, 
+import type {
+    GridDisplayDefault,
     PersistedUserSettings,
     GCSetting,
     ItemGcSettings
-} from '../../models/userData'; 
+} from '../../models/userData';
 
-const SETTINGS_KEY = 'userSettings'; 
+const SETTINGS_KEY = 'userSettings';
 
 export { DEFAULT_SETTINGS };
 
@@ -32,22 +34,21 @@ export const userDataService = {
      * DBからユーザー設定をロードする。
      * @returns PersistedUserSettings (データが存在しない場合はデフォルト設定)
      */
-    async loadSettings(): Promise<PersistedUserSettings> { 
+    async loadSettings(): Promise<PersistedUserSettings> {
         try {
             const entry = await db.userSettings.get(SETTINGS_KEY);
-            
+
             if (entry) {
                 const loadedSettings = entry.value as Partial<PersistedUserSettings>;
-                
+
                 // ネストされたオブジェクトも安全に結合する (ディープマージの簡易版)
 
-                const mergedGcSettings: GCSetting = { // GCSettingに型注釈
-                    ...DEFAULT_SETTINGS.gcSettings, 
+                const mergedGcSettings: GCSetting = {
+                    ...DEFAULT_SETTINGS.gcSettings,
                     ...loadedSettings.gcSettings,
                     trash: {
                         ...DEFAULT_SETTINGS.gcSettings.trash,
                         ...loadedSettings.gcSettings?.trash,
-                        // 💡 ItemGcSettings のプロパティに型注釈を追加することで、使用を明確化できる
                         packBundle: {
                             ...(DEFAULT_SETTINGS.gcSettings.trash.packBundle as ItemGcSettings),
                             ...(loadedSettings.gcSettings?.trash.packBundle as Partial<ItemGcSettings>),
@@ -60,7 +61,6 @@ export const userDataService = {
                     history: {
                         ...DEFAULT_SETTINGS.gcSettings.history,
                         ...loadedSettings.gcSettings?.history,
-                        // 💡 ItemGcSettings のプロパティに型注釈を追加
                         packBundle: {
                             ...(DEFAULT_SETTINGS.gcSettings.history.packBundle as ItemGcSettings),
                             ...(loadedSettings.gcSettings?.history.packBundle as Partial<ItemGcSettings>),
@@ -72,12 +72,10 @@ export const userDataService = {
                     },
                 };
 
-                // 💡 削除: mergedCustomFieldConfig のマージロジックを削除
-
                 const mergedGridSettings = {
-                    ...DEFAULT_SETTINGS.gridSettings, 
+                    ...DEFAULT_SETTINGS.gridSettings,
                     ...loadedSettings.gridSettings,
-                    cardPool: { // GridDisplayDefault に型注釈を追加
+                    cardPool: {
                         ...(DEFAULT_SETTINGS.gridSettings.cardPool as GridDisplayDefault),
                         ...(loadedSettings.gridSettings?.cardPool as Partial<GridDisplayDefault>),
                         advancedResponsive: {
@@ -91,14 +89,13 @@ export const userDataService = {
                     ...DEFAULT_SETTINGS,
                     ...loadedSettings,
                     gcSettings: mergedGcSettings,
-                    // 💡 削除: customFieldConfig のマージ結果を削除
                     gridSettings: mergedGridSettings,
                 } as PersistedUserSettings;
             }
-            return DEFAULT_SETTINGS; 
+            return DEFAULT_SETTINGS;
         } catch (error) {
             console.error("Failed to load user settings from DB:", error);
-            return DEFAULT_SETTINGS; 
+            return DEFAULT_SETTINGS;
         }
     },
 
@@ -112,7 +109,7 @@ export const userDataService = {
                 key: SETTINGS_KEY,
                 value: settings
             };
-            await db.userSettings.put(settingEntry); 
+            await db.userSettings.put(settingEntry);
         } catch (error) {
             console.error("Failed to save user settings to DB:", error);
             throw new Error("ユーザー設定のDB保存に失敗しました。");
@@ -125,6 +122,4 @@ export const userDataService = {
     async getUserSettings(): Promise<PersistedUserSettings> {
         return this.loadSettings();
     }
-    
-    // ★ 削除: getArchiveGcSetting メソッドを削除
 };

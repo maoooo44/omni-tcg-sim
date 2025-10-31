@@ -1,51 +1,56 @@
 /**
  * src/models/pack.ts
  *
- * TCG Builderアプリケーションで使用される「パック」のデータ構造を定義する型です。
- * パック名、価格、封入枚数、レアリティ設定、画像URLなど、パック開封シミュレーションと
- * パック管理に必要なすべてのメタデータが含まれます。
+ * * TCG Builderアプリケーションで使用される「パック」のデータ構造と関連型を定義するモデル層モジュール。
+ * パック名、価格、封入枚数、複雑なレアリティ設定、画像URLなど、パック開封シミュレーションと
+ * パック管理に必要なすべてのメタデータ構造を定義します。
+ *
+ * * 責務:
+ * 1. パックの構成タイプ（PackType）と、その選択肢リストを定義する。
+ * 2. 封入確率に関する設定構造（RarityConfig, AdvancedRarityConfig）を定義する。
+ * 3. パックおよび収録カードのカスタムフィールド設定構造（PackFieldSettings, CardFieldSettings）を定義する。
+ * 4. パック本体のデータ構造（Pack）を定義する。
+ * 5. パックデータとその収録カードをバンドルした構造（PackBundle）を定義する。
  */
 
-import type { Card } from "./card"; // Cardの型定義は別ファイルからインポート
+import type { Card } from "./card";
 
 import type { FieldSetting } from './customField';
 
 
-export type PackType = 'Booster' | 'ConstructedDeck' | 'Other';
+export type PackType = 'Booster' | 'ConstructedDeck';
 
 /**
  * パック種別 (PackType) の選択肢リスト
- * UIのドロップダウンメニューで使用される。
  */
-export const PACK_TYPE_OPTIONS: PackType[] = ['Booster', 'ConstructedDeck', 'Other'];
+export const PACK_TYPE_OPTIONS: PackType[] = ['Booster', 'ConstructedDeck'];
 
 export interface RarityConfig {
-    rarityName: string; // 例: 'Common', 'Rare'
-    probability: number; // 封入確率 (0.0 から 1.0 の間)
+    rarityName: string;
+    probability: number;
 }
 
 // 確定枚数ロジック用の新しい設定
 export interface AdvancedRarityConfig {
     rarityName: string;
     /**
-     * @description [基本確率] 残り枠を埋めるために使用される確率 (合計 1.0)。
-     * 従来のRarityConfig.probabilityと同じ役割。
+     * [基本確率] 残り枠を埋めるために使用される確率 (合計 1.0)。
      */
-    probability: number; 
-    
-    /**
-     * @description [特殊確率] 特殊抽選スロットで使用される確率 (合計 1.0)。
-     */
-    specialProbability: number; // ★ NEW: 特殊抽選用の確率
+    probability: number;
 
     /**
-     * @description パック内のこのレアリティの確定枚数
+     * [特殊確率] 特殊抽選スロットで使用される確率 (合計 1.0)。
      */
-    fixedValue: number; // 確定枚数
+    specialProbability: number;
+
+    /**
+     * パック内のこのレアリティの確定枚数
+     */
+    fixedValue: number;
 }
 
 
-/** カードの標準フィールドの表示設定を定義する型 */
+/** パックのカスタムフィールドの表示設定を定義する型 */
 export interface PackFieldSettings {
     num_1: FieldSetting;
     num_2: FieldSetting;
@@ -53,7 +58,7 @@ export interface PackFieldSettings {
     str_2: FieldSetting;
 }
 
-/** カードの標準フィールドの表示設定を定義する型 */
+/** 収録カードのカスタムフィールドの表示設定を定義する型 */
 export interface CardFieldSettings {
     num_1: FieldSetting;
     num_2: FieldSetting;
@@ -69,34 +74,45 @@ export interface CardFieldSettings {
     str_6: FieldSetting;
 }
 
+/** 構築済みデッキに含まれるカード情報 */
+export interface ConstructedDeckCard {
+    /** 収録されるカードのID */
+    cardId: string;
+    /** 収録される枚数 */
+    count: number;
+}
+
 export interface Pack {
-    packId: string; // パックID (ユニークID, 自動生成)
+    packId: string;
     name: string;
     number?: number | null;
-    imageUrl: string; // 拡張パック画像の参照URL
-    imageColor?: string; //プレースホルダーの色プリセットキー
-    cardBackImageUrl: string; // カード裏面画像の参照URL
-    price: number; // ゲーム内通貨での価格
+    imageUrl: string;
+    imageColor?: string;
+    cardBackImageUrl: string;
+    cardBackImageColor?: string;
+    price: number;
     packType: PackType;
-    cardsPerPack: number; // 1パックあたりの封入枚数
-    totalCards: number; // 収録カード総数 (自動集計)
-    series: string; // TCGシリーズ名
+    cardsPerPack: number;
+    totalCards: number;
+    series: string;
     description: string;
-    isOpened: boolean; // 開封済みフラグ
+    isOpened: boolean;
     isFavorite: boolean;
     createdAt: string;
-    updatedAt: string; // ISO 8601形式の最終更新日時
+    updatedAt: string;
 
     //確率用
-    rarityConfig: RarityConfig[]; // レアリティと封入確率の配列
-    advancedRarityConfig?: AdvancedRarityConfig[]; // 高度な確定枚数を含むレアリティ設定
+    rarityConfig: RarityConfig[];
+    advancedRarityConfig?: AdvancedRarityConfig[];
     specialProbabilitySlots: number;
     isAdvancedRulesEnabled: boolean;
+
+    constructedDeckCards?: ConstructedDeckCard[];
 
     cardPresetId?: string;
 
     num_1?: number | null;
-    num_2?: number | null; 
+    num_2?: number | null;
     str_1?: string;
     str_2?: string;
 
@@ -104,12 +120,12 @@ export interface Pack {
     cardFieldSettings: CardFieldSettings;
 
     /** ユーザー定義のタグ/その他の属性。カスタムフィールドの代わり。 */
-    tag?: Record<string, string>;
+    tag?: string[];
     /** 全文検索用の連結文字列（tagを結合） */
     searchText?: string;
 }
 
 export interface PackBundle {
-    packData: Pack;     // パック本体のデータ（Pack型）
-    cardsData: Card[];  // その時点の関連カードの配列（Card型）
+    packData: Pack;
+    cardsData: Card[];
 }

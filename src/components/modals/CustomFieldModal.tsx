@@ -1,39 +1,44 @@
 /**
  * src/components/modals/CustomFieldModal.tsx
- * * カスタムフィールド設定の管理リスト。ドラッグ＆ドロップで表示名と順序を設定。
+ *
+ * * カスタムフィールド設定の管理リスト。ドラッグ＆ドロップ (D&D) でフィールドの表示名と表示順序を設定するモーダルコンポーネント。
+ * * 責務:
+ * 1. 親から渡された全フィールド情報 (`allFieldInfo`) を基に、現在の設定（表示名と順序）と未設定フィールドを組み合わせたローカル状態 (`localSettings`) を構築・管理する。
+ * 2. `SortableItem` コンポーネントを通じて、個々のフィールドの表示名入力と D&D によるリストの再順序付けを可能にする UI を提供する。
+ * 3. 「設定を保存」時、ローカル状態と初期設定を比較し、変更（新規設定、更新、削除、順序変更）があったフィールドのみを `onSettingChange` コールバックを通じて親コンポーネントに通知する。
+ * 4. Material-UI の Dialog を使用したモーダルとしての表示・非表示、およびキャンセル/保存時のクローズ動作を制御する。
  */
 import React, { useState, useEffect, useCallback, useMemo } from 'react';
-import { 
-    Dialog, DialogTitle, DialogContent, DialogActions, 
-    TextField, Button, Typography, Box, Grid, 
+import {
+    Dialog, DialogTitle, DialogContent, DialogActions,
+    TextField, Button, Typography, Box, Grid,
 } from '@mui/material';
-import ReorderIcon from '@mui/icons-material/Reorder'; 
+import ReorderIcon from '@mui/icons-material/Reorder';
 
-// 💡 D&D ライブラリのインポート
-import { 
-    DndContext, 
-    closestCenter, 
-    PointerSensor, 
-    useSensor, 
-    useSensors, 
-    type DragEndEvent 
+import {
+    DndContext,
+    closestCenter,
+    PointerSensor,
+    useSensor,
+    useSensors,
+    type DragEndEvent
 } from '@dnd-kit/core';
-import { 
-    SortableContext, 
-    useSortable, 
+import {
+    SortableContext,
+    useSortable,
     verticalListSortingStrategy,
     arrayMove
 } from '@dnd-kit/sortable';
 import { CSS } from '@dnd-kit/utilities';
 
-import type { FieldSetting, CustomFieldType } from '../../models/customField'; 
-import type { CustomFieldKeys, CustomFieldInfo } from '../controls/CustomFieldManager'; 
+import type { FieldSetting, CustomFieldType } from '../../models/customField';
+import type { CustomFieldKeys, CustomFieldInfo } from '../controls/CustomFieldManager';
 
 // ----------------------------------------
-// 型定義 (変更なし)
+// 型定義 
 // ----------------------------------------
-export type AllFieldInfo = CustomFieldInfo & { 
-    setting: FieldSetting | undefined; 
+export type AllFieldInfo = CustomFieldInfo & {
+    setting: FieldSetting | undefined;
 };
 
 interface LocalFieldSetting extends AllFieldInfo {
@@ -46,7 +51,7 @@ export interface CustomFieldModalProps {
     itemType: 'Card' | 'Deck' | 'Pack';
     onSettingChange: (
         itemType: 'Card' | 'Deck' | 'Pack',
-        type: CustomFieldType, 
+        type: CustomFieldType,
         index: number,
         settingUpdates: Partial<FieldSetting>
     ) => void;
@@ -54,7 +59,7 @@ export interface CustomFieldModalProps {
 }
 
 // ----------------------------------------
-// Sortableアイテムコンポーネント (変更なし)
+// Sortableアイテムコンポーネント 
 // ----------------------------------------
 
 interface SortableItemProps {
@@ -65,35 +70,35 @@ interface SortableItemProps {
 const SortableItem: React.FC<SortableItemProps> = ({ field, handleDisplayNameChange }) => {
     // fieldKey を一意のIDとして利用
     const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({ id: field.fieldKey });
-    
+
     const style = {
         transform: CSS.Transform.toString(transform),
         transition,
-        zIndex: isDragging ? 10 : 1, 
-        opacity: isDragging ? 0.9 : 1, 
-        p: 1, 
+        zIndex: isDragging ? 10 : 1,
+        opacity: isDragging ? 0.9 : 1,
+        p: 1,
     };
 
     const isSet = !!field.setting?.displayName;
 
     return (
-        <Grid 
+        <Grid
             // 1列表示
-            size={12} 
-            ref={setNodeRef} 
+            size={12}
+            ref={setNodeRef}
             style={style}
         >
-            <Box 
+            <Box
                 sx={{
-                    p: 1, 
-                    display: 'flex', 
+                    p: 1,
+                    display: 'flex',
                     alignItems: 'center',
-                    border: isDragging ? '1px dashed primary.main' : '1px solid #eee', 
+                    border: isDragging ? '1px dashed primary.main' : '1px solid #eee',
                     borderRadius: 1,
                     bgcolor: isSet ? 'rgba(0, 0, 0, 0.02)' : 'transparent',
                 }}
             >
-                {/* 💡 ドラッグハンドル（三本線）: attributes/listeners を適用し、ドラッグ専用にする */}
+                {/* ドラッグハンドル（三本線）: attributes/listeners を適用し、ドラッグ専用にする */}
                 <Box
                     sx={{
                         cursor: 'grab',
@@ -103,10 +108,10 @@ const SortableItem: React.FC<SortableItemProps> = ({ field, handleDisplayNameCha
                         alignItems: 'center',
                         color: 'text.secondary',
                         '&:hover': { color: 'primary.main' },
-                        flexShrink: 0, 
+                        flexShrink: 0,
                     }}
-                    {...attributes} 
-                    {...listeners} 
+                    {...attributes}
+                    {...listeners}
                 >
                     <ReorderIcon />
                 </Box>
@@ -114,13 +119,13 @@ const SortableItem: React.FC<SortableItemProps> = ({ field, handleDisplayNameCha
                 {/* 入力フォーム */}
                 <TextField
                     fullWidth
-                    label={`${field.fieldKey} (表示名)`} 
+                    label={`${field.fieldKey} (表示名)`}
                     placeholder="表示名 (空で削除)"
-                    value={field.displayName} 
+                    value={field.displayName}
                     onChange={(e) => handleDisplayNameChange(field.fieldKey, e.target.value)}
                     size="small"
                     // 入力中に D&D が発動しないように onMouseDown を設定
-                    onMouseDown={(e) => e.stopPropagation()} 
+                    onMouseDown={(e) => e.stopPropagation()}
                 />
             </Box>
         </Grid>
@@ -132,14 +137,14 @@ const SortableItem: React.FC<SortableItemProps> = ({ field, handleDisplayNameCha
 // コンポーネント本体
 // ----------------------------------------
 
-const CustomFieldModal: React.FC<CustomFieldModalProps> = ({ 
-    isOpen, onClose, itemType, allFieldInfo, onSettingChange 
+const CustomFieldModal: React.FC<CustomFieldModalProps> = ({
+    isOpen, onClose, itemType, allFieldInfo, onSettingChange
 }) => {
     const [localSettings, setLocalSettings] = useState<LocalFieldSetting[]>([]);
-    
+
     // DndContextのためのセンサー設定
     const sensors = useSensors(
-        useSensor(PointerSensor, { 
+        useSensor(PointerSensor, {
             // センサーの距離を小さくし、純粋なクリックではないことを強調
             activationConstraint: { distance: 5 }
         })
@@ -149,24 +154,24 @@ const CustomFieldModal: React.FC<CustomFieldModalProps> = ({
     useEffect(() => {
         const sortedInfo = [...allFieldInfo].sort((a, b) => {
             if (a.type !== b.type) {
-                return a.type === 'num' ? -1 : 1; 
+                return a.type === 'num' ? -1 : 1;
             }
             return a.index - b.index;
         });
 
         const currentActiveFields = sortedInfo
             .filter(f => f.setting?.displayName)
-            .map(f => ({ ...f, displayName: f.setting!.displayName })); 
-        
+            .map(f => ({ ...f, displayName: f.setting!.displayName }));
+
         currentActiveFields.sort((a, b) => {
             const aOrder = a.setting?.order ?? Infinity;
             const bOrder = b.setting?.order ?? Infinity;
             return aOrder - bOrder;
         });
-        
+
         const unusedFields = sortedInfo
             .filter(f => !f.setting?.displayName)
-            .map(f => ({ ...f, displayName: '' })); 
+            .map(f => ({ ...f, displayName: '' }));
 
         setLocalSettings([...currentActiveFields, ...unusedFields]);
 
@@ -174,10 +179,10 @@ const CustomFieldModal: React.FC<CustomFieldModalProps> = ({
 
 
     // 表示名変更ハンドラ (SortableItemに渡す)
-    const handleDisplayNameChange = useCallback((fieldKey: CustomFieldKeys, newDisplayName: string) => { 
-        setLocalSettings(prev => prev.map(f => 
-            f.fieldKey === fieldKey 
-                ? { ...f, displayName: newDisplayName } 
+    const handleDisplayNameChange = useCallback((fieldKey: CustomFieldKeys, newDisplayName: string) => {
+        setLocalSettings(prev => prev.map(f =>
+            f.fieldKey === fieldKey
+                ? { ...f, displayName: newDisplayName }
                 : f
         ));
     }, []);
@@ -206,7 +211,7 @@ const CustomFieldModal: React.FC<CustomFieldModalProps> = ({
     // 保存処理
     const handleSave = () => {
         const changes: Record<CustomFieldKeys, Partial<FieldSetting>> = {} as Record<CustomFieldKeys, Partial<FieldSetting>>;
-        
+
         localSettings.forEach((field, index) => {
             const initialSetting = allFieldInfo.find(f => f.fieldKey === field.fieldKey)?.setting;
             const initialDisplayName = initialSetting?.displayName.trim() || '';
@@ -224,9 +229,9 @@ const CustomFieldModal: React.FC<CustomFieldModalProps> = ({
 
             // 2. order の変更チェック
             if (newOrder !== initialOrder) {
-                 updates.order = newOrder;
+                updates.order = newOrder;
             }
-            
+
             if (Object.keys(updates).length > 0 || (newDisplayName === '' && initialDisplayName !== '')) {
                 changes[field.fieldKey] = updates;
             }
@@ -239,23 +244,23 @@ const CustomFieldModal: React.FC<CustomFieldModalProps> = ({
                 onSettingChange(itemType, fieldInfo.type, fieldInfo.index, updates);
             }
         });
-        
+
         onClose();
     };
 
     const handleCancel = () => {
         onClose();
     };
-    
+
     // SortableContext に渡すIDのリスト
     const items = useMemo(() => localSettings.map(f => f.fieldKey), [localSettings]);
 
 
     return (
-        <Dialog 
-            open={isOpen} 
-            onClose={handleCancel} 
-            maxWidth="lg" 
+        <Dialog
+            open={isOpen}
+            onClose={handleCancel}
+            maxWidth="lg"
             fullWidth
         >
             <DialogTitle>カスタムフィールド設定の管理（ドラッグ＆ドロップ）</DialogTitle>
@@ -263,24 +268,23 @@ const CustomFieldModal: React.FC<CustomFieldModalProps> = ({
                 <Box sx={{ mb: 2 }}>
                     <Typography variant="caption" color="textSecondary">
                         **{itemType}** のカスタムフィールドの**表示名**と**表示順序**を管理します。**三本線アイコンをドラッグ**して**縦方向のみ**順序を変更できます。表示名を空にして保存すると、その設定は**削除**されます。
-                        <br/>
+                        <br />
                         *注: ドラッグ中の自動スクロール機能は無効にしました。*
                     </Typography>
                 </Box>
-                
-                <DndContext 
-                    sensors={sensors} 
-                    collisionDetection={closestCenter} 
+
+                <DndContext
+                    sensors={sensors}
+                    collisionDetection={closestCenter}
                     onDragEnd={handleDragEnd}
-                    // 💡 修正: 自動スクロールを完全に無効化
-                    autoScroll={false} 
+                    autoScroll={false}
                 >
-                    <SortableContext 
-                        items={items} 
+                    <SortableContext
+                        items={items}
                         // 縦軸固定の verticalListSortingStrategy を適用
-                        strategy={verticalListSortingStrategy} 
+                        strategy={verticalListSortingStrategy}
                     >
-                        <Grid container spacing={1}> 
+                        <Grid container spacing={1}>
                             {localSettings.map((field) => (
                                 <SortableItem
                                     key={field.fieldKey}
@@ -291,15 +295,15 @@ const CustomFieldModal: React.FC<CustomFieldModalProps> = ({
                         </Grid>
                     </SortableContext>
                 </DndContext>
-                
+
             </DialogContent>
             <DialogActions>
                 <Button onClick={handleCancel} color="inherit">
                     キャンセル
                 </Button>
-                <Button 
-                    onClick={handleSave} 
-                    color="primary" 
+                <Button
+                    onClick={handleSave}
+                    color="primary"
                     variant="contained"
                 >
                     設定を保存
