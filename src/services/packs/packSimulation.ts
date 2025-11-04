@@ -10,8 +10,7 @@
  * 5. 最終的な結果を、`{ cardId: string, count: number }[]`の形式で集計して返す。
  */
 
-import type { Pack, AdvancedRarityConfig, RarityConfig } from '../../models/pack';
-import type { Card } from '../../models/card';
+import type { Pack, AdvancedRarityConfig, RarityConfig, Card } from '../../models/models';
 import { selectWeightedItem, type WeightedItem } from '../../utils/randomUtils';
 import { cardSearchService } from './../cards/cardSearchService';
 import { hasProbabilityMismatch } from '../../utils/validationUtils';
@@ -36,6 +35,11 @@ const simulateAdvancedOpening = (pack: Pack): SimulationResult => {
     const specialProbabilitySlots = pack.specialProbabilitySlots ?? 0; // 特殊確率枠数
     const drawnRarities: string[] = [];
     let simulationWarning: string | null = null;
+
+    // cardsPerPack が未定義の場合はエラー（Boosterパック専用）
+    if (cardsPerPack === undefined) {
+        return { drawnRarities: [], simulationWarning: "cardsPerPackが設定されていません。" };
+    }
 
     // 高度な設定が存在しない場合は処理をスキップ
     if (!pack.advancedRarityConfig || pack.advancedRarityConfig.length === 0) {
@@ -141,6 +145,11 @@ const simulateClassicOpening = (pack: Pack): SimulationResult => {
     const drawnRarities: string[] = [];
     let simulationWarning: string | null = null;
 
+    // cardsPerPack が未定義の場合はエラー（Boosterパック専用）
+    if (cardsPerPack === undefined) {
+        return { drawnRarities: [], simulationWarning: "cardsPerPackが設定されていません。" };
+    }
+
     const rarityConfigs: RarityConfig[] = pack.rarityConfig;
 
     if (hasProbabilityMismatch(rarityConfigs as any, 'probability', 1.0)) {
@@ -176,6 +185,14 @@ export const simulatePackOpening = async (pack: Pack): Promise<{
     const cardsPerPack = pack.cardsPerPack;
     let drawnRarities: string[] = [];
     let simulationWarning: string | null = null;
+
+    // cardsPerPack が未定義の場合はエラー（Boosterパック専用）
+    if (cardsPerPack === undefined) {
+        return {
+            results: [],
+            simulationWarning: "cardsPerPackが設定されていません。このパックはBoosterパックではありません。"
+        };
+    }
 
 
     // ------------------------------------

@@ -3,15 +3,16 @@
  *
  * * カスタムフィールド設定の管理リスト。ドラッグ＆ドロップ (D&D) でフィールドの表示名と表示順序を設定するモーダルコンポーネント。
  * * 責務:
- * 1. 親から渡された全フィールド情報 (`allFieldInfo`) を基に、現在の設定（表示名と順序）と未設定フィールドを組み合わせたローカル状態 (`localSettings`) を構築・管理する。
- * 2. `SortableItem` コンポーネントを通じて、個々のフィールドの表示名入力と D&D によるリストの再順序付けを可能にする UI を提供する。
- * 3. 「設定を保存」時、ローカル状態と初期設定を比較し、変更（新規設定、更新、削除、順序変更）があったフィールドのみを `onSettingChange` コールバックを通じて親コンポーネントに通知する。
+ * 1. 親から渡された全フィールド情報 (`allFieldInfo`) を基に、現在の設定（表示名、順序、表示/非表示）と未設定フィールドを組み合わせたローカル状態 (`localSettings`) を構築・管理する。
+ * 2. `SortableItem` コンポーネントを通じて、個々のフィールドの**表示/非表示（チェックボックス）**、表示名入力、D&D によるリストの再順序付けを可能にする UI を提供する。
+ * 3. 「設定を保存」時、ローカル状態と初期設定を比較し、変更（新規設定、更新、削除、順序変更、**表示/非表示の変更**）があったフィールドのみを `onSettingChange` コールバックを通じて親コンポーネントに通知する。
  * 4. Material-UI の Dialog を使用したモーダルとしての表示・非表示、およびキャンセル/保存時のクローズ動作を制御する。
  */
 import React, { useState, useEffect, useCallback, useMemo } from 'react';
 import {
     Dialog, DialogTitle, DialogContent, DialogActions,
-    TextField, Button, Typography, Box, Grid,
+    TextField, Button, Typography, Box, Grid, Switch,
+    FormControlLabel,
 } from '@mui/material';
 import ReorderIcon from '@mui/icons-material/Reorder';
 
@@ -33,6 +34,8 @@ import { CSS } from '@dnd-kit/utilities';
 
 import type { FieldSetting, CustomFieldType } from '../../models/customField';
 import type { CustomFieldKeys, CustomFieldInfo } from '../controls/CustomFieldManager';
+import { MODAL_WIDTH, MODAL_HEIGHT } from '../../configs/configs';
+
 
 // ----------------------------------------
 // 型定義 
@@ -43,6 +46,8 @@ export type AllFieldInfo = CustomFieldInfo & {
 
 interface LocalFieldSetting extends AllFieldInfo {
     displayName: string;
+    // フィールドの表示・非表示の状態をローカルで管理
+    isVisible: boolean;
 }
 
 export interface CustomFieldModalProps {
@@ -65,10 +70,11 @@ export interface CustomFieldModalProps {
 interface SortableItemProps {
     field: LocalFieldSetting;
     handleDisplayNameChange: (fieldKey: CustomFieldKeys, newDisplayName: string) => void;
+    // isVisible 変更ハンドラ
+    handleVisibleChange: (fieldKey: CustomFieldKeys, newIsVisible: boolean) => void;
 }
 
-const SortableItem: React.FC<SortableItemProps> = ({ field, handleDisplayNameChange }) => {
-    // fieldKey を一意のIDとして利用
+const SortableItem: React.FC<SortableItemProps> = ({ field, handleDisplayNameChange, handleVisibleChange }) => {
     const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({ id: field.fieldKey });
 
     const style = {
@@ -79,7 +85,8 @@ const SortableItem: React.FC<SortableItemProps> = ({ field, handleDisplayNameCha
         p: 1,
     };
 
-    const isSet = !!field.setting?.displayName;
+    const isActive = field.isVisible;
+    const physicalName = `${field.type.toUpperCase()} ${field.index} (${field.fieldKey})`;
 
     return (
         <Grid
@@ -95,10 +102,12 @@ const SortableItem: React.FC<SortableItemProps> = ({ field, handleDisplayNameCha
                     alignItems: 'center',
                     border: isDragging ? '1px dashed primary.main' : '1px solid #eee',
                     borderRadius: 1,
-                    bgcolor: isSet ? 'rgba(0, 0, 0, 0.02)' : 'transparent',
+                    // isVisible で背景色を制御
+                    bgcolor: isActive ? 'rgba(0, 0, 0, 0.05)' : 'rgba(255, 0, 0, 0.05)',
+                    opacity: isActive ? 1 : 0.6,
                 }}
             >
-                {/* ドラッグハンドル（三本線）: attributes/listeners を適用し、ドラッグ専用にする */}
+                {/* ドラッグハンドル（三本線） */}
                 <Box
                     sx={{
                         cursor: 'grab',
@@ -110,17 +119,37 @@ const SortableItem: React.FC<SortableItemProps> = ({ field, handleDisplayNameCha
                         '&:hover': { color: 'primary.main' },
                         flexShrink: 0,
                     }}
+                    // isVisible が false の場合はD&Dを無効化 (見た目上)
                     {...attributes}
                     {...listeners}
                 >
                     <ReorderIcon />
                 </Box>
 
+                {/* 表示/非表示の切り替えスイッチ */}
+                <FormControlLabel
+                    control={
+                        <Switch
+                            checked={field.isVisible}
+                            onChange={(e) => handleVisibleChange(field.fieldKey, e.target.checked)}
+                            // 入力中に D&D が発動しないように onMouseDown を設定
+                            onMouseDown={(e) => e.stopPropagation()}
+                        />
+                    }
+                    label={
+                        <Typography variant="body2" sx={{ width: '60px', flexShrink: 0 }}>
+                            {field.isVisible ? '表示' : '非表示'}
+                        </Typography>
+                    }
+                    sx={{ mr: 2 }}
+                />
+
                 {/* 入力フォーム */}
                 <TextField
                     fullWidth
-                    label={`${field.fieldKey} (表示名)`}
-                    placeholder="表示名 (空で削除)"
+                    // ラベルを物理名に変更。displayNameは値として扱う
+                    label={physicalName}
+                    placeholder="カスタムフィールド名"
                     value={field.displayName}
                     onChange={(e) => handleDisplayNameChange(field.fieldKey, e.target.value)}
                     size="small"
@@ -152,28 +181,32 @@ const CustomFieldModal: React.FC<CustomFieldModalProps> = ({
 
     // allFieldInfo の変更時にローカル状態を構築/リセット
     useEffect(() => {
-        const sortedInfo = [...allFieldInfo].sort((a, b) => {
-            if (a.type !== b.type) {
-                return a.type === 'num' ? -1 : 1;
-            }
-            return a.index - b.index;
-        });
+        // 1. 設定済み (orderを持つ) フィールドを order 順にソートする (既存の設定を尊重)
+        // 2. 未設定フィールドを物理名順にソートする (新規フィールドを分かりやすく配置)
+        // 3. 結合し、ローカル状態とする。
 
-        const currentActiveFields = sortedInfo
-            .filter(f => f.setting?.displayName)
-            .map(f => ({ ...f, displayName: f.setting!.displayName }));
-
-        currentActiveFields.sort((a, b) => {
-            const aOrder = a.setting?.order ?? Infinity;
-            const bOrder = b.setting?.order ?? Infinity;
-            return aOrder - bOrder;
-        });
-
-        const unusedFields = sortedInfo
-            .filter(f => !f.setting?.displayName)
-            .map(f => ({ ...f, displayName: '' }));
-
-        setLocalSettings([...currentActiveFields, ...unusedFields]);
+        const fieldsWithLocalData = allFieldInfo.map(f => ({
+            ...f,
+            displayName: f.setting?.displayName || '',
+            isVisible: f.setting?.isVisible ?? false, // 初期値は設定があればその値、なければ false
+        }));
+        
+        // 1. 設定済みフィールド (orderがある)
+        const orderedFields = fieldsWithLocalData
+            .filter(f => f.setting?.order !== undefined)
+            .sort((a, b) => a.setting!.order! - b.setting!.order!);
+            
+        // 2. 未設定フィールド (orderがない) - isVisible: false のものを含む
+        const unorderedFields = fieldsWithLocalData
+            .filter(f => f.setting?.order === undefined)
+            .sort((a, b) => {
+                // 物理名順
+                if (a.type !== b.type) return a.type === 'num' ? -1 : 1;
+                return a.index - b.index;
+            });
+            
+        // 設定済み > 未設定 の順に結合し、順序付けの初期状態とする
+        setLocalSettings([...orderedFields, ...unorderedFields]);
 
     }, [allFieldInfo]);
 
@@ -186,6 +219,16 @@ const CustomFieldModal: React.FC<CustomFieldModalProps> = ({
                 : f
         ));
     }, []);
+
+    // isVisible 変更ハンドラ。配列順序はそのまま維持。
+    const handleVisibleChange = useCallback((fieldKey: CustomFieldKeys, newIsVisible: boolean) => {
+        setLocalSettings(prev => prev.map(f =>
+            f.fieldKey === fieldKey
+                ? { ...f, isVisible: newIsVisible }
+                : f
+        ));
+    }, []);
+
 
     /**
      * D&D終了時の処理
@@ -210,38 +253,61 @@ const CustomFieldModal: React.FC<CustomFieldModalProps> = ({
 
     // 保存処理
     const handleSave = () => {
-        const changes: Record<CustomFieldKeys, Partial<FieldSetting>> = {} as Record<CustomFieldKeys, Partial<FieldSetting>>;
-
         localSettings.forEach((field, index) => {
-            const initialSetting = allFieldInfo.find(f => f.fieldKey === field.fieldKey)?.setting;
-            const initialDisplayName = initialSetting?.displayName.trim() || '';
-            const newDisplayName = field.displayName.trim();
+            const initialFieldInfo = allFieldInfo.find(f => f.fieldKey === field.fieldKey);
+            const initialSetting = initialFieldInfo?.setting;
 
+            // 初期値（保存済みの値、または空）
+            const initialDisplayName = initialSetting?.displayName || '';
+            const initialIsVisible = initialSetting?.isVisible ?? false;
             const initialOrder = initialSetting?.order;
-            const newOrder = index + 1;
 
+            // ローカル状態の値
+            let newDisplayName = field.displayName.trim();
+            const newIsVisible = field.isVisible;
+
+            // isVisible: true のフィールドにのみ順序を設定する（非表示フィールドの順序は保存しない）
+            // newIsVisible が true の場合、現在のインデックス+1を順序とする。
+            const newCurrentOrder = newIsVisible ? (index + 1) : undefined;
+            
             const updates: Partial<FieldSetting> = {};
+            let hasChange = false;
 
-            // 1. displayName の変更・新規設定・削除チェック
+            // 1. データ完全性ロジック (維持): isVisible: true の場合、displayName が空なら自動で物理名を設定
+            if (newIsVisible && newDisplayName === '') {
+                newDisplayName = `${field.type.toUpperCase()} ${field.index}`;
+            }
+
+            // 2. isVisible の変更チェック
+            if (newIsVisible !== initialIsVisible) {
+                updates.isVisible = newIsVisible;
+                hasChange = true;
+            }
+
+            // 3. displayName の変更チェック
             if (newDisplayName !== initialDisplayName) {
                 updates.displayName = newDisplayName;
+                hasChange = true;
             }
 
-            // 2. order の変更チェック
-            if (newOrder !== initialOrder) {
-                updates.order = newOrder;
+            // 4. order の変更チェック/クリア
+            if (newIsVisible) {
+                // 表示が有効: 新しい順序 (newCurrentOrder) が初期値と違う、または初期値がなかった場合
+                if (newCurrentOrder !== initialOrder) {
+                    updates.order = newCurrentOrder;
+                    hasChange = true;
+                }
+            } else {
+                // 表示が無効: 以前 order が設定されていた場合は undefined で明示的にクリアする
+                if (initialOrder !== undefined) {
+                    updates.order = undefined; 
+                    hasChange = true;
+                }
             }
 
-            if (Object.keys(updates).length > 0 || (newDisplayName === '' && initialDisplayName !== '')) {
-                changes[field.fieldKey] = updates;
-            }
-        });
-
-        // onSettingChange を呼び出す
-        Object.entries(changes).forEach(([fieldKey, updates]) => {
-            const fieldInfo = allFieldInfo.find(f => f.fieldKey === fieldKey);
-            if (fieldInfo) {
-                onSettingChange(itemType, fieldInfo.type, fieldInfo.index, updates);
+            // 変更があったフィールドのみ onSettingChange を呼び出す
+            if (hasChange && initialFieldInfo) {
+                onSettingChange(itemType, initialFieldInfo.type, initialFieldInfo.index, updates);
             }
         });
 
@@ -255,21 +321,28 @@ const CustomFieldModal: React.FC<CustomFieldModalProps> = ({
     // SortableContext に渡すIDのリスト
     const items = useMemo(() => localSettings.map(f => f.fieldKey), [localSettings]);
 
+    // isVisible: true のフィールド数をカウント
+    const activeCount = localSettings.filter(f => f.isVisible).length;
+
 
     return (
         <Dialog
             open={isOpen}
             onClose={handleCancel}
-            maxWidth="lg"
-            fullWidth
+            sx={{
+                            '& .MuiDialog-paper': { // PaperComponent のスタイルを上書き
+                                width: MODAL_WIDTH,
+                                maxWidth: MODAL_WIDTH, // 念のため maxWidth も設定
+                                height: MODAL_HEIGHT,
+                                maxHeight: MODAL_HEIGHT, // 念のため maxHeight も設定
+                            }
+                        }}
         >
-            <DialogTitle>カスタムフィールド設定の管理（ドラッグ＆ドロップ）</DialogTitle>
+            <DialogTitle>カスタムフィールド設定の管理</DialogTitle>
             <DialogContent dividers>
                 <Box sx={{ mb: 2 }}>
-                    <Typography variant="caption" color="textSecondary">
-                        **{itemType}** のカスタムフィールドの**表示名**と**表示順序**を管理します。**三本線アイコンをドラッグ**して**縦方向のみ**順序を変更できます。表示名を空にして保存すると、その設定は**削除**されます。
-                        <br />
-                        *注: ドラッグ中の自動スクロール機能は無効にしました。*
+                    <Typography variant="body2" sx={{ mt: 1, fontWeight: 'bold' }}>
+                        現在表示中のフィールド: {activeCount} / {localSettings.length}
                     </Typography>
                 </Box>
 
@@ -290,6 +363,7 @@ const CustomFieldModal: React.FC<CustomFieldModalProps> = ({
                                     key={field.fieldKey}
                                     field={field}
                                     handleDisplayNameChange={handleDisplayNameChange}
+                                    handleVisibleChange={handleVisibleChange} 
                                 />
                             ))}
                         </Grid>

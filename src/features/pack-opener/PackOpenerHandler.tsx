@@ -14,18 +14,15 @@ import React, { useState, useEffect, useCallback } from 'react';
 import { Box } from '@mui/material';
 
 // useCardDataフックをインポート
-import { useCardData } from '../../hooks/useCardData';
+import { useCardData } from '../cards/hooks/useCardData';
 
 // 外部依存の型やフックをインポート
-import type { Pack } from '../../models/pack';
-// Cardモデルの型をインポート
-import type { Card } from '../../models/card';
-import type { OpenedResultState, OpenerCardData } from '../../models/packOpener';
+import type { Pack, Card, OpenedResultState, OpenerCardData } from '../../models/models';
 
 // UIコンポーネントのパスを修正（相対パスを維持）
 import PackOpeningAnimation from './components/PackOpenerAnimation';
-import CardModal from '../../components/modals/CardModal';
-import type { CardModalProps } from '../../components/modals/CardModal';
+import CardModal from '../cards/components/CardModal';
+import type { CardModalProps } from '../cards/components/CardModal';
 
 import {
     getDisplayImageUrl,
@@ -54,7 +51,8 @@ interface PackOpenerHandlerProps {
 // プレースホルダーの生成を分離
 const generatePlaceholders = (selectedPack: Pack): OpenerCardData[] => {
     const placeholders: OpenerCardData[] = [];
-    for (let i = 0; i < selectedPack.cardsPerPack; i++) {
+    const cardsPerPack = selectedPack.cardsPerPack ?? 0;
+    for (let i = 0; i < cardsPerPack; i++) {
         placeholders.push({
             id: `placeholder-${i}-${crypto.randomUUID()}`,
             cardId: `placeholder-card-${i}`,
@@ -270,20 +268,10 @@ const PackOpenerHandler: React.FC<PackOpenerHandlerProps> = ({
                 open={isModalOpen}
                 onClose={handleModalClose}
                 card={selectedCardForModal}
+                currentPack={selectedPack!}
                 onSave={handleCardSave}
                 onRemove={handleCardRemove}
-
-                // selectedPack から取得可能な必須データ
-                packRaritySettings={selectedPack!.rarityConfig}
-                currentPackName={selectedPack!.name}
-                currentPackId={selectedPack!.packId}
-
-                customFieldSettings={selectedPack!.cardFieldSettings}
-
-                // 閲覧モードなので設定変更は常にダミー関数を渡す
                 onCustomFieldSettingChange={() => { }}
-
-                // パック開封結果の閲覧なので ReadOnly を true に設定
                 isReadOnly={true}
             />
 

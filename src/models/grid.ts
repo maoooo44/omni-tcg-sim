@@ -10,6 +10,7 @@
  * 3. グリッドのレイアウト計算に必要なパラメータ（aspectRatio, defaultSpacing, baseColumns）を定義する。
  */
 // GridBreakpointsの定義は、このファイルか、より汎用的な場所に移動
+import type { SxProps, Theme } from '@mui/material';
 export type GridBreakpoints = 'xs' | 'sm' | 'md' | 'lg' | 'xl';
 
 /**
@@ -28,4 +29,20 @@ export interface GridSettings {
   defaultSpacing: number;
   /** defaultSpacingが適用される基準列数。この列数のときにdefaultSpacingの余白が使用される。 */
   baseColumns: number;
+}
+
+export interface GridRenderUnit {
+  sxOverride: SxProps<Theme>;
+  aspectRatio: number;
+  gap: number;
+}
+
+export interface UseGridDisplayReturn { // extends 削除
+  columns: number;
+  setColumns: (cols: number) => void;
+  minColumns: number;
+  maxColumns: number;
+  // ★ [修正] 描画情報をネストされたプロパティとして格納
+  gridRenderUnit: GridRenderUnit;
+  isRowMode: boolean;
 }

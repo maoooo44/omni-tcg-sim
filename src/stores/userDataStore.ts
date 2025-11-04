@@ -14,7 +14,7 @@
 
 import { create } from 'zustand';
 import { userDataService, DEFAULT_SETTINGS } from '../services/user-data/userDataService';
-import type { CurrentGameMode, UserDataState, GridDisplayDefault, PersistedUserSettings, } from '../models/userData';
+import type { CurrentGameMode, UserDataState, GridDisplayDefault, PersistedUserSettings } from '../models/models';
 
 
 // ----------------------------------------

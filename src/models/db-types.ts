@@ -59,13 +59,14 @@ export interface DBPack {
     cardBackImageUrl: string;
     cardBackImageColor?: string;
     packType: PackType;
-    cardsPerPack: number;
+    cardsPerPack?: number;
     rarityConfig: RarityConfig[];
     advancedRarityConfig?: AdvancedRarityConfig[];
     specialProbabilitySlots: number;
     isAdvancedRulesEnabled: boolean;
     price: number;
-    totalCards: number;
+    uniqueCards: number;
+    totalCards?: number;
     series: string;
     description: string;
     isOpened: boolean;
@@ -96,6 +97,7 @@ export interface DBDeck {
     imageColor?: string;
     ruleId?: string;
     deckType: DeckType;
+    uniqueCards: number;
     totalCards: number;
     series: string;
     description: string;

@@ -8,7 +8,7 @@
  * 3. UserDataStateがMap構造を含まないため、汎用JSON I/Oユーティリティ（genericJsonIO）のデフォルト機能を利用し、シンプルなI/Oインターフェースを提供する。
  */
 
-import type { UserDataState } from '../../models/userData';
+import type { UserDataState } from '../../models/models';
 import { exportDataToJson, importDataFromJson } from '../../utils/genericJsonIO';
 
 // --- 汎用I/Oを使用した公開関数 ---

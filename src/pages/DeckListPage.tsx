@@ -14,24 +14,10 @@
  */
 
 import React from 'react';
-//import { Outlet } from '@tanstack/react-router';
-import { Box, Typography } from '@mui/material';
 import DeckList from '../features/decks/DeckList';
 
 const DeckListPage: React.FC = () => {
-    return (
-        <Box sx={{ p: 3, flexGrow: 1 }}>
-            <Typography variant="h4" gutterBottom>デッキ一覧</Typography>
-
-            <DeckList />
-
-            {/* 子ルートコンポーネントを表示するためのOutlet
-            <Box sx={{ mt: 4 }}>
-                <Outlet />
-            </Box> */}
-
-        </Box>
-    );
+    return <DeckList />
 };
 
 export default DeckListPage;

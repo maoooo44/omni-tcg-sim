@@ -20,8 +20,10 @@ import {
 } from '@mui/material';
 import DeleteIcon from '@mui/icons-material/Delete';
 import AddIcon from '@mui/icons-material/Add';
-import type { Pack, AdvancedRarityConfig, RarityConfig } from '../../models/pack';
+import type { Pack, AdvancedRarityConfig, RarityConfig } from '../../models/models';
 import { useRarityEditor } from '../../features/packs/hooks/useRarityEditor';
+import { MODAL_WIDTH, MODAL_HEIGHT } from '../../configs/configs';
+
 
 // --- RarityProbabilityInput: 確率入力用のカスタムコンポーネント ---
 interface RarityProbabilityInputProps {
@@ -177,7 +179,7 @@ const RarityEditorModal: React.FC<RarityEditorModalProps> = ({ open, onClose, pa
         initialRarities,
         packToEditor.isAdvancedRulesEnabled,
         packToEditor.specialProbabilitySlots ?? 0,
-        packToEditor.cardsPerPack
+        packToEditor.cardsPerPack ?? 5
     );
 
 
@@ -261,7 +263,14 @@ const RarityEditorModal: React.FC<RarityEditorModalProps> = ({ open, onClose, pa
             </Dialog>
 
             {/* 2. メインモーダル */}
-            <Dialog open={open} onClose={onClose} maxWidth="xl" fullWidth>
+            <Dialog open={open} onClose={onClose} sx={{
+                            '& .MuiDialog-paper': { // PaperComponent のスタイルを上書き
+                                width: MODAL_WIDTH,
+                                maxWidth: MODAL_WIDTH, // 念のため maxWidth も設定
+                                height: MODAL_HEIGHT,
+                                maxHeight: MODAL_HEIGHT, // 念のため maxHeight も設定
+                            }
+                        }}>
                 <DialogTitle>
                     {packToEditor?.name ? `${packToEditor.name} のレアリティ設定` : 'レアリティ設定を編集'}
                 </DialogTitle>
@@ -347,7 +356,7 @@ const RarityEditorModal: React.FC<RarityEditorModalProps> = ({ open, onClose, pa
                     <Divider />
 
                     {/* レアリティ設定リスト (固定高さ & 上部パディング追加) */}
-                    <Box sx={{ height: 400, overflowY: 'auto', pt: 2 }}>
+                    <Box sx={{ height: 380, overflowY: 'auto', pt: 2 }}>
                         {editingRarities.map((rarity, index) => (
                             <Grid container spacing={2} key={index} alignItems="center" sx={{ mb: 2 }}>
 

@@ -16,7 +16,7 @@
 import { useState, useEffect } from 'react';
 import { useShallow } from 'zustand/react/shallow';
 
-import type { Pack } from '../../../models/pack';
+import type { Pack } from '../../../models/models';
 
 import { usePackStore } from '../../../stores/packStore';
 import { simulatePackOpening } from '../../../services/packs/packSimulation';
@@ -26,7 +26,7 @@ import { useUserDataStore } from '../../../stores/userDataStore';
 import { useCooldownTimer } from '../../../hooks/useCooldownTimer';
 
 // 型定義を専用ファイルに切り出し、ユニークな名前でインポート
-import type { SimulationResult, OpenedResultState } from '../../../models/packOpener';
+import type { SimulationResult, OpenedResultState } from '../../../models/models';
 
 
 // 定数: 開封のクールダウン時間 (5秒)

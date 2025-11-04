@@ -11,17 +11,19 @@
 import { archiveService } from '../../services/archive/archiveService';
 import { packService } from '../../services/packs/packService';
 import { dbArchiveToArchivePackBundle as _dbArchiveToArchivePackBundle } from '../../services/database/dbMappers';
-import type { Pack, PackBundle } from '../../models/pack';
-import type { Card } from '../../models/card';
-import type { DBArchive, DBPackBundle } from '../../models/db-types';
 import type {
+    Pack,
+    PackBundle,
+    Card,
+    DBArchive,
+    DBPackBundle,
     ArchivePack,
     ArchivePackBundle,
     ArchiveItemToSave,
     ArchiveItemType,
     ArchiveDisplayData,
     ArchiveItemData
-} from '../../models/archive';
+} from '../../models/models';
 import {
     createCommonArchiveActions,
     type ArchiveHandler,
@@ -168,6 +170,7 @@ export interface PackArchive {
     deletePackBundleFromHistory: (archiveId: string) => Promise<void>;
     bulkDeletePackBundlesFromHistory: (archiveIds: string[]) => Promise<void>;
     updateArchivePackBundleIsFavoriteToHistory: (archiveId: string, isFavorite: boolean) => Promise<void>;
+    bulkUpdateArchivePackBundlesIsFavoriteToHistory: (archiveIds: string[], isFavorite: boolean) => Promise<number>;
 
     fetchAllArchivePacksFromTrash: () => Promise<ArchivePack[]>;
     fetchArchivePackBundleFromTrash: (archiveId: string) => Promise<ArchivePackBundle | null>;
@@ -178,6 +181,7 @@ export interface PackArchive {
     deletePackBundleFromTrash: (archiveId: string) => Promise<void>;
     bulkDeletePackBundlesFromTrash: (archiveIds: string[]) => Promise<void>;
     updateArchivePackBundleIsFavoriteToTrash: (archiveId: string, isFavorite: boolean) => Promise<void>;
+    bulkUpdateArchivePackBundlesIsFavoriteToTrash: (archiveIds: string[], isFavorite: boolean) => Promise<number>;
 
     runPackGarbageCollection: () => Promise<void>;
 }
@@ -295,6 +299,11 @@ export const createPackArchive = (dependencies: PackArchiveDependencies): PackAr
     const updateArchivePackBundleIsFavoriteToHistory = (archiveId: string, isFavorite: boolean) => {
         return commonActions.updateItemIsFavoriteToArchive(archiveId, 'history', isFavorite).then(() => {});
     };
+
+    const bulkUpdateArchivePackBundlesIsFavoriteToHistory = (archiveIds: string[], isFavorite: boolean) => {
+        return commonActions.bulkUpdateItemsIsFavoriteToArchive(archiveIds, 'history', isFavorite);
+    };
+
     // ----------------------------------------------------------------------
     // --- 🗑️ ゴミ箱アクション ---
     // ----------------------------------------------------------------------
@@ -357,6 +366,11 @@ export const createPackArchive = (dependencies: PackArchiveDependencies): PackAr
     const updateArchivePackBundleIsFavoriteToTrash = (archiveId: string, isFavorite: boolean) => {
         return commonActions.updateItemIsFavoriteToArchive(archiveId, 'trash', isFavorite).then(() => {});
     };
+
+    const bulkUpdateArchivePackBundlesIsFavoriteToTrash = (archiveIds: string[], isFavorite: boolean) => {
+        return commonActions.bulkUpdateItemsIsFavoriteToArchive(archiveIds, 'trash', isFavorite);
+    };
+
     // ----------------------------------------------------------------------
     // --- 🛠️ メンテナンスアクション ---
     // ----------------------------------------------------------------------
@@ -386,6 +400,7 @@ export const createPackArchive = (dependencies: PackArchiveDependencies): PackAr
         deletePackBundleFromHistory,
         bulkDeletePackBundlesFromHistory,
         updateArchivePackBundleIsFavoriteToHistory,
+        bulkUpdateArchivePackBundlesIsFavoriteToHistory,
 
         fetchAllArchivePacksFromTrash,
         fetchArchivePackBundleFromTrash,
@@ -396,6 +411,7 @@ export const createPackArchive = (dependencies: PackArchiveDependencies): PackAr
         deletePackBundleFromTrash,
         bulkDeletePackBundlesFromTrash,
         updateArchivePackBundleIsFavoriteToTrash,
+        bulkUpdateArchivePackBundlesIsFavoriteToTrash,
 
         runPackGarbageCollection,
     };

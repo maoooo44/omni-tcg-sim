@@ -13,10 +13,7 @@
  */
 
 import { v4 as uuidv4 } from 'uuid';
-import type { Deck, DeckFieldSettings } from '../models/deck';
-import type { Pack, PackFieldSettings, CardFieldSettings } from '../models/pack';
-import type { Card } from '../models/card';
-import type { FieldSetting } from '../models/customField';
+import type { Deck, DeckFieldSettings, Pack, PackFieldSettings, CardFieldSettings, Card, FieldSetting } from '../models/models';
 
 /**
  * 汎用的なUUID (v4) を生成する関数。
@@ -89,6 +86,7 @@ export const createDefaultDeck = (id?: string): Deck => {
         number: undefined,
         imageUrl: '',
         deckType: 'MainOnly',
+        uniqueCards: 0,
         totalCards: 0,
         series: '',
         description: '',
@@ -100,7 +98,7 @@ export const createDefaultDeck = (id?: string): Deck => {
         mainDeck: new Map(), // Map<cardId, count>
         sideDeck: new Map(),
         extraDeck: new Map(),
-        fieldSettings: defaultDeckFieldSettings,
+        deckFieldSettings: defaultDeckFieldSettings,
     };
 }
 
@@ -143,7 +141,7 @@ export const createDefaultPack = (id?: string): Pack => {
         price: 0,
         packType: 'Booster',
         cardsPerPack: 5,
-        totalCards: 0,
+        uniqueCards: 0,
         series: '',
         description: '',
         isOpened: false,

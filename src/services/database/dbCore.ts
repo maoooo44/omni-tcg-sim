@@ -11,7 +11,7 @@
 
 import { db } from './db';
 import type { Collection, Table } from 'dexie';
-import type { ArchiveItemType } from '../../models/archive';
+import type { ArchiveItemType } from '../../models/models';
 
 // DBコレクション名の共通型
 export type DbCollectionName = 'cards' | 'packs' | 'cardPool' | 'decks' | 'userSettings' | 'presets' | 'history' | 'trash';
@@ -240,14 +240,14 @@ export const updateItemFieldToCollection = async (
 };
 
 /**
- * 複数のアイテムの特定のフィールドを、すべて同じ値で一括更新します。
+ * 複数のアイテムの単一フィールドを、すべて同じ値で一括更新します。
  * @param ids 更新するレコードの主キーの配列
  * @param collectionName 対象のDBコレクション名
  * @param field 更新するフィールド名 ('updatedAt'など)
  * @param value 設定する新しい値 (全IDに適用)
  * @returns 更新されたレコードの総数
  */
-export const bulkUpdateItemFieldToCollection = async (
+export const bulkUpdateItemsSingleFieldToCollection = async (
     ids: string[],
     collectionName: DbCollectionName,
     field: string,
@@ -271,7 +271,50 @@ export const bulkUpdateItemFieldToCollection = async (
         return numUpdated;
 
     } catch (error) {
-        console.error(`[dbCore] Error bulk updating field ${field} in ${collectionName}:`, error);
+        console.error(`[dbCore] Error bulk updating single field ${field} in ${collectionName}:`, error);
+        throw error;
+    }
+};
+
+/**
+ * 複数のアイテムの複数フィールドを一括更新します。
+ * @param ids 更新するレコードの主キーの配列
+ * @param collectionName 対象のDBコレクション名
+ * @param updates 更新するフィールドと値のオブジェクト
+ * @returns 更新されたレコードの総数
+ */
+export const bulkUpdateItemsMultipleFieldsToCollection = async (
+    ids: string[],
+    collectionName: DbCollectionName,
+    updates: { [key: string]: any }
+): Promise<number> => {
+    if (ids.length === 0) {
+        console.warn('[dbCore:bulkUpdateItemsMultipleFieldsToCollection] No IDs provided');
+        return 0;
+    }
+    
+    if (Object.keys(updates).length === 0) {
+        console.warn('[dbCore:bulkUpdateItemsMultipleFieldsToCollection] No fields to update');
+        return 0;
+    }
+
+    try {
+        const table = (db as any)[collectionName] as Table<any, any> | undefined;
+        if (!table) {
+            console.error(`[dbCore] Collection not found: ${collectionName}`);
+            return 0;
+        }
+
+        // 主キー配列での一括指定には、where(':id').anyOf()が効率的
+        const numUpdated = await table
+            .where(':id') // 主キーインデックスを使用
+            .anyOf(ids)
+            .modify(updates);
+
+        return numUpdated;
+
+    } catch (error) {
+        console.error(`[dbCore] Error bulk updating multiple fields in ${collectionName}:`, error);
         throw error;
     }
 };

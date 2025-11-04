@@ -97,8 +97,8 @@ export const GridColumnToggle: React.FC<GridColumnToggleProps> = ({
                 anchorEl={anchorEl}
                 onClose={handleClose}
                 // ボタンの真下に展開
-                anchorOrigin={{ vertical: 'bottom', horizontal: 'left' }}
-                transformOrigin={{ vertical: 'top', horizontal: 'left' }}
+                anchorOrigin={{ vertical: 'bottom', horizontal: 'center' }}
+                transformOrigin={{ vertical: 'top', horizontal: 'center' }}
                 sx={{ mt: 1 }}
             >
                 <Paper elevation={3} sx={{ p: 2, minWidth: 250 }}>

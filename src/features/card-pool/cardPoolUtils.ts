@@ -7,11 +7,11 @@
  */
 
 
-import { type SortField } from '../../utils/sortingUtils';
+import type { SortField } from '../../models/models';
 import type { OwnedCardDisplay } from './hooks/useCardPoolDisplay';
 
 /**
- * OwnedCardDisplayオブジェクトから、useSortAndFilterフックがソートに使用するための
+ * OwnedCardDisplayオブジェクトから、useSortFilterフックがソートに使用するための
  * 対応するフィールド値を取得するアクセサ関数を提供します。
  * * @param item ソート対象のOwnedCardDisplayオブジェクト
  * @param field ソートに使用するフィールド名

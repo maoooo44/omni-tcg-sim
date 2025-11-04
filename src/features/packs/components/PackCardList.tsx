@@ -1,57 +1,88 @@
 /**
- * src/features/packs/components/PackCardList.tsx
+ * src/features/packs/components/PackCardList.tsx (統合CardList使用版)
  *
- * 特定のパックに収録されているカードの一覧（リストまたはグリッド）を表示するコンポーネントです。
- * * 責務:
- * 1. 親コンポーネントから渡されたカードデータ（CardType[]）に対するソート、フィルタリングを `useSortAndFilter` フックを介して実行し、その状態を管理する。
- * 2. カード一覧の上に、ソートとフィルタリングのUI（SortAndFilterControls）を配置し、フックの状態と連携させる。
- * 3. 編集権限（isEditable）に基づき、「新規カードを追加」ボタンを表示する。
- * 4. カードアイテムのクリック時、`isEditable` に応じて編集モーダルまたは閲覧モーダルを開くコールバック関数（onOpenEditorModal / onOpenViewModal）を実行する。
- * 5. `ReusableItemGrid` と `useGridDisplay` を利用し、カードを統一されたレスポンシブなグリッドレイアウトで表示する。
+ * パック編集画面のカードリスト表示コンポーネント。
+ * 統合CardListを使用して、カードの選択・一括操作・表示を行います。
+ * 責務: ControlBarを含めたリスト全体のロジックとUIを管理する。
  */
 
-import React from 'react';
-import { Button, Box, Typography, Alert } from '@mui/material';
+import React, { useCallback, useMemo, useState } from 'react';
+import { Box } from '@mui/material';
 import AddIcon from '@mui/icons-material/Add';
+// 💡 削除: ControlBar側で自動生成されるため、以下のアイコンは不要
+// import EditIcon from '@mui/icons-material/Edit';
+// import DeleteForeverIcon from '@mui/icons-material/DeleteForever';
+// import StarIcon from '@mui/icons-material/Star';
+// import StarBorderIcon from '@mui/icons-material/StarBorder';
 
-import type { Card as CardType } from '../../../models/card';
-import { createDefaultCard } from '../../../utils/dataUtils';
+import type { Card,  /* CustomActionButton */ } from '../../../models/models'; // CustomActionButtonは不要に
+import CardList from '../../cards/components/CardList';
 
-import { useSortAndFilter } from '../../../hooks/useSortAndFilter';
+// 必要なフックとコンポーネントをインポート
+import { useCardStore } from '../../../stores/cardStore';
+import { useSortFilter } from '../../../hooks/useSortFilter';
 import { useGridDisplay } from '../../../hooks/useGridDisplay';
-// import SortAndFilterControls from '../../../components/controls/SortAndFilterControls'; // 削除
-import SortAndFilterButton from '../../../components/controls/SortAndFilterButton'; // 💡 統合コンポーネントを追加
-import GridColumnToggle from '../../../components/controls/GridColumnToggle'; // 💡 列数トグルを追加
-import ReusableItemGrid from '../../../components/common/ReusableItemGrid';
-import PackCardItem from './PackCardItem';
-import { PackEditorCardGridSettings } from '../../../configs/gridDefaults';
-import { CARD_SORT_OPTIONS, PACK_CARD_FILTER_FIELDS, CARD_DEFAULT_SORT } from '../../../configs/sortAndFilterDefaults';
+import { useSelection } from '../../../hooks/useSelection';
+import { useBulkOperations } from '../../../hooks/useBulkOperations';
+import ControlBar from '../../../components/common/ControlBar';
+import type { ControlBarProps } from '../../../models/models';
 
 
-// =========================================================================
-// 2. コンポーネント本体
-// =========================================================================
+import { 
+    CARD_SORT_OPTIONS, 
+    CARD_DEFAULT_SORT, 
+    PACK_CARD_FILTER_FIELDS 
+} from '../../../configs/sortFilterConfigs';
+import { PackEditorCardGridSettings } from '../../../configs/gridConfigs';
+import type { CardListBulkOperations } from '../../cards/components/CardList';
+
 
 export interface PackCardListProps {
     packId: string;
     isEditable: boolean;
-    cards: CardType[];
-    onOpenEditorModal: (card: CardType | null) => void;
-    onOpenViewModal: (card: CardType) => void;
+    cards: Card[];
+    onOpenEditorModal: (card: Card | null) => void;
+    onOpenViewModal: (card: Card) => void;
 }
 
-
 const PackCardList: React.FC<PackCardListProps> = ({
-    packId,
+    // packId は現在未使用だが、インターフェース互換性のため保持
     isEditable,
-    cards, // propsからカードリストを取得
+    cards,
     onOpenEditorModal,
     onOpenViewModal,
 }) => {
+    // ----------------------------------------------------
+    // 1. Hooksの呼び出しと状態管理
+    // ----------------------------------------------------
+    
+    // ストアアクションを取得
+    const bulkUpdateCardIsFavorite = useCardStore(state => state.bulkUpdateCardIsFavorite);
+    const bulkUpdateCardsFields = useCardStore(state => state.bulkUpdateCardsFields);
+    const bulkDeleteCards = useCardStore(state => state.bulkDeleteCards);
 
-    // useSortAndFilterフックの適用
+    // UI状態管理
+    const [isSelectionMode, setIsSelectionMode] = useState(false);
+    const [isBulkEditModalOpen, setIsBulkEditModalOpen] = useState(false);
+    const [showDeleteDialog, setShowDeleteDialog] = useState(false);
+
+    // 選択状態の管理
     const {
-        sortedAndFilteredData: displayedCards, // フィルタリング・ソート後のカードリスト
+        selectedIds: selectedCardIds,
+        toggleSelection: toggleCardSelection,
+        toggleAllSelection,
+        clearSelection,
+    } = useSelection<string>();
+
+    // 一括操作ハンドラ生成
+    const { createBulkHandler } = useBulkOperations({
+        selectedIds: selectedCardIds,
+        clearSelection,
+    });
+    
+    // ソート＆フィルタリング
+    const {
+        sortedAndFilteredData: displayedCards,
         sortField,
         sortOrder,
         searchTerm,
@@ -60,12 +91,16 @@ const PackCardList: React.FC<PackCardListProps> = ({
         setSearchTerm,
         toggleSortOrder,
         setFilters,
-    } = useSortAndFilter<CardType>(cards, undefined, CARD_DEFAULT_SORT);
+    } = useSortFilter<Card>(
+        cards,
+        undefined,
+        CARD_DEFAULT_SORT
+    );
 
     // グリッド表示設定
     const gridDisplayProps = useGridDisplay({
         settings: PackEditorCardGridSettings,
-        storageKey: 'packCardList',
+        storageKey: 'packCardGridColumns',
         userGlobalDefault: {
             isUserDefaultEnabled: false,
             globalColumns: null,
@@ -76,119 +111,217 @@ const PackCardList: React.FC<PackCardListProps> = ({
         },
     });
 
-    // propsで受け取ったリストをそのまま使用 (フック適用前の元のリスト)
-    const cardsInPack = cards;
-
-    // 新規カードを追加する処理
-    const handleAddNewCard = () => {
-        if (!isEditable) return;
-
-        const newCard: CardType = createDefaultCard(packId);
-        onOpenEditorModal(newCard);
-    };
-
-
-    // 既存カードを選択した処理
-    const handleSelectCard = (card: CardType) => {
+    // ----------------------------------------------------
+    // 2. ハンドラロジック
+    // ----------------------------------------------------
+    
+    // カードクリック時のハンドラ（編集モード or 閲覧モード）
+    const handleCardClick = useCallback((card: Card) => {
         if (isEditable) {
             onOpenEditorModal(card);
         } else {
             onOpenViewModal(card);
         }
-    };
+    }, [isEditable, onOpenEditorModal, onOpenViewModal]);
+    
+    // 新規カード追加ハンドラ
+    const handleAddNewCard = useCallback(() => {
+        onOpenEditorModal(null);
+    }, [onOpenEditorModal]);
+    
+    // 選択モード切り替え
+    const handleToggleSelectionMode = useCallback(() => {
+        if (isSelectionMode) { // 💡 修正: 選択モードを解除するときは選択もクリア
+            clearSelection();
+        }
+        setIsSelectionMode(prev => !prev);
+    }, [clearSelection, isSelectionMode]); // isSelectionModeを依存に追加
+    
+    // 全選択/全解除
+    const toggleAllCardsSelection = useCallback(() => {
+        toggleAllSelection(displayedCards.map(card => card.cardId));
+    }, [toggleAllSelection, displayedCards]);
+    
+    // 一括削除ハンドラ（外部へ渡すロジック）
+    const handleBulkDelete = useCallback(async (cardIds: string[]) => {
+        await bulkDeleteCards(cardIds);
+    }, [bulkDeleteCards]);
+    
+    // 一括編集ハンドラ（外部へ渡すロジック）
+    const handleBulkEdit = useCallback(async (cardIds: string[], fields: Partial<Card>) => {
+        await bulkUpdateCardsFields(cardIds, fields);
+    }, [bulkUpdateCardsFields]);
+    
+    // 一括お気に入りトグルハンドラ（外部へ渡すロジック）
+    const handleBulkToggleFavorite = useCallback(async (cardIds: string[], isFavorite: boolean) => {
+        await bulkUpdateCardIsFavorite(cardIds, isFavorite);
+    }, [bulkUpdateCardIsFavorite]);
 
-    const hasFilteredResults = displayedCards.length > 0;
-    // 検索と高度なフィルタリングの両方が適用されているかを確認する
-    const isFilterActive = searchTerm.trim() !== '' || filters.length > 0;
+    // ----------------------------------------------------
+    // 3. ControlBar/CardList への Props 定義
+    // ----------------------------------------------------
+    
+    // 選択されたカードのお気に入り状態を判定 (ControlBarのbulkFavoriteに渡すため)
+    const selectedCards = useMemo(() => {
+        return displayedCards.filter(card => selectedCardIds.includes(card.cardId));
+    }, [displayedCards, selectedCardIds]);
 
+    const hasNonFavoriteSelected = selectedCards.some(card => !card.isFavorite);
+    // 💡 削除: favoriteActionLabel, favoriteActionIcon は ControlBar側で処理される
+    
+    // CardListのモーダルで使用する一括操作ハンドラ
+    const bulkOperationsLogic: CardListBulkOperations = useMemo(() => ({
+        // CardListに渡すハンドラ
+        onBulkDelete: handleBulkDelete,
+        onBulkEdit: handleBulkEdit,
+        onBulkToggleFavorite: handleBulkToggleFavorite,
+    }), [handleBulkDelete, handleBulkEdit, handleBulkToggleFavorite]);
+
+
+    // ❌ 削除: 一括操作アクションの構築 (ControlBarのSelectionModeToolbarへ渡す用)
+    // const bulkActions: CustomActionButton[] = useMemo(() => { ... }, [...]); 
+    
+    
+    // 💡 修正: selectionProps を PackList.tsx と同じ形式で構築する
+    const selectionProps = isEditable ? {
+        isSelectionMode: isSelectionMode,
+        selectedIds: selectedCardIds,
+        totalDisplayedItems: displayedCards.length,
+        onToggleSelectionMode: handleToggleSelectionMode,
+        onToggleAllSelection: toggleAllCardsSelection,
+        
+        // ✅ 予約済みアクション: ハンドラ（アクション）のみを渡す
+        bulkEdit: {
+            onEdit: () => setIsBulkEditModalOpen(true), // 👈 アクションだけ渡す
+        },
+        bulkDelete: {
+            onDelete: () => setShowDeleteDialog(true), // 👈 アクションだけ渡す
+        },
+        bulkFavorite: {
+            onToggle: handleBulkToggleFavorite, // 👈 アクションだけ渡す
+            // ControlBarは isFavorite の真偽値を見てアイコンとラベルを決定する
+            isFavorite: !hasNonFavoriteSelected, 
+        },
+        // bulkActions はカスタムアクションがないため省略（undefined）
+    } : undefined;
+
+
+    // ControlBar Props
+    const controlBarProps: ControlBarProps = useMemo(() => ({
+        title: "登録カード",
+        itemCount: displayedCards.length,
+        itemLabel: "枚",
+        
+        // ソート・フィルター
+        sortFilterProps: {
+            labelPrefix: "カード",
+            sortOptions: CARD_SORT_OPTIONS,
+            sortField: sortField,
+            sortOrder: sortOrder,
+            setSortField: setSortField,
+            toggleSortOrder: toggleSortOrder,
+            searchTerm: searchTerm,
+            setSearchTerm: setSearchTerm,
+            filters: filters,
+            setFilters: setFilters,
+            filterFields: PACK_CARD_FILTER_FIELDS,
+        },
+        
+        // 列数トグル
+        gridToggleProps: {
+            columns: gridDisplayProps.columns,
+            setColumns: gridDisplayProps.setColumns,
+            minColumns: gridDisplayProps.minColumns,
+            maxColumns: gridDisplayProps.maxColumns,
+        },
+        
+        // 選択モードツールバー
+        // 💡 修正: bulkActions に依存せず、selectionProps があれば渡す
+        selectionProps: selectionProps,
+
+        // 新規追加ボタン 
+        actionButtons: isEditable && handleAddNewCard ? [{ 
+            icon: <AddIcon />,
+            tooltip: '新規カードを追加',
+            onClick: handleAddNewCard,
+            color: 'primary',
+        }] : [],
+        
+    }), [
+        displayedCards.length,
+        sortField,
+        sortOrder,
+        searchTerm,
+        filters,
+        gridDisplayProps.columns,
+        gridDisplayProps.minColumns,
+        gridDisplayProps.maxColumns,
+        isEditable,
+        isSelectionMode,
+        selectedCardIds,
+        handleToggleSelectionMode,
+        toggleAllCardsSelection,
+        handleAddNewCard,
+        selectionProps, // 💡 修正: selectionProps を依存に含める
+    ]);
+
+    // CardListのモーダル処理ハンドラ
+    const handleBulkEditSaveWrapper = createBulkHandler(
+        async (fields: Partial<Card>) => {
+            await handleBulkEdit(selectedCardIds, fields);
+            setIsBulkEditModalOpen(false);
+        }
+    );
+    
+    const handleConfirmDeleteWrapper = createBulkHandler(
+        async () => {
+            await handleBulkDelete(selectedCardIds);
+            setShowDeleteDialog(false);
+        }, 
+        { clearSelectionAfter: true }
+    );
+
+    
+    
+    // ----------------------------------------------------
+    // 4. レンダリング
+    // ----------------------------------------------------
+    
     return (
         <Box sx={{ flexGrow: 1 }}>
+            <ControlBar {...controlBarProps} />
 
-            {/* ソート&フィルタリングUIの配置 (SortAndFilterControlsは削除) */}
-            {/* ... (なし) */}
-
-            <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 2 }}>
-                <Typography variant="h5">収録カード ({cardsInPack.length}枚)</Typography>
-
-                <Box sx={{ display: 'flex', alignItems: 'center', gap: 2 }}>
-                    {/* 💡 1. ソートアンドフィルターボタンを配置 */}
-                    <SortAndFilterButton
-                        labelPrefix="カード"
-                        sortOptions={CARD_SORT_OPTIONS}
-                        sortField={sortField}
-                        sortOrder={sortOrder}
-                        searchTerm={searchTerm}
-                        filters={filters}
-                        setSortField={setSortField}
-                        toggleSortOrder={toggleSortOrder}
-                        setSearchTerm={setSearchTerm}
-                        setFilters={setFilters}
-                        filterFields={PACK_CARD_FILTER_FIELDS}
-                    />
-
-                    {/* 💡 2. 列数トグルを配置 */}
-                    <GridColumnToggle
-                        currentColumns={gridDisplayProps.columns}
-                        setColumns={gridDisplayProps.setColumns}
-                        minColumns={gridDisplayProps.minColumns}
-                        maxColumns={gridDisplayProps.maxColumns}
-                        label="列数:"
-                    />
-
-                    {/* 新規カードを追加ボタン (最右) */}
-                    {isEditable && (
-                        <Button
-                            variant="contained"
-                            startIcon={<AddIcon />}
-                            onClick={handleAddNewCard}
-                        >
-                            新規カードを追加
-                        </Button>
-                    )}
-                </Box>
-            </Box>
-
-            <Box
-                sx={{
-                    maxHeight: '150vh',
-                    overflowY: 'auto',
-                    p: 1,
-                    border: '1px solid',
-                    borderColor: 'grey.300',
-                    borderRadius: 1
+            <CardList
+                cards={displayedCards} // フィルタ済みのリストを渡す
+                totalCardCount={cards.length}
+                context="pack-editor"
+                isEditable={isEditable}
+                onCardClick={handleCardClick}
+                cardDisplay={{
+                    quantityChip: false,
+                    quantityControl: false,
+                    keycardRank: false,
+                    grayscaleWhenZero: false,
                 }}
-            >
-                {/* 検索結果が0件の場合のメッセージ */}
-                {isFilterActive && !hasFilteredResults && (
-                    <Alert severity="info" sx={{ m: 1 }}>
-                        {searchTerm.trim() !== ''
-                            ? `"${searchTerm}" に一致するカードが`
-                            : '適用されたフィルタ条件に一致するカードが'
-                        }見つかりませんでした。
-                    </Alert>
-                )}
+                
+                gridRenderUnit={gridDisplayProps.gridRenderUnit}
+                isSelectionMode={isSelectionMode}
+                selectedCardIds={selectedCardIds}
+                toggleCardSelection={toggleCardSelection}
+                clearSelection={clearSelection}
+                
+                bulkOperations={bulkOperationsLogic} // 実行ロジック
+                isBulkEditModalOpen={isBulkEditModalOpen}
+                setIsBulkEditModalOpen={setIsBulkEditModalOpen}
+                showDeleteDialog={showDeleteDialog}
+                setShowDeleteDialog={setShowDeleteDialog}
+                handleBulkEditSave={handleBulkEditSaveWrapper}
+                handleConfirmDelete={handleConfirmDeleteWrapper}
 
-                {/* カードが元々1枚もなく、フィルタリングもされていない場合のメッセージ */}
-                {!hasFilteredResults && !isFilterActive && (
-                    <Box sx={{ p: 2, m: 1, border: '1px dashed grey', borderRadius: 1 }}>
-                        <Typography variant="body2" color="text.secondary">
-                            カードはまだ登録されていません。
-                        </Typography>
-                    </Box>
-                )}
-
-                {/* カードリストの描画 (ソート・フィルタ後のデータを使用) */}
-                {hasFilteredResults && (
-                    <ReusableItemGrid
-                        items={displayedCards as any}
-                        ItemComponent={PackCardItem as any}
-                        itemProps={{
-                            onSelectCard: handleSelectCard,
-                        }}
-                        {...gridDisplayProps}
-                    />
-                )}
-            </Box>
+                // フィルタ情報
+                isFilterActive={searchTerm.trim() !== '' || filters.length > 0}
+                searchTerm={searchTerm}
+            />
         </Box>
     );
 };

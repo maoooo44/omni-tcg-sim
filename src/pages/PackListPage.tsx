@@ -13,25 +13,10 @@
  * 4. 子ルートコンポーネント（PackEditorPageなど）のための Outlet を配置する。
  */
 import React from 'react';
-//import { Outlet } from '@tanstack/react-router';
-import { Box, Typography } from '@mui/material';
 import PackList from '../features/packs/PackList';
 
-
 const PackListPage: React.FC = () => {
-
-  return (
-    <Box sx={{ p: 3, flexGrow: 1 }}>
-      <Typography variant="h4" gutterBottom>パック管理</Typography>
-
-      <PackList />
-
-      {/* 子ルートコンポーネントを表示するためのOutlet 
-      <Box sx={{ mt: 4 }}>
-        <Outlet />
-      </Box>*/}
-    </Box>
-  );
+  return <PackList />;
 };
 
 export default PackListPage;

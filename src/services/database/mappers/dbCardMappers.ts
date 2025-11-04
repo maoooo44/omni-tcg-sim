@@ -8,8 +8,7 @@
  * 3. Card.number の undefined と DBCard.number の null の相互変換など、DB格納形式に合わせた型の調整。
  * 4. DBArchiveからPackBundleを経由してCardモデル群を抽出・復元するブリッジング（dbArchiveToCards）。
  */
-import type { Card } from '../../../models/card';
-import type { DBCard, DBPackBundle, DBArchive } from '../../../models/db-types';
+import type { Card, DBCard, DBPackBundle, DBArchive } from '../../../models/models';
 
 /**
  * アプリケーションの Card モデルを、データベースに保存する DBCard 形式に変換します。

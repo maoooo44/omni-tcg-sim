@@ -11,7 +11,7 @@
  * 6. ユーザーフレンドリー名ではなく、Cardオブジェクトの物理フィールド名（name, rarity, bool_1, num_1など）で処理を統一する。
  */
 
-import type { Card } from '../../models/card';
+import type { Card } from '../../models/models';
 import { formatCardsToCsv } from '../../utils/csvFormatter';
 import { parseCSV } from '../../utils/csvParser';
 import { generateId, createDefaultCard } from '../../utils/dataUtils';

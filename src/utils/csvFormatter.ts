@@ -11,7 +11,7 @@
  * 3. データのヘッダー（列）を明示的に定義し、データの一貫性を保証する。
  */
 
-import type { Card } from '../models/card';
+import type { Card } from '../models/models';
 
 /**
  * Cardオブジェクトの配列をCSV文字列にフォーマットします。

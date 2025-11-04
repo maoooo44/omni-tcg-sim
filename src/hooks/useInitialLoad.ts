@@ -13,7 +13,7 @@
  */
 
 import { useEffect, useState } from 'react';
-import { useCardData } from './useCardData';
+import { useCardData } from '../features/cards/hooks/useCardData';
 import { db } from '../services/database/db';
 import { usePackStore } from '../stores/packStore';
 import { useCardPoolStore } from '../stores/cardPoolStore';

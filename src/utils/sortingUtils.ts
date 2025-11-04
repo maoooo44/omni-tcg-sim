@@ -13,15 +13,7 @@
  * 4. 汎用的なソート実行関数（sortData）を提供し、numberソートをデフォルト/優先として適用する。
  */
 
-/**
- * 汎用的なソートフィールドの型
- */
-export type SortField = 'number' | 'name' | 'cardId' | 'rarity' | string;
-
-/**
- * ソート順の型
- */
-export type SortOrder = 'asc' | 'desc';
+import type { SortField, SortOrder } from '../models/models';
 
 /**
  * number (図鑑 No. / ソート順) による比較関数

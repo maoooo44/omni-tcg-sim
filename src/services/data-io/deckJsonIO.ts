@@ -9,7 +9,7 @@
  * 3. JSON文字列をインポートする際、ID衝突解決（SKIPまたはRENAME）のビジネスロジックとデータ補完を担当し、永続化（DB保存）をトリガーする。
  */
 
-import type { Deck } from '../../models/deck';
+import type { Deck } from '../../models/models';
 import { exportDataToJson, importDataFromJson, type Serializer, type Deserializer } from '../../utils/genericJsonIO';
 import { deckService } from '../decks/deckService';
 import { generateId, applyDefaultsIfMissing, createDefaultDeck } from '../../utils/dataUtils';

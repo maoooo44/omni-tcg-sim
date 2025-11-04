@@ -6,7 +6,7 @@
  * 1. Deckに含まれるカードが、ユーザーのカードプールに十分な数存在するかどうか（未所持カードの存在）をチェックする（checkHasUnownedCards）。
  * 2. 依存するStoreから必要な状態を直接取得することで、DeckStoreアクションからの呼び出しを簡潔にする。
  */
-import type { Deck } from '../../models/deck';
+import type { Deck } from '../../models/models';
 import { useCardPoolStore } from '../cardPoolStore';
 
 /**

@@ -12,7 +12,7 @@
  */
 
 import { useState, useEffect, useMemo, useCallback } from 'react';
-import type { RarityConfig, AdvancedRarityConfig } from '../../../models/pack'; 
+import type { RarityConfig, AdvancedRarityConfig } from '../../../models/models'; 
 
 const DEFAULT_PROBABILITY = 0.0001; 
 const DEFAULT_SPECIAL_PROBABILITY = 0.0; 

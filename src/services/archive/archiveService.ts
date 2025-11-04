@@ -8,25 +8,24 @@
  * 3. ユーザー設定とデフォルト値に基づきGC設定値を解決し、アイテムタイプに応じたガベージコレクション（GC）の実行をトリガーする。
  * 4. 主キーとして archiveId のみを使用する統一的なインターフェースの提供。
  */
-import type { ArchiveItemToSave, ArchiveCollectionKey, ArchiveItemType } from "../../models/archive";
-import type { DBArchive } from "../../models/db-types";
+import type { ArchiveItemToSave, ArchiveCollectionKey, ArchiveItemType, DBArchive } from "../../models/models";
 import {
     fetchAllItemsFromCollection,
     bulkFetchItemsByIdsFromCollection,
     bulkPutItemsToCollection,
     bulkDeleteItemsFromCollection,
-    bulkUpdateItemFieldToCollection,
+    bulkUpdateItemsSingleFieldToCollection,
     runGarbageCollectionForCollection,
     type DbCollectionName
 } from '../database/dbCore';
-import type { PersistedUserSettings, GCSetting } from "../../models/userData";
+import type { PersistedUserSettings, GCSetting } from "../../models/models";
 import { userDataService } from '../user-data/userDataService';
 import { generateId } from '../../utils/dataUtils';
 import { resolveNumberWithFallback } from '../../utils/valueResolver';
-import { ARCHIVE_GC_DEFAULTS } from '../../configs/defaults';
+import { ARCHIVE_GC_CONFIGS } from '../../configs/configs';
 
-// ARCHIVE_GC_DEFAULTS に GCSetting 型をキャストして保持
-const GC_DEFAULTS = ARCHIVE_GC_DEFAULTS as unknown as GCSetting;
+// ARCHIVE_GC_CONFIGS に GCSetting 型をキャストして保持
+const GC_DEFAULTS = ARCHIVE_GC_CONFIGS as unknown as GCSetting;
 
 // ----------------------------------------
 // プライベートヘルパー関数
@@ -236,7 +235,7 @@ export const archiveService = {
      * @param value 設定する新しい値 (全IDに適用)
      * @returns 更新されたレコードの総数
      */
-    async updateItemsFieldToArchive(
+    async updateItemsSingleFieldToArchive(
         archiveIds: string[],
         collectionKey: ArchiveCollectionKey,
         field: string,
@@ -247,11 +246,12 @@ export const archiveService = {
         // DbCollectionName と ArchiveCollectionKey は互換性がある
         const dbCollectionKey: DbCollectionName = collectionKey; 
         
-        console.log(`[ArchiveService:updateItemsFieldToArchive] ⚡️ Bulk updating field '${field}' on ${collectionKey} for ${archiveIds.length} items.`);
+        console.log(`[ArchiveService:
+        rchive] ⚡️ Bulk updating field '${field}' on ${collectionKey} for ${archiveIds.length} items.`);
         
         try {
             // dbCoreの汎用バルク更新関数をコレクション名とIDリストを指定して呼び出す
-            const numUpdated = await bulkUpdateItemFieldToCollection(
+            const numUpdated = await bulkUpdateItemsSingleFieldToCollection(
                 archiveIds,
                 dbCollectionKey,
                 field,
@@ -263,13 +263,10 @@ export const archiveService = {
             return numUpdated;
 
         } catch (error) {
-            console.error(`[ArchiveService:updateItemsFieldToArchive] ❌ Failed to update field ${field} in ${collectionKey}:`, error);
+            console.error(`[ArchiveService:updateItemsSingleFieldToArchive] ❌ Failed to update field ${field} in ${collectionKey}:`, error);
             throw error;
         }
-    },
-
-
-            
+    },         
 
     /**
      * 特定のアイテムタイプに対して、trashとhistory両方のコレクションでGCを実行する

@@ -6,7 +6,7 @@
  * 1. カードIDと枚数のMap形式のデッキデータ（mainDeck, sideDeck, extraDeck）をUI表示用のリスト形式に変換し、枚数でソートする（mapToDeckCardList）。
  * 2. デッキに含まれるメイン、サイド、エクストラの全カードの合計枚数を計算する（calculateTotalCards）。
  */
-import type { Deck, DeckCard } from '../../models/deck';
+import type { Deck, DeckCard } from '../../models/models';
 
 /**
  * カードIDと枚数のMap形式のデッキデータを、UI表示用のDeckCard[]に変換し、枚数が多い順にソートする。

@@ -17,8 +17,8 @@ import {
     type DBDeck,
     type DBSetting,
     type DBArchive,
-} from '../../models/db-types';
-import { type Preset } from '../../models/preset';
+    type Preset
+} from '../../models/models';
 
 // DBインスタンスの型定義
 export class OmniTCGSimDB extends Dexie {
@@ -41,7 +41,7 @@ export class OmniTCGSimDB extends Dexie {
         // 開発環境のためバージョンを1に初期化し、最新のスキーマを定義する。
         this.version(1).stores({
             // packs: カスタムフィールドと最新の変更点をすべて含むスキーマ
-            packs: `&packId, name, number, price, packType, cardsPerPack, totalCards, series, isOpened, isFavorite, createdAt, updatedAt, imageColor, cardBackImageColor, specialProbabilitySlots, isAdvancedRulesEnabled, num_1, num_2, str_1, str_2, searchText`,
+            packs: `&packId, name, number, price, packType, cardsPerPack, uniqueCards, totalCards, series, isOpened, isFavorite, createdAt, updatedAt, imageColor, cardBackImageColor, specialProbabilitySlots, isAdvancedRulesEnabled, num_1, num_2, str_1, str_2, searchText`,
 
 
             // cards: カスタムフィールドと最新の変更点をすべて含むスキーマ
@@ -50,7 +50,7 @@ export class OmniTCGSimDB extends Dexie {
             cardPool: '&cardId',
 
             // decks: カスタムフィールドと最新の変更点をすべて含むスキーマ
-            decks: `&deckId, name, number, ruleId, deckType, totalCards, series, isLegal, hasUnownedCards, isFavorite, createdAt, updatedAt, imageColor, num_1, num_2, num_3, num_4, str_1, str_2, str_3, str_4, searchText`,
+            decks: `&deckId, name, number, ruleId, deckType, uniqueCards, totalCards, series, isLegal, hasUnownedCards, isFavorite, createdAt, updatedAt, imageColor, num_1, num_2, num_3, num_4, str_1, str_2, str_3, str_4, searchText`,
 
             userSettings: '&key',
             presets: '&id, name',

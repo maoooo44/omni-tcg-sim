@@ -7,9 +7,16 @@
  */
 import { useState, useMemo, useEffect } from 'react';
 import { useMediaQuery, useTheme } from '@mui/material';
-import type { GridSettings, GridBreakpoints } from '../models/grid';
-import type { GridDisplayDefault } from '../models/userData';
+import type { GridSettings, GridBreakpoints, GridDisplayDefault } from '../models/models';
 import type { SxProps, Theme } from '@mui/material';
+
+// ★ [変更なし]: GridRenderUnit の定義（インポートされることを想定）
+export interface GridRenderUnit {
+    sxOverride: SxProps<Theme>;
+    aspectRatio: number;
+    gap: number;
+}
+// ↑ 実際にインポートする場合はこの定義は不要
 
 // ユーザー設定の保存先キー
 type StorageKey = string;
@@ -128,16 +135,16 @@ export const useGridDisplay = ({ settings, storageKey, userGlobalDefault, isRowM
         const finalDimCalc = `calc(${baseDim} - ${gapValue}px)`;
 
         if (isRowMode) {
-            // ★ [修正] 行モードの場合: height, minHeight の設定を完全に削除
-            return {
-                // height: finalDimCalc, // 削除
-                // minHeight: finalDimCalc, // 削除
-                boxSizing: 'border-box',
-                flexGrow: 0, 
-                maxWidth: '100%',
-                flexBasis: 'auto', 
-                aspectRatio: settings.aspectRatio, 
-            };
+            // ★ [修正] 行モードの場合: height, minHeight の設定を完全に削除
+            return {
+                // height: finalDimCalc, // 削除
+                // minHeight: finalDimCalc, // 削除
+                boxSizing: 'border-box',
+                flexGrow: 0, 
+                maxWidth: '100%',
+                flexBasis: 'auto', 
+                aspectRatio: settings.aspectRatio, 
+            };
         } else {
             // 列モードの場合 (既存のロジック): 幅を指定する
             return {
@@ -151,14 +158,19 @@ export const useGridDisplay = ({ settings, storageKey, userGlobalDefault, isRowM
     }, [columns, settings.aspectRatio, gapValue, isRowMode]);
 
     // 返り値
+    // ★ [修正] GridRenderUnit に含まれるプロパティをまとめる
+    const renderUnit: GridRenderUnit = {
+        sxOverride,
+        aspectRatio: settings.aspectRatio,
+        gap: gapValue,
+    };
+    
     return {
         columns, // 現在の列数または行数 (名称維持)
         setColumns: setSelectedColumns, // 列数/行数（数値）を変更するハンドラ (名称維持)
         minColumns: settings.minColumns, // 名称維持
         maxColumns: settings.maxColumns, // 名称維持
-        sxOverride, // Grid Item に適用する sx スタイル (カスタム幅/高さを制御)
-        aspectRatio: settings.aspectRatio, // アスペクト比
-        gap: gapValue, // px単位のgap値を返す（小数点対応）
+        gridRenderUnit: renderUnit, // ★ [修正] GridRenderUnit をプロパティとして組み込む
         isRowMode, // 現在のモード
     };
 };

@@ -14,18 +14,24 @@
 import React, { useState, useMemo } from 'react';
 
 // 必要なコンポーネントとフック、型をインポート 
-import type { Pack } from '../../models/pack';
+import type { Pack } from '../../models/models';
 import { usePackOpener } from './hooks/usePackOpener';
 
 import {
     Box, Typography, Select, MenuItem, FormControl, InputLabel,
-    Button, Alert, TextField, Paper
-} from '@mui/material'; import type { SelectChangeEvent } from '@mui/material';
+    Alert, TextField, Paper
+} from '@mui/material'; 
+import type { SelectChangeEvent } from '@mui/material';
+
 // 切り出したコンポーネントをインポート 
 import PackOpenerHandler from './PackOpenerHandler';
-import { useGridDisplay } from '../../hooks/useGridDisplay';
-import { PackListGridSettings } from '../../configs/gridDefaults';
-import GridColumnToggle from '../../components/controls/GridColumnToggle';
+import {  useGridDisplay } from '../../hooks/useGridDisplay';
+import { PAGE_PADDING, PAGE_FLEX_GROW, PAGE_TITLE_VARIANT, PackListGridSettings } from '../../configs/configs';
+
+// ControlBar と Props のインポート
+import ControlBar from '../../components/common/ControlBar';
+import type { ControlBarProps } from '../../models/models'; 
+import OpenInNewIcon from '@mui/icons-material/OpenInNew';
 
 
 interface PackOpenerProps {
@@ -77,51 +83,44 @@ const PackOpener: React.FC<PackOpenerProps> = ({ preselectedPackId }) => {
             (pack.series && pack.series.toLowerCase().includes(lowerSearch))
         );
     }, [packs, searchTerm]);
+
     const packPrice = selectedPack?.price || 0;
     const canAfford = coins >= packPrice;
     const isDTCGMode = currentMode === 'dtcg';
     const isGodMode = currentMode === 'god';
-    const isFreeMode = currentMode === 'free';
 
     // ゴールド入力変更ハンドラ (God Mode時のみ有効)
     const handleCoinChange = (event: React.ChangeEvent<HTMLInputElement>) => {
         const value = parseInt(event.target.value, 10);
 
-        // ゴッドモードであり、かつ有効な数値の場合のみ更新
         if (isGodMode && !isNaN(value)) {
-            // setCoins は usePackOpener 経由で useCurrencyStore のアクションを呼び出す
             setCoins(value);
         }
     };
 
 
-    // ボタンの表示と無効化ロジック
-    let buttonText: string;
+    // ControlBar に渡すためのボタン無効化/ツールチップロジックを定義
+    let tooltipText = "パックを開封";
+    let buttonDisabled = !selectedPack; 
     let buttonColor: 'primary' | 'error' | 'secondary' = 'primary';
-    let buttonDisabled = !selectedPack;
+    const buttonIcon = <OpenInNewIcon />;
 
-    // モード別のボタンテキスト設定
+    // 無効化とツールチップテキストの設定
     if (!selectedPack) {
-        buttonText = 'パックを選択';
-    } else if (isFreeMode || isGodMode) {
-        buttonText = `0 G でパックを開封`;
-    } else { // DTCG Mode
-        buttonText = `${packPrice} G でパックを開封`;
-    }
-
-    // DTCGモード特有の無効化/警告
-    if (selectedPack) {
-        if (isDTCGMode) {
-            if (secondsUntilNextOpen > 0) {
-                buttonText = `待機中... (${secondsUntilNextOpen} 秒)`;
-                buttonColor = 'secondary';
-                buttonDisabled = true;
-            } else if (!canAfford) {
-                buttonText = `ゴールド不足: ${packPrice - coins} G 足りません`;
-                buttonColor = 'error';
-                buttonDisabled = false;
-            }
+        buttonDisabled = true;
+        tooltipText = '開封するパックを選択してください';
+    } else if (isDTCGMode) {
+        if (secondsUntilNextOpen > 0) {
+            buttonDisabled = true;
+            tooltipText = `連続開封はできません。あと ${secondsUntilNextOpen} 秒待ってください。`;
+            buttonColor = 'secondary';
+        } else if (!canAfford) {
+            buttonDisabled = true; 
+            tooltipText = `ゴールド不足: ${packPrice - coins} G 足りません (パック価格: ${packPrice} G)`;
+            buttonColor = 'error';
         }
+    } else { // FREE Mode or GOD Mode
+        tooltipText = 'パックを開封 (無料)';
     }
 
     // パック選択のハンドラ
@@ -132,17 +131,7 @@ const PackOpener: React.FC<PackOpenerProps> = ({ preselectedPackId }) => {
 
     // 開封ボタン押下時のカスタムハンドラ
     const handleOpenPack = async () => {
-        if (!selectedPack) return;
-
-        if (isDTCGMode && secondsUntilNextOpen > 0) {
-            alert(`連続開封はできません。あと ${secondsUntilNextOpen} 秒待ってください。`);
-            return;
-        }
-
-        if (isDTCGMode && !canAfford) {
-            alert(`ゴールドが不足しています。このパックを開封するには ${packPrice} G が必要です。`);
-            return;
-        }
+        if (buttonDisabled) return;
 
         setLastOpenedResults({ id: 'pre-open-reset', results: [] });
         await hookHandleOpenPack();
@@ -153,113 +142,136 @@ const PackOpener: React.FC<PackOpenerProps> = ({ preselectedPackId }) => {
         return <Typography>パックデータをロード中...</Typography>;
     }
 
-    if (!selectedPack && !preselectedPackId) {
-        return <Typography>パックを選択してください。</Typography>;
-    }
+
+    // ⭐️ ControlBar に渡す Props を構築 ⭐️
+    const packOpenerControlProps: ControlBarProps = useMemo(() => {
+        
+        // 💡 修正: openPackButton の型を明示せず、リテラルオブジェクトとして定義し直す
+        // TypeScriptが自動的に ControlBarProps['actionButtons'][number] に推論してくれる
+        const openPackButton = {
+            icon: buttonIcon,
+            tooltip: tooltipText,
+            onClick: handleOpenPack,
+            color: buttonColor, // 'primary' | 'error' | 'secondary' は許容範囲内
+        };
+
+        return {
+            // タイトル: 収録枚数と選択状態
+            title: selectedPack ? `収録枚数: ${selectedPack.cardsPerPack}枚` : 'パックを選択してください',
+            showTitle: true,
+
+            // 列数トグルのProps
+            gridToggleProps: {
+                columns: gridDisplayProps.columns,
+                setColumns: gridDisplayProps.setColumns,
+                minColumns: gridDisplayProps.minColumns,
+                maxColumns: gridDisplayProps.maxColumns,
+            },
+
+            // 開封ボタンをアクションとして追加
+            actionButtons: [openPackButton],
+        };
+    }, [
+        selectedPack, 
+        gridDisplayProps.columns, 
+        gridDisplayProps.setColumns,
+        gridDisplayProps.minColumns,
+        gridDisplayProps.maxColumns,
+        handleOpenPack,
+        tooltipText,
+        buttonColor,
+        buttonIcon,
+    ]);
+
 
     return (
-        <Box sx={{ flexGrow: 1, p: 2 }}>
-            {/* モードと所持ゴールド（横並び） */}
-            <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 2 }}>
-                <Typography variant="subtitle1" sx={{ color: isDTCGMode ? 'primary.main' : 'text.secondary' }}>
-                    現在のモード: <strong>{currentMode.toUpperCase()}</strong>
-                </Typography>
-                {isGodMode ? (
-                    <TextField
-                        label="所持ゴールド (GOD MODE)"
-                        type="number"
-                        variant="outlined"
-                        size="small"
-                        value={coins.toString()}
-                        onChange={handleCoinChange}
-                        InputProps={{
-                            endAdornment: <Typography sx={{ mr: 1 }}>G</Typography>,
-                        }}
-                        sx={{ width: 200, height: 32 }}
-                    />
-                ) : (
-                    <Typography
-                        variant="h6"
-                        color={isDTCGMode ? 'text.primary' : 'text.secondary'}
-                        sx={{
-                            display: 'flex',
-                            height: 32,
-                            alignItems: 'center',
-                            color: isDTCGMode ? 'text.primary' : 'text.secondary',
-                        }}
-                    >
-                        所持ゴールド: {coins} G
+        <Box sx={{ p: PAGE_PADDING, flexGrow: PAGE_FLEX_GROW }}>
+            <Typography variant={PAGE_TITLE_VARIANT} gutterBottom>パック開封</Typography>
+
+            <Box sx={{ flexGrow: 1, p: 2 }}>
+                {/* モードと所持ゴールド（横並び） */}
+                <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 2 }}>
+                    <Typography variant="subtitle1" sx={{ color: isDTCGMode ? 'primary.main' : 'text.secondary' }}>
+                        現在のモード: <strong>{currentMode.toUpperCase()}</strong>
                     </Typography>
-                )}
-            </Box>
-
-            {/* パック選択フィルタエリア */}
-            <Paper elevation={2} sx={{ p: 2, mb: 2 }}>
-                <Box sx={{ display: 'flex', gap: 2, alignItems: 'flex-end' }}>
-                    <TextField
-                        label="パック名で検索"
-                        variant="outlined"
-                        size="small"
-                        value={searchTerm}
-                        onChange={(e) => setSearchTerm(e.target.value)}
-                        sx={{ flex: 1 }}
-                    />
-                    <FormControl sx={{ flex: 2 }} size="small">
-                        <InputLabel id="pack-select-label">開封するパック</InputLabel>
-                        <Select
-                            labelId="pack-select-label"
-                            value={selectedPack?.packId || ''}
-                            label="開封するパック"
-                            onChange={handlePackSelectChange}
+                    {isGodMode ? (
+                        <TextField
+                            label="所持ゴールド (GOD MODE)"
+                            type="number"
+                            variant="outlined"
+                            size="small"
+                            value={coins.toString()}
+                            onChange={handleCoinChange}
+                            InputProps={{
+                                endAdornment: <Typography sx={{ mr: 1 }}>G</Typography>,
+                            }}
+                            sx={{ width: 200, height: 32 }}
+                        />
+                    ) : (
+                        <Typography
+                            variant="h6"
+                            color={isDTCGMode ? 'text.primary' : 'text.secondary'}
+                            sx={{
+                                display: 'flex',
+                                height: 32,
+                                alignItems: 'center',
+                                color: isDTCGMode ? 'text.primary' : 'text.secondary',
+                            }}
                         >
-                            {filteredPacks.map((pack: Pack) => (
-                                <MenuItem key={pack.packId} value={pack.packId}>
-                                    {pack.name}
-                                    {isDTCGMode ? ` (${pack.cardsPerPack}枚封入, ${pack.price} G)` : ` (${pack.cardsPerPack}枚封入, FREE)`}
-                                </MenuItem>
-                            ))}
-                        </Select>
-                    </FormControl>
+                            所持ゴールド: {coins} G
+                        </Typography>
+                    )}
                 </Box>
-            </Paper>
 
-            {/* エラー/警告表示 */}
-            {purchaseError && <Alert severity="error" sx={{ mb: 2 }}>{purchaseError}</Alert>}
-            {simulationWarning && <Alert severity="warning" sx={{ mb: 2 }}>{simulationWarning}</Alert>}
+                {/* パック選択フィルタエリア */}
+                <Paper elevation={2} sx={{ p: 2, mb: 2 }}>
+                    <Box sx={{ display: 'flex', gap: 2, alignItems: 'flex-end' }}>
+                        <TextField
+                            label="パック名で検索"
+                            variant="outlined"
+                            size="small"
+                            value={searchTerm}
+                            onChange={(e) => setSearchTerm(e.target.value)}
+                            sx={{ flex: 1 }}
+                        />
+                        <FormControl sx={{ flex: 2 }} size="small">
+                            <InputLabel id="pack-select-label">開封するパック</InputLabel>
+                            <Select
+                                labelId="pack-select-label"
+                                value={selectedPack?.packId || ''}
+                                label="開封するパック"
+                                onChange={handlePackSelectChange}
+                            >
+                                {filteredPacks.map((pack: Pack) => (
+                                    <MenuItem key={pack.packId} value={pack.packId}>
+                                        {pack.name}
+                                        {isDTCGMode ? ` (${pack.cardsPerPack}枚封入, ${pack.price} G)` : ` (${pack.cardsPerPack}枚封入, FREE)`}
+                                    </MenuItem>
+                                ))}
+                            </Select>
+                        </FormControl>
+                    </Box>
+                </Paper>
 
-            {/* 収録枚数・列数・開封ボタン（横並び） */}
-            <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 3 }}>
-                <Typography variant="h6">
-                    {selectedPack ? `収録枚数: ${selectedPack.cardsPerPack}枚` : 'パックを選択してください'}
-                </Typography>
-                <Box sx={{ display: 'flex', alignItems: 'center', gap: 2 }}>
-                    <GridColumnToggle
-                        currentColumns={gridDisplayProps.columns}
-                        setColumns={gridDisplayProps.setColumns}
-                        minColumns={gridDisplayProps.minColumns}
-                        maxColumns={gridDisplayProps.maxColumns}
-                        label="列数:"
+                {/* エラー/警告表示 */}
+                {purchaseError && <Alert severity="error" sx={{ mb: 2 }}>{purchaseError}</Alert>}
+                {simulationWarning && <Alert severity="warning" sx={{ mb: 2 }}>{simulationWarning}</Alert>}
+
+                {/* ⭐️ ControlBar で収録枚数・列数・開封ボタンを統合 ⭐️ */}
+                <Box sx={{ mb: 3 }}>
+                    <ControlBar 
+                        {...packOpenerControlProps}
                     />
-                    <Button
-                        variant="contained"
-                        color={buttonColor}
-                        onClick={handleOpenPack}
-                        disabled={buttonDisabled}
-                        sx={{ width: '200px' }}
-                    >
-                        {buttonText}
-                    </Button>
                 </Box>
+
+                {/* PackOpenerHandler */}
+                <PackOpenerHandler
+                    selectedPack={selectedPack}
+                    lastOpenedResults={lastOpenedResults}
+                    setLastOpenedResults={setLastOpenedResults}
+                    {...gridDisplayProps.gridRenderUnit}
+                />
             </Box>
-            {/* PackOpenerHandler */}
-            <PackOpenerHandler
-                selectedPack={selectedPack}
-                lastOpenedResults={lastOpenedResults}
-                setLastOpenedResults={setLastOpenedResults}
-                sxOverride={gridDisplayProps.sxOverride}
-                aspectRatio={gridDisplayProps.aspectRatio}
-                gap={gridDisplayProps.gap}
-            />
         </Box>
     );
 };

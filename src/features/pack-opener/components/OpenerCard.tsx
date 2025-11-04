@@ -1,18 +1,15 @@
 /**
- * src/features/pack-opener/components/OpenerCard.tsx
+ * src/features/pack-opener/components/OpenerCard.tsx (ImagePreview ラッパー版)
  *
- * パック開封シミュレーションのカード表示とフリップアニメーションを担当するプレゼンテーションコンポーネント。
  * * 責務:
- * 1. 3D CSSプロパティ (`perspective`, `transformStyle: 'preserve-3d'`) を使用し、カードのフリップアニメーションを実装する。
- * 2. `isRevealed` (表裏状態) と `delay` (シーケンシャルアニメーションのための遅延) に基づき、回転状態とアニメーション実行を制御する。
- * 3. ユーティリティ関数を介してカード表面/裏面の画像URLを取得し、ヘルパーコンポーネント `CardFace` に描画を委譲する。
- * 4. `useFixedSize` プロパティによって、固定のパックカードサイズまたは親コンテナに合わせた可変サイズを適用する。
- * 5. カードが表になっている場合のみクリックイベント (`onClick`) を発火させる。
+ * 1. 3D CSSプロパティを使用し、カードのフリップアニメーションを実装する (ラッパー)。
+ * 2. 画像表示は ImagePreview に委譲する。
  */
 
 import React from 'react';
-import { Box, Paper, CardMedia } from '@mui/material';
-import type { OpenerCardData } from '../../../models/packOpener';
+import { Box, Paper } from '@mui/material';
+import type { OpenerCardData } from '../../../models/models';
+import ImagePreview from '../../../components/common/ImagePreview'; 
 
 interface OpenerCardProps {
     cardData: OpenerCardData | null;
@@ -26,40 +23,8 @@ interface OpenerCardProps {
 import {
     DEFAULT_PACK_DECK_WIDTH as PACK_CARD_WIDTH,
     DEFAULT_PACK_DECK_HEIGHT as PACK_CARD_HEIGHT,
-    getDisplayImageUrl
+    getDisplayImageUrl // プレースホルダー生成のために残す
 } from '../../../utils/imageUtils';
-
-
-// カードの表面・裏面を描画するヘルパーコンポーネント
-interface CardFaceProps {
-    imageUrl: string;
-    isFront: boolean; // true: 表面, false: 裏面
-}
-
-const CardFace: React.FC<CardFaceProps> = ({ imageUrl, isFront }) => (
-    <Box
-        sx={{
-            position: 'absolute',
-            width: '100%',
-            height: '100%',
-            backfaceVisibility: 'hidden', // 裏面を隠す
-            // 表面は初期180度回転（裏向き）、裏面は初期0度（表向き）
-            transform: isFront ? 'rotateY(180deg)' : 'rotateY(0deg)',
-            overflow: 'hidden',
-        }}
-    >
-        <CardMedia
-            component="img"
-            image={imageUrl}
-            alt={isFront ? 'Card Front' : 'Card Back'}
-            sx={{
-                width: '100%',
-                height: '100%',
-                objectFit: 'cover',
-            }}
-        />
-    </Box>
-);
 
 
 const OpenerCard: React.FC<OpenerCardProps> = ({
@@ -70,35 +35,39 @@ const OpenerCard: React.FC<OpenerCardProps> = ({
     onClick,
     useFixedSize = true,
 }) => {
-    // 裏面画像: getDisplayImageUrlを使用してプレースホルダーまたは実際の画像URLを取得
-    const backImage = getDisplayImageUrl(cardBackImageUrl, {
+    
+    // --- 1. 画像URLの計算 ---
+    
+    // 裏面画像 (ImagePreviewがURLを直接受け取るため、ここで計算を維持)
+    const backImageUrl = getDisplayImageUrl(cardBackImageUrl, {
         width: PACK_CARD_WIDTH,
         height: PACK_CARD_HEIGHT,
         text: 'BACK',
     });
-
-    // 表面画像: カードデータの画像URL、なければプレースホルダーを使用
-    const frontImage = cardData?.imageUrl || getDisplayImageUrl(null, {
-        width: PACK_CARD_WIDTH,
-        height: PACK_CARD_HEIGHT,
-        text: 'CARD',
-    });
-
-    // アニメーションスタイル
+    
+    // --- 2. アニメーションスタイル ---
     const flipStyle = {
-        // delayミリ秒後に0.5秒かけて回転
         transition: `transform 0.5s ease-out ${delay}ms`,
-        // isRevealed=falseで0度 (裏面表示)、trueで180度 (表面表示)
         transform: isRevealed ? 'rotateY(180deg)' : 'rotateY(0deg)',
     };
 
-    // クリックハンドラ
+    // --- 3. クリックハンドラ ---
     const handleClick = () => {
         // カードが表になっており、データが存在する場合のみクリックを処理
         if (isRevealed && cardData && onClick) {
             onClick(cardData);
         }
     };
+    
+    // ImagePreviewに適用する共通の画像スタイル（フリップ用）
+    const flipImageSx = {
+        width: '100%',
+        height: '100%',
+        objectFit: 'cover',
+        borderRadius: 0, // PaperがborderRadiusを持つため、ImagePreview内部のborderRadiusは解除
+        border: 'none', // ImagePreview内部のborderも解除
+    };
+
 
     return (
         <Box
@@ -106,7 +75,7 @@ const OpenerCard: React.FC<OpenerCardProps> = ({
                 perspective: '1000px', // 3D効果の基点
                 width: useFixedSize ? PACK_CARD_WIDTH : '100%',
                 height: useFixedSize ? PACK_CARD_HEIGHT : 'auto',
-                aspectRatio: useFixedSize ? undefined : '63 / 88', // 親サイズに合わせる場合はアスペクト比を使用
+                aspectRatio: useFixedSize ? undefined : '63 / 88', 
 
                 cursor: isRevealed && cardData ? 'pointer' : 'default',
             }}
@@ -123,16 +92,46 @@ const OpenerCard: React.FC<OpenerCardProps> = ({
                     borderRadius: 2,
                 }}
             >
-                {/* カード表面 (初期180度、親が0度のとき裏向きで隠れる、親が180度のとき360度で表向きで見える) */}
-                <CardFace
-                    imageUrl={frontImage}
-                    isFront={true}
-                />
-                {/* カード裏面 (初期0度、親が0度のとき表向きで見える) */}
-                <CardFace
-                    imageUrl={backImage}
-                    isFront={false}
-                />
+                {/* 💡 カード表面: ImagePreviewをラップして3D CSSを適用 */}
+                <Box
+                    sx={{
+                        position: 'absolute',
+                        width: '100%',
+                        height: '100%',
+                        backfaceVisibility: 'hidden', 
+                        transform: 'rotateY(180deg)', // 表面は初期180度回転 (裏向き)
+                        overflow: 'hidden',
+                    }}
+                >
+                    <ImagePreview 
+                        item={cardData} // Itemデータを渡す
+                        disableCarousel={true} 
+                        width={useFixedSize ? PACK_CARD_WIDTH : undefined} 
+                        height={useFixedSize ? PACK_CARD_HEIGHT : undefined}
+                        imageSx={flipImageSx}
+                    />
+                </Box>
+                
+                {/* 💡 カード裏面: ImagePreviewをラップして3D CSSを適用 */}
+                <Box
+                    sx={{
+                        position: 'absolute',
+                        width: '100%',
+                        height: '100%',
+                        backfaceVisibility: 'hidden', 
+                        transform: 'rotateY(0deg)', // 裏面は初期0度 (表向き)
+                        overflow: 'hidden',
+                    }}
+                >
+                    <ImagePreview 
+                        item={null} // Itemデータは不要
+                        imageUrl={backImageUrl} // URLを直接指定
+                        disableCarousel={true}
+                        width={useFixedSize ? PACK_CARD_WIDTH : undefined}
+                        height={useFixedSize ? PACK_CARD_HEIGHT : undefined}
+                        imageSx={flipImageSx}
+                    />
+                </Box>
             </Paper>
         </Box>
     );

@@ -3,96 +3,69 @@
  *
  * * デッキの新規作成または編集を行うためのメインページコンポーネント。
  * このページは、URLパラメータからデッキIDを取得し、全てのロジックを専用のカスタムフック（useDeckEditor）に委譲します。
- * 責務は、IDの取得、ロード状態/エラー状態の表示、および機能コンポーネント（DeckEditor）へのデータとロジックの受け渡しに限定されます。
+ * 責務は、IDの取得、カスタムフックの実行、未保存時のナビゲーションブロック、ロード状態の表示、および機能コンポーネントへのデータとロジックの受け渡しに限定されます。
  *
  * * 責務:
- * 1. URLパラメータ（deckId）を取得し、キーとして子コンポーネントを再マウントする。
+ * 1. URLパラメータ（deckId）を取得する。
  * 2. カスタムフック（useDeckEditor）からロジックとデータを取得する。
- * 3. ローディング中またはエラー（データNotFound）の状態を処理し、UIに表示する。
- * 4. 実際の編集機能を提供するコンポーネント（DeckEditor）をレンダリングし、必要なPropsを渡す。
+ * 3. 未保存の変更がある場合にナビゲーションをブロックするロジック（useBlocker）を実装する。
+ * 4. ローディング中の状態を処理し、UIに表示する。
+ * 5. 実際の編集機能を提供するコンポーネント（DeckEditor）をレンダリングし、必要なPropsを渡す。
  */
 
 import React from 'react';
-import { useParams } from '@tanstack/react-router';
-import { Box, Alert } from '@mui/material';
+import {
+    Box, Typography, CircularProgress,
+} from '@mui/material';
+import { useParams, useBlocker } from '@tanstack/react-router';
 import DeckEditor from '../features/decks/DeckEditor';
 import { useDeckEditor } from '../features/decks/hooks/useDeckEditor';
 
+
 const DeckEditorPage: React.FC = () => {
 
-    // URLパラメータからdeckIdを取得
+    // useParamsでdeckIdを取得
     const { deckId } = useParams({ strict: false }) as { deckId: string };
-    // DeckEditorContent コンポーネントをレンダリング
-    // key={deckId} を設定することで、URLパラメータが変わった際にフックを強制リセット
-    return (
-        <DeckEditorContent key={deckId} deckId={deckId} />
-    );
-};
 
-interface DeckEditorContentProps {
-    deckId: string;
-}
+    // useDeckEditorからすべての状態とハンドラを取得
+    const deckEditorProps = useDeckEditor(deckId);
 
-const DeckEditorContent: React.FC<DeckEditorContentProps> = ({ deckId }) => {
+    // ナビゲーション制御に必要なプロパティをフックの戻り値から取得
+    const { currentDeck, isDirty } = deckEditorProps;
 
-    // useDeckEditor hookから全てのロジックとデータを取得 (ビジネスロジックの分離)
-    const {
-        isLoading,
-        currentDeck,
-        saveMessage,
-        updateDeckInfo,
-        onSave,
-        onDelete,
-        allCards,
-        ownedCards,
-        // 修正: DeckEditorに必要だが元のコードで取得されていなかったPropsを仮定して追加
-        isDirty,
-        handleCardAdd,
-        handleCardRemove,
-    } = useDeckEditor(deckId);
+    // useBlocker の実装: 未保存の変更がある場合のナビゲーションブロック
+    useBlocker({
+        shouldBlockFn: () => {
 
-    // ロード中表示
-    if (isLoading) {
-        return (
-            <Box sx={{ p: 3 }}>
-                <Alert severity="info">
-                    デッキデータをロード中...
-                </Alert>
-            </Box>
-        );
-    }
-    // データが見つからない場合のみエラー表示（新規作成は通す）
+            if (!isDirty) {
+                return false;
+            }
+
+            const confirmed = window.confirm(
+                '変更が保存されていません。このまま移動すると、未保存の変更は破棄されます。続行しますか？'
+            );
+
+            return !confirmed;
+        },
+
+        enableBeforeUnload: isDirty,
+    });
+
+    // ロード中またはデータがない場合
     if (!currentDeck) {
         return (
-            <Box sx={{ p: 3 }}>
-                <Alert severity="error">
-                    編集するデッキデータがありません。無効なURLにアクセスした可能性があります。
-                </Alert>
+            <Box sx={{ p: 3, textAlign: 'center' }}>
+                <CircularProgress />
+                <Typography sx={{ mt: 2 }}>データをロード中...</Typography>
             </Box>
         );
     }
-    
-    // 修正: isNewDeckの判定ロジックを仮定
-    const isNewDeck = deckId === 'new'; 
 
-    // Featureコンポーネントをレンダリングし、必要なPropsを渡す (UI/機能の分離)
+    // DeckEditorにpropsを渡す
     return (
-        <Box sx={{ flexGrow: 1 }}>
-            <DeckEditor
-                deck={currentDeck}
-                onSave={onSave}
-                onDelete={onDelete}
-                updateDeckInfo={updateDeckInfo}
-                saveMessage={saveMessage}
-                allCards={allCards}
-                ownedCards={ownedCards}
-                // 修正: 不足していたPropsを追加
-                isNewDeck={isNewDeck}
-                isDirty={isDirty || false} // useDeckEditorからの取得を想定
-                handleCardAdd={handleCardAdd} // useDeckEditorからの取得を想定
-                handleCardRemove={handleCardRemove} // useDeckEditorからの取得を想定
-            />
-        </Box>
+        <DeckEditor
+            {...deckEditorProps}
+        />
     );
 };
 

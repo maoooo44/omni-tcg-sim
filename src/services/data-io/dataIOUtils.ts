@@ -7,8 +7,7 @@
  * 2. Packの設定情報（CardFieldSettings）に基づき、ユーザーフレンドリーな表示名とCardモデルの物理キーをマッピングした CustomFieldDefinition のリストを動的に生成する。
  */
 
-import type { Card } from '../../models/card';
-import type { CardFieldSettings } from '../../models/pack';
+import type { Card, CardFieldSettings } from '../../models/models';
 
 /**
  * CSV/JSONインポート/エクスポートでの照合に使用するカスタムフィールドの定義

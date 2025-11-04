@@ -11,8 +11,7 @@
 import { packService } from '../packs/packService';
 import { cardService } from '../cards/cardService';
 import { generateId, createDefaultPack, applyDefaultsIfMissing } from '../../utils/dataUtils';
-import type { Pack, PackBundle } from '../../models/pack';
-import type { Card } from '../../models/card';
+import type { Pack, PackBundle, Card } from '../../models/models';
 import { exportDataToJson, importDataFromJson } from '../../utils/genericJsonIO';
 
 // ----------------------------------------------------

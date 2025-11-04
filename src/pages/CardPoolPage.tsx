@@ -12,18 +12,11 @@
  * 3. 実際の機能を提供するコンポーネント（CardPoolManager）を埋め込む。
  */
 import React from 'react';
-import { Box, Typography } from '@mui/material';
-import CardPoolManager from '../features/card-pool/CardPool';
+import CardPool from '../features/card-pool/CardPool';
 
 const CardPoolPage: React.FC = () => {
-    return (
-        <Box sx={{ p: 3, flexGrow: 1 }}>
-            <Typography variant="h4" gutterBottom>カードプール</Typography>
+    return <CardPool />
 
-            <CardPoolManager />
-
-        </Box>
-    );
 };
 
 export default CardPoolPage;

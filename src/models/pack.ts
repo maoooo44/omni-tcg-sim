@@ -92,8 +92,9 @@ export interface Pack {
     cardBackImageColor?: string;
     price: number;
     packType: PackType;
-    cardsPerPack: number;
-    totalCards: number;
+    cardsPerPack?: number;      // 1パック開封時に出るカード枚数（Boosterのみ、手動設定）
+    uniqueCards: number;        // カードプール内のユニークなカード種類数（全packTypeで必須）
+    totalCards?: number;        // constructedDeckCards内の全count合計（ConstructedDeckのみ、動的計算）
     series: string;
     description: string;
     isOpened: boolean;
@@ -108,8 +109,9 @@ export interface Pack {
     isAdvancedRulesEnabled: boolean;
 
     constructedDeckCards?: ConstructedDeckCard[];
+    
 
-    cardPresetId?: string;
+    //cardPresetId?: string;
 
     num_1?: number | null;
     num_2?: number | null;

@@ -10,15 +10,16 @@
  */
 
 import { db } from '../database/db';
-import type { DBSetting } from '../../models/db-types';
-import { DEFAULT_SETTINGS } from '../../configs/defaults';
-
 import type {
+    DBSetting,
     GridDisplayDefault,
     PersistedUserSettings,
     GCSetting,
     ItemGcSettings
-} from '../../models/userData';
+} from '../../models/models';
+import { DEFAULT_USER_DATA_CONFIGS } from '../../configs/configs';
+
+const DEFAULT_SETTINGS = DEFAULT_USER_DATA_CONFIGS;
 
 const SETTINGS_KEY = 'userSettings';
 

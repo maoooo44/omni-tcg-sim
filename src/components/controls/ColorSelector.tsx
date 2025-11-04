@@ -16,7 +16,7 @@ import {
 } from '@mui/material';
 import CheckIcon from '@mui/icons-material/Check';
 // 色プリセット定義をインポート
-import { PLACEHOLDER_COLOR_PRESETS } from '../../utils/placeholderUtils';
+import { PLACEHOLDER_COLOR_PRESETS } from '../../utils/imageUtils';
 //import type { PlaceholderColor } from '../../utils/placeholderUtils'; // 型もインポート
 
 // Propsの定義

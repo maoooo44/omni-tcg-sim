@@ -6,51 +6,55 @@
  * 選択されたコレクションタイプ（ゴミ箱/履歴）に応じたアーカイブアイテムのリスト表示を責務とします。
  *
  * * 責務:
- * 1. 親からコレクションタイプ（'trash' or 'history'）を受け取る。
+ * 1. コレクションタイプ（'trash' / 'history'）を切り替えるTabsコンポーネントを配置する。
  * 2. アイテムタイプ（'packBundle' or 'deck'）を切り替えるUI（Segmented Controls）と状態を管理する。
  * 3. useArchiveListフックからデータを取得し、ソート・フィルタUIにバインドする。
- * 4. 取得したデータと設定を用いて、ReusableItemGridに基づいたアーカイブアイテム一覧UIを描画する。
+ * 4. 取得したデータと設定を用いて、GridDisplayに基づいたアーカイブアイテム一覧UIを描画する。
  */
 import React, { useState, useMemo } from 'react';
-import { Box, Typography, Alert, ToggleButton, ToggleButtonGroup } from '@mui/material';
-import InventoryIcon from '@mui/icons-material/Inventory';
-import GroupWorkIcon from '@mui/icons-material/GroupWork';
+import { Box, Typography, Alert, Tabs, Tab } from '@mui/material';
+import CardGiftcardIcon from '@mui/icons-material/CardGiftcard';
+import StyleIcon from '@mui/icons-material/Style';
 
 // useArchiveListフック
 import { useArchiveList } from './hooks/useArchiveList';
 import { useGridDisplay } from '../../hooks/useGridDisplay';
-import ReusableItemGrid from '../../components/common/ReusableItemGrid';
-// import SortAndFilterControls from '../../components/controls/SortAndFilterControls'; // 削除
-import SortAndFilterButton from '../../components/controls/SortAndFilterButton'; // 💡 追加
-import GridColumnToggle from '../../components/controls/GridColumnToggle';
+import GridDisplay from '../../components/common/GridDisplay';
+import ControlBar from '../../components/common/ControlBar';
 
 // 実際のItemComponent、GridSettings、FilterFieldsをインポートする必要があります
 import ArchivePackItem from './components/ArchivePackItem';
 import ArchiveDeckItem from './components/ArchiveDeckItem';
-import { ArchiveListGridSettings } from '../../configs/gridDefaults';
-import { ARCHIVE_FILTER_FIELDS } from '../../configs/sortAndFilterDefaults';
+import { ArchiveListGridSettings, ARCHIVE_FILTER_FIELDS, PAGE_PADDING, PAGE_FLEX_GROW, PAGE_TITLE_VARIANT } from '../../configs/configs';
+import DeleteForeverIcon from '@mui/icons-material/DeleteForever';
+import BulkActionConfirmDialog from '../../components/common/BulkActionConfirmDialog';
+
 
 // === 修正点 1: ItemTypeの型を 'packBundle' | 'deck' に修正 ===
-import type { ArchiveItemType, ArchiveCollectionKey, ArchivePack, ArchiveDeck } from '../../models/archive';
+import type { ArchiveItemType, ArchiveCollectionKey, ArchivePack, ArchiveDeck } from '../../models/models';
 // ArchiveListフックが返すリスト表示用の統合型（ArchivePack | ArchiveDeck）
 // useArchiveListフックが返すdisplayedItemsの要素の型と一致させる
 type ArchiveDisplayItem = ArchivePack | ArchiveDeck; // 正しい型に戻す
 
-// コンポーネントのProps型定義
-interface ArchiveListProps {
-    collectionType: ArchiveCollectionKey; // 'trash' (ゴミ箱) または 'history' (履歴)
-}
-
 // ItemTypeを 'packBundle' に修正
 type ItemType = ArchiveItemType; // 'packBundle' | 'deck'
 
-const ArchiveList: React.FC<ArchiveListProps> = ({ collectionType }) => {
-    // 1. アイテムタイプ（パックバンドル/デッキ）の状態管理
+const ArchiveList: React.FC = () => {
+    // 1. コレクションタイプ（ゴミ箱/履歴）の状態管理
+    const [collectionType, setCollectionType] = useState<ArchiveCollectionKey>('trash');
+    
+    // 2. アイテムタイプ（パックバンドル/デッキ）の状態管理
     const [currentItemType, setCurrentItemType] = useState<ItemType>('packBundle');
+    const [isSelectionMode, setIsSelectionMode] = useState(false);
+    const [showDeleteDialog, setShowDeleteDialog] = useState(false);
 
-    const handleItemTypeChange = (_: React.MouseEvent<HTMLElement>, newItemType: ItemType | null) => {
-        if (newItemType) {
-            setCurrentItemType(newItemType);
+    const handleCollectionChange = (_: React.SyntheticEvent, newValue: ArchiveCollectionKey) => {
+        setCollectionType(newValue);
+    };
+
+    const handleItemTypeChange = (_: React.MouseEvent<HTMLElement>, newItemType: string | null) => {
+        if (newItemType && (newItemType === 'packBundle' || newItemType === 'deck')) {
+            setCurrentItemType(newItemType as ItemType);
         }
     };
 
@@ -63,11 +67,17 @@ const ArchiveList: React.FC<ArchiveListProps> = ({ collectionType }) => {
         sortOrder,
         searchTerm,
         filters,
+        selectedArchiveIds,
         setSortField,
         toggleSortOrder,
         setSearchTerm,
         setFilters,
         handleSelectItem,
+        toggleArchiveSelection,
+        toggleAllArchivesSelection,
+        handleBulkDelete,
+        handleBulkToggleFavorite,
+        clearSelection,
         isLoading,
         SORT_OPTIONS,
     } = useArchiveList({ collectionType, currentItemType });
@@ -89,96 +99,153 @@ const ArchiveList: React.FC<ArchiveListProps> = ({ collectionType }) => {
     }, [displayedItems]);
 
     const labelPrefix = currentItemType === 'packBundle' ? 'パック' : 'デッキ';
-    const itemTypeLabel = currentItemType === 'packBundle' ? 'アーカイブパック' : 'アーカイブデッキ';
+    const itemTypeLabel = currentItemType === 'packBundle' ? 'パックアーカイブ' : 'デッキアーカイブ';
 
     const hasItems = archiveItems.length > 0;
     const isFilteredButEmpty = hasItems && filteredItems.length === 0 && searchTerm;
     const isTotallyEmpty = !hasItems && !searchTerm;
 
+    // 選択されたアイテムのお気に入り状態を判定
+    const selectedItems = useMemo(() => {
+        return filteredItems.filter(item =>
+            selectedArchiveIds.includes(
+                currentItemType === 'packBundle'
+                    ? (item as ArchivePack).meta.archiveId
+                    : (item as ArchiveDeck).meta.archiveId
+            )
+        );
+    }, [filteredItems, selectedArchiveIds, currentItemType]);
+
+    const hasNonFavoriteSelected = selectedItems.length > 0 ? selectedItems.some(item => !item.meta.isFavorite) : true;
+
+    const handleBulkDeleteClick = async () => {
+        setShowDeleteDialog(true);
+    };
+
+    const handleConfirmDelete = async () => {
+        await handleBulkDelete();
+        setShowDeleteDialog(false);
+    };
+
+    const handleToggleSelectionMode = () => {
+        if (isSelectionMode) {
+            clearSelection();
+        }
+        setIsSelectionMode(!isSelectionMode);
+    };
+
     // ロード中の表示を追加 (useArchiveListのisLoadingを使用)
     if (isLoading) {
         return (
-            <Box sx={{ flexGrow: 1, p: 2 }}>
+            <Box sx={{ p: PAGE_PADDING, flexGrow: PAGE_FLEX_GROW }}>
                 <Typography variant="h6" color="text.secondary">
                     アーカイブデータをロード中...
                 </Typography>
             </Box>
         );
     }
+    
+    // ⭐️ 修正点 1: ControlBarに渡す構造化Propsの定義 ⭐️
+
+    // 1. トグルProps
+    const toggleGroupProps = {
+        toggleValue: currentItemType,
+        onToggleChange: handleItemTypeChange,
+        toggleOptions: [
+            { value: 'packBundle', icon: <CardGiftcardIcon />, tooltip: 'パックアーカイブ' }, // ⬅️ labelを追加
+            { value: 'deck',  icon: <StyleIcon />, tooltip: 'デッキアーカイブ' }, // ⬅️ labelを追加
+        ],
+        toggleSize: "small" as const,
+        toggleColor: "primary" as const,
+    };
+
+    // 2. 選択モードProps
+    const selectionProps = {
+        isSelectionMode: isSelectionMode,
+        selectedIds: selectedArchiveIds,
+        totalDisplayedItems: filteredItems.length,
+        onToggleSelectionMode: handleToggleSelectionMode,
+        onToggleAllSelection: toggleAllArchivesSelection,
+        bulkDelete: {
+            onDelete: handleBulkDeleteClick,
+            // ラベルやアイコンはそのまま使用
+            label: collectionType === 'trash' ? "ゴミ箱から完全に削除" : "履歴から完全に削除",
+            icon: <DeleteForeverIcon />,
+        },
+        bulkFavorite: {
+            selectedIds: selectedArchiveIds,
+            isFavorite: !hasNonFavoriteSelected,
+            onToggle: handleBulkToggleFavorite,
+        },
+        // bulkEditはアーカイブにはないので除外
+    };
+
+    // 3. グリッドトグルProps
+    const gridToggleProps = {
+        columns: gridDisplayProps.columns,
+        setColumns: gridDisplayProps.setColumns,
+        minColumns: gridDisplayProps.minColumns,
+        maxColumns: gridDisplayProps.maxColumns,
+    };
+
+    // 4. ソート・フィルタProps
+    const sortFilterProps = {
+        labelPrefix: itemTypeLabel,
+        sortOptions: SORT_OPTIONS,
+        sortField: sortField,
+        sortOrder: sortOrder,
+        setSortField: setSortField,
+        toggleSortOrder: toggleSortOrder,
+        searchTerm: searchTerm,
+        setSearchTerm: setSearchTerm,
+        filters: filters,
+        setFilters: setFilters,
+        filterFields: ARCHIVE_FILTER_FIELDS,
+    };
+
 
     return (
-        <Box sx={{ flexGrow: 1, p: 2 }}>
-            {/* 💡 変更 1: アイテムタイプ切り替えボタンをコントロールバーに移動するため削除 */}
-            {/* <Box sx={{ display: 'flex', justifyContent: 'flex-start', mb: 3 }}>
-                ... トグルボタン ...
-            </Box> */}
+        <Box sx={{ p: PAGE_PADDING, flexGrow: PAGE_FLEX_GROW }}>
+            {/* ページタイトルとコレクションタイプのタブ切り替え */}
+            <Typography variant={PAGE_TITLE_VARIANT} gutterBottom>アーカイブ管理</Typography>
+            
+            <Tabs value={collectionType} onChange={handleCollectionChange} indicatorColor="primary" textColor="primary">
+                <Tab label="ゴミ箱" value="trash" />
+                <Tab label="履歴" value="history" />
+            </Tabs>
+            
+            {/* 水平線で区切り */}
+            <Box sx={{ borderBottom: 1, borderColor: 'divider', mb: 2 }} />
 
-            {/* 💡 変更 2: SortAndFilterControls を削除 */}
-            {/* <SortAndFilterControls
-                ...
-            /> */}
+            <Box sx={{ flexGrow: 1, p: 2 }}>
+            {/* ControlBarでコントロール群を統合（アイテムタイプ切り替えトグル含む） */}
+            <ControlBar
+                title={`${itemTypeLabel}一覧`}
+                itemCount={filteredItems.length}
+                
+                // ⭐️ 修正点 2: 構造化されたPropsを渡す ⭐️
+                // showToggle, toggleValue, onToggleChange, toggleOptions, toggleSize, toggleColor を置き換え
+                toggleGroupProps={toggleGroupProps}
 
-            {/* 💡 変更 3: 件数表示＆グリッドコントロール＆トグルボタンを統合し、順序を変更 */}
-            <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 3, mt: 0 }}>
-                {/* 左側: タイトル/件数表示 */}
-                <Typography variant="h6">
-                    {itemTypeLabel}一覧 ({filteredItems.length}件)
-                </Typography>
+                // showSelectionMode, isSelectionMode, selectedIds, totalDisplayedItems, onToggleSelectionMode, onToggleAllSelection, bulkDelete, bulkFavorite を置き換え
+                selectionProps={selectionProps}
 
-                {/* 右側: コントロールボタン群 (右から順に配置) */}
-                <Box sx={{ display: 'flex', alignItems: 'center', gap: 2 }}>
+                // showGridColumnToggle, columns, setColumns, minColumns, maxColumns を置き換え
+                gridToggleProps={gridToggleProps}
 
-                    {/* 1. パック/デッキトグル (最右) */}
-                    <ToggleButtonGroup
-                        value={currentItemType}
-                        exclusive
-                        onChange={handleItemTypeChange}
-                        color="primary"
-                        size="small" // 他のコントロールに合わせてサイズを小さく
-                    >
-                        <ToggleButton value="packBundle" aria-label="アーカイブパック">
-                            <InventoryIcon sx={{ mr: 0.5 }} fontSize="small" /> パック
-                        </ToggleButton>
-                        <ToggleButton value="deck" aria-label="アーカイブデッキ">
-                            <GroupWorkIcon sx={{ mr: 0.5 }} fontSize="small" /> デッキ
-                        </ToggleButton>
-                    </ToggleButtonGroup>
-
-                    {/* 2. 列数トグル (中央) */}
-                    <GridColumnToggle
-                        currentColumns={gridDisplayProps.columns}
-                        setColumns={gridDisplayProps.setColumns}
-                        minColumns={gridDisplayProps.minColumns}
-                        maxColumns={gridDisplayProps.maxColumns}
-                        label="列数:"
-                    />
-
-                    {/* 3. ソートアンドフィルターボタン (最左) */}
-                    <SortAndFilterButton
-                        labelPrefix={itemTypeLabel}
-                        sortOptions={SORT_OPTIONS}
-                        sortField={sortField}
-                        sortOrder={sortOrder}
-                        searchTerm={searchTerm}
-                        filters={filters}
-                        setSortField={setSortField}
-                        toggleSortOrder={toggleSortOrder}
-                        setSearchTerm={setSearchTerm}
-                        setFilters={setFilters}
-                        filterFields={ARCHIVE_FILTER_FIELDS}
-                    />
-                </Box>
-            </Box>
+                // showSortFilter, sortFilterLabelPrefix, sortOptions, sortField, sortOrder, setSortField, toggleSortOrder, searchTerm, setSearchTerm, filters, setFilters, filterFields を置き換え
+                sortFilterProps={sortFilterProps}
+            />
 
             {/* 4. ステータス表示（Alert） */}
             {isTotallyEmpty && (
-                <Alert severity="info">
+                <Alert severity="info" sx={{ mt: 2 }}>
                     {collectionType === 'trash' ? 'ゴミ箱' : '履歴'} には {labelPrefix} が登録されていません。
                 </Alert>
             )}
 
             {isFilteredButEmpty && (
-                <Alert severity="info">
+                <Alert severity="info" sx={{ mt: 2 }}>
                     検索/フィルタ条件に一致する {labelPrefix} は見つかりませんでした。
                 </Alert>
             )}
@@ -187,26 +254,47 @@ const ArchiveList: React.FC<ArchiveListProps> = ({ collectionType }) => {
             {!isTotallyEmpty && !isFilteredButEmpty && (
                 <Box sx={{ mt: 2 }}>
                     {currentItemType === 'packBundle' ? (
-                        <ReusableItemGrid
-                            items={filteredItems as ArchivePack[]} // ArchivePack型であることを明示
+                        <GridDisplay
+                            items={filteredItems.map(item => ({
+                                ...(item as ArchivePack),
+                                isSelected: selectedArchiveIds.includes((item as ArchivePack).meta.archiveId),
+                            })) as ArchivePack[]}
                             ItemComponent={ArchivePackItem}
                             itemProps={{
                                 onSelectArchiveItem: handleSelectItem,
+                                isSelectable: isSelectionMode,
+                                onToggleSelection: toggleArchiveSelection,
                             }}
                             {...gridDisplayProps}
                         />
                     ) : (
-                        <ReusableItemGrid
-                            items={filteredItems as ArchiveDeck[]} // ArchiveDeck型であることを明示
+                        <GridDisplay
+                            items={filteredItems.map(item => ({
+                                ...(item as ArchiveDeck),
+                                isSelected: selectedArchiveIds.includes((item as ArchiveDeck).meta.archiveId),
+                            })) as ArchiveDeck[]}
                             ItemComponent={ArchiveDeckItem}
                             itemProps={{
                                 onSelectArchiveItem: handleSelectItem,
+                                isSelectable: isSelectionMode,
+                                onToggleSelection: toggleArchiveSelection,
                             }}
                             {...gridDisplayProps}
                         />
                     )}
                 </Box>
             )}
+
+            {/* 削除確認ダイアログ */}
+                <BulkActionConfirmDialog
+                    open={showDeleteDialog}
+                    onClose={() => setShowDeleteDialog(false)}
+                    onConfirm={handleConfirmDelete}
+                    itemCount={selectedArchiveIds.length}
+                    itemLabel="アーカイブ"
+                    actionLabel="完全に削除"
+                />
+            </Box>
         </Box>
     );
 };

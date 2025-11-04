@@ -8,19 +8,20 @@
  * 3. DBコア層（dbCore）とデータマッパー（dbMappers）を結合し、ドメインモデル（Deck）の永続化と取得を担う。
  * 4. DB操作のロギングとエラーハンドリングを行う。
  */
-import type { Deck } from "../../models/deck";
+import type { Deck } from "../../models/models";
 import {
     fetchAllItemsFromCollection,
     bulkPutItemsToCollection,
     bulkDeleteItemsFromCollection,
     bulkFetchItemsByIdsFromCollection,
-    bulkUpdateItemFieldToCollection
+    bulkUpdateItemsSingleFieldToCollection,
+    bulkUpdateItemsMultipleFieldsToCollection
 } from '../database/dbCore';
 import {
     deckToDBDeck,
     dbDeckToDeck,
 } from '../database/dbMappers';
-import type { DBDeck } from "../../models/db-types";
+import type { DBDeck } from "../../models/models";
 
 let _deckCache: Map<string, Deck> | null = null;
 
@@ -200,18 +201,18 @@ export const deckService = {
      * @param value 設定する新しい値 (全IDに適用)
      * @returns 更新されたレコードの総数
      */
-    async updateDecksField(
+    async updateDecksSingleField(
         ids: string[],
         field: string,
         value: any
     ): Promise<number> {
         // コレクションキーの型は、ファイル先頭で定義されている CollectionKey ('decks' と想定)
         const collectionKey: CollectionKey = 'decks'; 
-        console.log(`[DeckService:updateDecksField] ⚡️ Bulk updating field '${field}' on ${collectionKey} for ${ids.length} items.`);
+        console.log(`[DeckService:updateDecksSingleField] ⚡️ Bulk updating field '${field}' on ${collectionKey} for ${ids.length} items.`);
         
         try {
             // dbCoreの汎用バルク更新関数をコレクション名 'decks' 固定で呼び出す
-            const numUpdated = await bulkUpdateItemFieldToCollection(
+            const numUpdated = await bulkUpdateItemsSingleFieldToCollection(
                 ids,
                 collectionKey,
                 field,
@@ -233,7 +234,7 @@ export const deckService = {
                         };
                         // キャッシュに上書き保存
                         cache.set(id, updatedDeck); // ローカル変数 'cache' を使用
-                        console.log(`[DeckService:updateDecksField] ✅ Cache updated for Deck ID: ${id}.`);
+                        console.log(`[DeckService:updateDecksSingleField] ✅ Cache updated for Deck ID: ${id}.`);
                     }
                 });
             }
@@ -242,8 +243,56 @@ export const deckService = {
             return numUpdated;
 
         } catch (error) {
-            console.error(`[DeckService:updateDecksField] ❌ Failed to update field ${field}:`, error);
+            console.error(`[DeckService:updateDecksSingleField] ❌ Failed to update field ${field}:`, error);
             throw error;
         }
     },
+
+        /**
+         * 複数のDeckアイテムに対して、同じフィールドを一括更新します。
+         * @param ids 更新する Deck の ID 配列
+         * @param fields 更新するフィールド（Partial<Deck>）。updatedAt はストア層で追加される前提
+         * @returns 更新されたレコードの総数
+         */
+        async updateDecksMultipleFields(
+            ids: string[],
+            fields: Partial<Deck>
+        ): Promise<number> {
+            const collectionKey: CollectionKey = 'decks';
+            console.log(`[DeckService:updateDecksMultipleFields] ⚡️ Bulk updating multiple fields on ${collectionKey} for ${ids.length} items.`);
+            
+            try {
+                // dbCoreの汎用バルク更新関数を呼び出す
+                const updates = ids.map(id => ({ id, ...fields }));
+                const numUpdated = await bulkUpdateItemsMultipleFieldsToCollection(
+                    ids,
+                    collectionKey,
+                    updates
+                );
+                
+                // キャッシュ更新ロジック
+                if (numUpdated > 0 && _deckCache) {
+                    const cache = _deckCache;
+    
+                    ids.forEach(id => {
+                        const cachedDeck = cache.get(id);
+                        if (cachedDeck) {
+                            // 更新内容をマージして新しいオブジェクトを作成
+                            const updatedDeck: Deck = { 
+                                ...cachedDeck,
+                                ...fields
+                            } as Deck;
+                            cache.set(id, updatedDeck);
+                            console.log(`[DeckService:updateDecksMultipleFields] ✅ Cache updated for Deck ID: ${id}.`);
+                        }
+                    });
+                }
+                
+                return numUpdated;
+    
+            } catch (error) {
+                console.error(`[DeckService:updateDecksMultipleFields] ❌ Failed to update multiple fields:`, error);
+                throw error;
+            }
+        },
 };

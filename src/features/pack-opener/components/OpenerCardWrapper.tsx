@@ -11,7 +11,7 @@
 
 import React from 'react';
 import OpenerCard from './OpenerCard';
-import type { OpenerCardData } from '../../../models/packOpener';
+import type { OpenerCardData } from '../../../models/models';
 
 // OpenerCardにdelayを含めた型
 export type OpenerCardDataWithDelay = OpenerCardData & { delay: number };

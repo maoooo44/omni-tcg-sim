@@ -11,9 +11,19 @@
  * 4. デッキ内のカードの最小単位（DeckCard）を定義する。
  */
 
-export type DeckType = 'MainOnly' | 'MainSide' | 'MainSideExtra';
-
+import type { Card } from "./card";
 import type { FieldSetting } from './customField';
+export type DeckType = 'MainOnly' | 'MainSide' | 'MainSideExtra';
+export type DeckArea = 'mainDeck' | 'sideDeck' | 'extraDeck';
+export const DECK_TYPE_OPTIONS: DeckType[] = ['MainOnly', 'MainSide', 'MainSideExtra'];
+
+export type DeckListItem = Card & {
+    deckCount: number; 
+    ownedCount: number; 
+    isOverOwned: boolean; 
+    deckCardId: string; 
+    keycardRank?: 1 | 2 | 3;
+}
 
 
 /** カードの標準フィールドの表示設定を定義する型 */
@@ -38,7 +48,8 @@ export interface Deck {
     imageColor?: string;
     ruleId?: string;
     deckType: DeckType;
-    totalCards: number;
+    uniqueCards: number;        // デッキ内のユニークなカード種類数
+    totalCards: number;         // デッキの総枚数
     series: string;
     description: string;
     keycard_1?: string;
@@ -64,7 +75,7 @@ export interface Deck {
     str_3?: string;
     str_4?: string;
 
-    fieldSettings: DeckFieldSettings;
+    deckFieldSettings: DeckFieldSettings;
 
     /** ユーザー定義のタグ/その他の属性。カスタムフィールドの代わり。 */
     tag?: string[];

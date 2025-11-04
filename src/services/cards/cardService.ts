@@ -10,14 +10,14 @@
  * 5. アーカイブ、履歴、採番などのドメインロジックはPackServiceなどの上位層に完全に委譲する。
  */
 
-import type { Card } from '../../models/card';
-import type { DBCard } from "../../models/db-types";
+import type { Card, DBCard } from '../../models/models';
 import {
     fetchAllItemsFromCollection,
     bulkPutItemsToCollection,
     bulkDeleteItemsFromCollection,
     bulkFetchItemsByIdsFromCollection,
-    bulkUpdateItemFieldToCollection
+    bulkUpdateItemsSingleFieldToCollection,
+    bulkUpdateItemsMultipleFieldsToCollection
 } from '../database/dbCore';
 import {
     cardToDBCard, // Card -> DBCard 変換
@@ -244,18 +244,18 @@ export const cardService = {
          * @param value 設定する新しい値 (全IDに適用)
          * @returns 更新されたレコードの総数
          */
-        async updateCardsField(
+        async updateCardsSingleField(
             ids: string[],
             field: string,
             value: any
         ): Promise<number> {
             // コレクションキーの型は、ファイル先頭で定義されている CollectionKey ('cards' と想定)
             const collectionKey: CollectionKey = 'cards'; 
-            console.log(`[CardService:updateCardsField] ⚡️ Bulk updating field '${field}' on ${collectionKey} for ${ids.length} items.`);
+            console.log(`[CardService:updateCardsSingleField] ⚡️ Bulk updating field '${field}' on ${collectionKey} for ${ids.length} items.`);
             
             try {
                 // dbCoreの汎用バルク更新関数をコレクション名 'cards' 固定で呼び出す
-                const numUpdated = await bulkUpdateItemFieldToCollection(
+                const numUpdated = await bulkUpdateItemsSingleFieldToCollection(
                     ids,
                     collectionKey,
                     field,
@@ -278,7 +278,7 @@ export const cardService = {
 
                             // キャッシュに上書き保存
                             cache.set(id, updatedCard); // ローカル変数 'cache' を使用
-                            console.log(`[CardService:updateCardsField] ✅ Cache updated for Card ID: ${id}.`);
+                            console.log(`[CardService:updateCardsSingleField] ✅ Cache updated for Card ID: ${id}.`);
                         }
                     });
                 }
@@ -286,8 +286,56 @@ export const cardService = {
                 return numUpdated;
     
             } catch (error) {
-                console.error(`[CardService:updateCardsField] ❌ Failed to update field ${field}:`, error);
+                console.error(`[CardService:updateCardsSingleField] ❌ Failed to update field ${field}:`, error);
                 throw error;
             }
         },
+
+        /**
+                 * 複数のCardアイテムに対して、同じフィールドを一括更新します。
+                 * @param ids 更新する Card の ID 配列
+                 * @param fields 更新するフィールド（Partial<Card>）。updatedAt はストア層で追加される前提
+                 * @returns 更新されたレコードの総数
+                 */
+                async updateCardsMultipleFields(
+                    ids: string[],
+                    fields: Partial<Card>
+                ): Promise<number> {
+                    const collectionKey: CollectionKey = 'cards';
+                    console.log(`[CardService:updateCardsMultipleFields] ⚡️ Bulk updating multiple fields on ${collectionKey} for ${ids.length} items.`);
+                    
+                    try {
+                        // dbCoreの汎用バルク更新関数を呼び出す
+                        const updates = ids.map(id => ({ id, ...fields }));
+                        const numUpdated = await bulkUpdateItemsMultipleFieldsToCollection(
+                            ids,
+                            collectionKey,
+                            updates
+                        );
+                        
+                        // キャッシュ更新ロジック
+                        if (numUpdated > 0 && _cardCache) {
+                            const cache = _cardCache;
+            
+                            ids.forEach(id => {
+                                const cachedCard = cache.get(id);
+                                if (cachedCard) {
+                                    // 更新内容をマージして新しいオブジェクトを作成
+                                    const updatedCard: Card = { 
+                                        ...cachedCard,
+                                        ...fields
+                                    } as Card;
+                                    cache.set(id, updatedCard);
+                                    console.log(`[CardService:updateCardsMultipleFields] ✅ Cache updated for Card ID: ${id}.`);
+                                }
+                            });
+                        }
+                        
+                        return numUpdated;
+            
+                    } catch (error) {
+                        console.error(`[CardService:updateCardsMultipleFields] ❌ Failed to update multiple fields:`, error);
+                        throw error;
+                    }
+                },
 };

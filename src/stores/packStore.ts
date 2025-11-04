@@ -14,7 +14,7 @@
  * 5. 必要な他のStoreの状態（useCardStore.getState）をアーカイブモジュールに提供し、Store間の連携を担う。
  */
 import { create } from 'zustand';
-import type { Pack } from '../models/pack';
+import type { Pack } from '../models/models';
 import { packService } from '../services/packs/packService';
 import { importPacksFromJson, exportPacksToJson } from '../services/data-io/packJsonIO';
 
@@ -23,8 +23,7 @@ import {
     type PackArchive,
     type PackArchiveDependencies
 } from './utils/createPackArchive';
-import type { Card } from '../models/card';
-import type { ArchivePack, ArchivePackBundle } from '../models/archive';
+import type { Card, ArchivePack, ArchivePackBundle } from '../models/models';
 
 import { useCardStore } from './cardStore';
 
@@ -41,6 +40,8 @@ export interface PackStore {
     // --- 2. CRUD/永続化 ---
     savePack: (packToSave: Pack) => Promise<Pack>;
     updatePackIsFavorite: (packId: string, isFavorite: boolean) => Promise<Pack | null>;
+    bulkUpdatePackIsFavorite: (packIds: string[], isFavorite: boolean) => Promise<number>;
+    bulkUpdatePacksFields: (packIds: string[], fields: Partial<Pack>) => Promise<number>;
 
     // --- 4. メモリ/ストア操作 (usePackArchiveで使用されるためpublicのまま保持) ---
     syncPackToStore: (pack: Pack) => void;
@@ -62,6 +63,7 @@ export interface PackStore {
     deletePackBundleFromHistory: (archiveId: string) => Promise<void>;
     bulkDeletePackBundlesFromHistory: (archiveIds: string[]) => Promise<void>;
     updateArchivePackBundleIsFavoriteToHistory: (archiveId: string, isFavorite: boolean) => Promise<void>;
+    bulkUpdateArchivePackBundlesIsFavoriteToHistory: (archiveIds: string[], isFavorite: boolean) => Promise<number>;
 
     fetchAllArchivePacksFromTrash: () => Promise<ArchivePack[]>;
     fetchArchivePackBundleFromTrash: (archiveId: string) => Promise<ArchivePackBundle | null>;
@@ -72,6 +74,7 @@ export interface PackStore {
     deletePackBundleFromTrash: (archiveId: string) => Promise<void>;
     bulkDeletePackBundlesFromTrash: (archiveIds: string[]) => Promise<void>;
     updateArchivePackBundleIsFavoriteToTrash: (archiveId: string, isFavorite: boolean) => Promise<void>;
+    bulkUpdateArchivePackBundlesIsFavoriteToTrash: (archiveIds: string[], isFavorite: boolean) => Promise<number>;
 
     runPackGarbageCollection: () => Promise<void>;
 }
@@ -162,7 +165,7 @@ export const usePackStore = create<PackStore>((set, get) => {
 
             try {
                 // サービス層の汎用バルク関数を、単一のID配列で呼び出す
-                const numUpdated = await packService.updatePacksField(
+                const numUpdated = await packService.updatePacksSingleField(
                     [packId], // 1つだけのIDを配列として渡す
                     'isFavorite', // 更新フィールド名
                     isFavorite
@@ -187,6 +190,80 @@ export const usePackStore = create<PackStore>((set, get) => {
             
             } catch (error) {
                 console.error(`[PackStore:updatePackIsFavorite] ❌ Failed to update favorite state for ${packId}:`, error);
+                throw error;
+            }
+        },
+
+        bulkUpdatePackIsFavorite: async (packIds: string[], isFavorite: boolean): Promise<number> => {
+            console.log(`[PackStore:bulkUpdatePackIsFavorite] Updating favorite state for ${packIds.length} packs to ${isFavorite}`);
+            
+            try {
+                // サービス層のバルク更新関数を呼び出す
+                const numUpdated = await packService.updatePacksSingleField(
+                    packIds,
+                    'isFavorite',
+                    isFavorite
+                );
+
+                if (numUpdated > 0) {
+                    // 更新されたパックのストア状態を同期
+                    set(state => ({
+                        packs: state.packs.map(pack => 
+                            packIds.includes(pack.packId)
+                                ? { ...pack, isFavorite }
+                                : pack
+                        )
+                    }));
+                    
+                    console.log(`[PackStore:bulkUpdatePackIsFavorite] ✅ Updated ${numUpdated} packs in DB and Store.`);
+                } else {
+                    console.warn(`[PackStore:bulkUpdatePackIsFavorite] ⚠️ No packs were updated.`);
+                }
+
+                return numUpdated;
+            } catch (error) {
+                console.error(`[PackStore:bulkUpdatePackIsFavorite] ❌ Failed to bulk update favorite state:`, error);
+                throw error;
+            }
+        },
+
+        /**
+         * 複数のPackに対して、同じフィールドを一括更新します。
+         * @param packIds 更新する Pack の ID 配列
+         * @param fields 更新するフィールド（Partial<Pack>）
+         * @returns 更新されたレコードの総数
+         */
+        bulkUpdatePacksFields: async (packIds: string[], fields: Partial<Pack>): Promise<number> => {
+            console.log(`[PackStore:bulkUpdatePacksFields] Updating multiple fields for ${packIds.length} packs`);
+            
+            try {
+                // updatedAt を追加
+                const fieldsWithTimestamp = {
+                    ...fields,
+                    updatedAt: new Date().toISOString()
+                };
+                
+                // packService の updatePacksMultipleFields を呼び出す
+                const numUpdated = await packService.updatePacksMultipleFields(packIds, fieldsWithTimestamp);
+                
+                if (numUpdated > 0) {
+                    // 更新されたパックをストアに反映
+                    set((state) => ({
+                        packs: state.packs.map(pack => 
+                            packIds.includes(pack.packId)
+                                ? { ...pack, ...fieldsWithTimestamp }
+                                : pack
+                        )
+                    }));
+                    
+                    console.log(`[PackStore:bulkUpdatePacksFields] ✅ Updated ${numUpdated} packs in DB and Store.`);
+                } else {
+                    console.warn(`[PackStore:bulkUpdatePacksFields] ⚠️ No packs were updated.`);
+                }
+
+                return numUpdated;
+            } catch (error) {
+                console.error(`[PackStore:bulkUpdatePacksFields] ❌ Failed to bulk update packs:`, error);
                 throw error;
             }
         },
@@ -301,6 +378,7 @@ export const usePackStore = create<PackStore>((set, get) => {
         deletePackBundleFromHistory: packArchiveActions.deletePackBundleFromHistory,
         bulkDeletePackBundlesFromHistory: packArchiveActions.bulkDeletePackBundlesFromHistory,
         updateArchivePackBundleIsFavoriteToHistory: packArchiveActions.updateArchivePackBundleIsFavoriteToHistory,
+        bulkUpdateArchivePackBundlesIsFavoriteToHistory: packArchiveActions.bulkUpdateArchivePackBundlesIsFavoriteToHistory,
         
 
         // 🗑️ ゴミ箱アクション
@@ -313,6 +391,7 @@ export const usePackStore = create<PackStore>((set, get) => {
         deletePackBundleFromTrash: packArchiveActions.deletePackBundleFromTrash,
         bulkDeletePackBundlesFromTrash: packArchiveActions.bulkDeletePackBundlesFromTrash,
         updateArchivePackBundleIsFavoriteToTrash: packArchiveActions.updateArchivePackBundleIsFavoriteToTrash,
+        bulkUpdateArchivePackBundlesIsFavoriteToTrash: packArchiveActions.bulkUpdateArchivePackBundlesIsFavoriteToTrash,
 
         // 🛠️ メンテナンスアクション
         runPackGarbageCollection: packArchiveActions.runPackGarbageCollection,

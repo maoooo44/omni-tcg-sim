@@ -21,7 +21,6 @@ import { useParams, useBlocker } from '@tanstack/react-router';
 import PackEditor from '../features/packs/PackEditor';
 import { usePackEditor } from '../features/packs/hooks/usePackEditor';
 
-
 const PackEditorPage: React.FC = () => {
 
     // useParamsでpackIdを取得
@@ -71,12 +70,7 @@ const PackEditorPage: React.FC = () => {
     }
 
     // PackEditorにpropsを渡す
-    return (
-        <PackEditor
-            packId={packId}
-            {...packEditorProps}
-        />
-    );
+    return <PackEditor {...packEditorProps} />
 };
 
 export default PackEditorPage;

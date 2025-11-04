@@ -13,10 +13,8 @@ import { packService } from '../packs/packService';
 import { deckService } from '../decks/deckService';
 // 型定義をインポート
 import { useUserDataStore } from '../../stores/userDataStore';
-import type { UserDataState } from '../../models/userData';
+import type { UserDataState, Deck, Pack } from '../../models/models';
 import { useCardPoolStore, type CardPoolState } from '../../stores/cardPoolStore';
-import type { Deck } from '../../models/deck';
-import type { Pack } from '../../models/pack';
 
 // 分離した各エンティティのI/Oサービスをインポート
 import { exportPacksToJson, importPacksFromJson } from './packJsonIO';

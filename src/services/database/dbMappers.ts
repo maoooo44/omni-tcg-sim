@@ -7,11 +7,11 @@
  * 2. アーカイブ機能（history, trash）で使用されるDBArchiveレコードを、アプリケーションのユニオン表示モデル（ArchiveDisplayData, ArchiveItemData）に変換するルーター/ブリッジング機能を提供する。
  * 3. itemTypeに応じて適切なエンティティマッパー（dbArchiveToArchiveDeck, dbArchiveToArchivePack, dbArchiveToArchivePackBundle）へ処理を委譲する。
  */
-import type { DBArchive } from '../../models/db-types';
 import type {
+    DBArchive,
     ArchiveDisplayData,
     ArchiveItemData
-} from '../../models/archive';
+} from '../../models/models';
 
 import { dbArchiveToArchiveDeck } from './mappers/dbDeckMappers';
 import { dbArchiveToArchivePack } from './mappers/dbPackMappers';

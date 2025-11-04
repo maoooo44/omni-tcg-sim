@@ -8,9 +8,7 @@
  * 3. Deckモデルをアーカイブレコード形式（DBArchive）にラップする変換（deckToDBArchive）。
  * 4. DBArchiveからDeckモデル、およびArchiveDeckモデルへの抽出・復元（dbArchiveToDeck, dbArchiveToArchiveDeck）。
  */
-import type { Deck } from '../../../models/deck';
-import type { ArchiveDeck } from '../../../models/archive';
-import type { DBDeck, DBArchive } from '../../../models/db-types';
+import type { Deck, ArchiveDeck, DBDeck, DBArchive } from '../../../models/models';
 
 // =========================================================================
 // Map <-> Record ユーティリティ
@@ -54,9 +52,14 @@ export const deckToDBDeck = (deck: Deck): DBDeck => {
         imageColor: deck.imageColor,
         ruleId: deck.ruleId,
         deckType: deck.deckType,
+        uniqueCards: deck.uniqueCards,
         totalCards: deck.totalCards,
         series: deck.series,
         description: deck.description,
+        // 🟢 追加: キーカードフィールド
+        keycard_1: deck.keycard_1,
+        keycard_2: deck.keycard_2,
+        keycard_3: deck.keycard_3,
         isLegal: deck.isLegal,
         hasUnownedCards: deck.hasUnownedCards,
         isFavorite: deck.isFavorite,
@@ -73,7 +76,7 @@ export const deckToDBDeck = (deck: Deck): DBDeck => {
         num_4: deck.num_4,
         str_1: deck.str_1, str_2: deck.str_2, str_3: deck.str_3,
         str_4: deck.str_4,
-        fieldSettings: deck.fieldSettings,
+        fieldSettings: deck.deckFieldSettings,
         // 修正: 型が一致したため、直接代入
         tag: deck.tag,
         searchText: deck.searchText,
@@ -92,9 +95,14 @@ export const dbDeckToDeck = (dbDeck: DBDeck): Deck => {
         imageColor: dbDeck.imageColor,
         ruleId: dbDeck.ruleId,
         deckType: dbDeck.deckType,
+        uniqueCards: dbDeck.uniqueCards,
         totalCards: dbDeck.totalCards,
         series: dbDeck.series,
         description: dbDeck.description,
+        // 🟢 追加: キーカードフィールド
+        keycard_1: dbDeck.keycard_1,
+        keycard_2: dbDeck.keycard_2,
+        keycard_3: dbDeck.keycard_3,
         isLegal: dbDeck.isLegal,
         hasUnownedCards: dbDeck.hasUnownedCards,
         isFavorite: dbDeck.isFavorite,
@@ -111,7 +119,7 @@ export const dbDeckToDeck = (dbDeck: DBDeck): Deck => {
         num_4: dbDeck.num_4,
         str_1: dbDeck.str_1, str_2: dbDeck.str_2, str_3: dbDeck.str_3,
         str_4: dbDeck.str_4,
-        fieldSettings: dbDeck.fieldSettings,
+        deckFieldSettings: dbDeck.fieldSettings,
         // 修正: 型が一致したため、直接代入
         tag: dbDeck.tag,
         searchText: dbDeck.searchText,

@@ -14,14 +14,13 @@
 import { TableCell, Box } from '@mui/material';
 import ArrowUpwardIcon from '@mui/icons-material/ArrowUpward';
 import ArrowDownwardIcon from '@mui/icons-material/ArrowDownward';
-import { type UseSortAndFilterResult } from '../../hooks/useSortAndFilter';
-import { type SortField } from '../../utils/sortingUtils';
+import type { UseSortFilterResult, SortField } from '../../models/models';
 
 interface SortableTableCellProps<T> {
     field: SortField; // ソートキーの型をジェネリクス T に基づいて定義
     label: string;
     align: 'left' | 'right' | 'center';
-    sortState: Pick<UseSortAndFilterResult<T>, 'sortField' | 'sortOrder' | 'setSortField' | 'toggleSortOrder'>;
+    sortState: Pick<UseSortFilterResult<T>, 'sortField' | 'sortOrder' | 'setSortField' | 'toggleSortOrder'>;
 }
 
 export const SortableTableCell = <T extends unknown>({ field, label, align, sortState }: SortableTableCellProps<T>) => {

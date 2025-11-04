@@ -10,7 +10,7 @@
  */
 
 import { db } from '../database/db';
-import type { DBSetting } from '../../models/db-types';
+import type { DBSetting } from '../../models/models';
 
 const COINS_KEY = 'coins';
 

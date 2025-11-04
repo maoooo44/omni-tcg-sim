@@ -12,7 +12,7 @@
  * 4. ストアの状態を効率的かつイミュータブルに更新するための低レベル操作（syncCardToStoreなど）を提供する。
  */
 import { create } from 'zustand';
-import type { Card } from '../models/card';
+import type { Card } from '../models/models';
 import { cardService } from '../services/cards/cardService';
 import * as cardCsvIO from '../services/data-io/cardCsvIO';
 import type { CustomFieldDefinition } from '../services/data-io/dataIOUtils';
@@ -44,6 +44,9 @@ export interface CardStore {
     saveCard: (card: Card) => Promise<void>;
     deleteCard: (cardId: string) => Promise<void>;
     updateCardIsFavorite: (cardId: string, isFavorite: boolean) => Promise<Card | null>;
+    bulkUpdateCardIsFavorite: (cardIds: string[], isFavorite: boolean) => Promise<number>;
+    bulkUpdateCardsFields: (cardIds: string[], fields: Partial<Card>) => Promise<number>;
+
 
     // --- 4. メモリ/ストア操作 (Stateに対する低レベル操作) ---
     syncCardToStore: (card: Card) => void;
@@ -164,60 +167,133 @@ export const useCardStore = create<CardStore>((set, get) => ({
     },
 
     updateCardIsFavorite: async (cardId: string, isFavorite: boolean): Promise<Card | null> => {
-        console.log(`[CardStore:updateCardIsFavorite] Toggling favorite state for Card ID: ${cardId} to ${isFavorite}`);
-        try {
-            // サービス層の汎用バルク関数を、単一のID配列で呼び出す
-            const numUpdated = await cardService.updateCardsField(
-                [cardId], // 1つだけのIDを配列として渡す
-                'isFavorite', // 更新フィールド名
-                isFavorite
-            );
-            
-            if (numUpdated === 1) {
-                
-                // ★★★ ここから修正/簡素化 ★★★
-                
-                // 1. 現在のストアの状態からカードを取得
-                const currentCard = get().cards.find(c => c.cardId === cardId);
+        console.log(`[CardStore:updateCardIsFavorite] Toggling favorite state for Card ID: ${cardId} to ${isFavorite}`);
+        try {
+            // サービス層の汎用バルク関数を、単一のID配列で呼び出す
+            const numUpdated = await cardService.updateCardsSingleField(
+                [cardId], // 1つだけのIDを配列として渡す
+                'isFavorite', // 更新フィールド名
+                isFavorite
+            );
 
-                if (currentCard) {
-                    // 2. isFavoriteとupdatedAtのみを更新した新しいオブジェクトを作成
-                    // 注意: DB側でupdatedAtが更新されていることを前提としますが、ここでは簡易的に現在時刻を使います。
-                    // 理想はService層から最新のupdatedAtを受け取ることですが、ここでは暫定措置として
-                    // Store内のカードを強制的に更新します。
-                    const updatedCard: Card = {
-                        ...currentCard,
-                        isFavorite: isFavorite,
-                        //updatedAt: new Date().toISOString(), // DB更新時刻を反映（正確でなくても、State更新のトリガーとして機能）
-                    };
+            if (numUpdated === 1) {
 
-                    // 3. Storeの状態を同期（fetchCardByIdをスキップ）
-                    get().syncCardToStore(updatedCard);
-                    
-                    console.log(`[CardStore:updateCardIsFavorite] ✅ Updated Card ID: ${cardId} in DB and Store.`);
-                    return updatedCard;
-                } else {
-                    console.warn(`[CardStore:updateCardIsFavorite] ⚠️ Card ID: ${cardId} not found in store after DB update.`);
-                }
+                // ★★★ ここから修正/簡素化 ★★★
 
-                // ★★★ ここまで修正/簡素化 ★★★
+                // 1. 現在のストアの状態からカードを取得
+                const currentCard = get().cards.find(c => c.cardId === cardId);
 
-            }
-            if (numUpdated === 0) {
-                console.warn(`[CardStore:updateCardIsFavorite] ⚠️ Card ID: ${cardId} not found for update.`);
-            }
-            return null;
-        
-        } catch (error) {
-            console.error(`[CardStore:updateCardIsFavorite] ❌ Failed to update favorite state for ${cardId}:`, error);
-            throw error;
-        }
-    },
+                if (currentCard) {
+                    // 2. isFavoriteとupdatedAtのみを更新した新しいオブジェクトを作成
+                    // 注意: DB側でupdatedAtが更新されていることを前提としますが、ここでは簡易的に現在時刻を使います。
+                    // 理想はService層から最新のupdatedAtを受け取ることですが、ここでは暫定措置として
+                    // Store内のカードを強制的に更新します。
+                    const updatedCard: Card = {
+                        ...currentCard,
+                        isFavorite: isFavorite,
+                        //updatedAt: new Date().toISOString(), // DB更新時刻を反映（正確でなくても、State更新のトリガーとして機能）
+                    };
+
+                    // 3. Storeの状態を同期（fetchCardByIdをスキップ）
+                    get().syncCardToStore(updatedCard);
+
+                    console.log(`[CardStore:updateCardIsFavorite] ✅ Updated Card ID: ${cardId} in DB and Store.`);
+                    return updatedCard;
+                } else {
+                    console.warn(`[CardStore:updateCardIsFavorite] ⚠️ Card ID: ${cardId} not found in store after DB update.`);
+                }
+
+                // ★★★ ここまで修正/簡素化 ★★★
+
+            }
+            if (numUpdated === 0) {
+                console.warn(`[CardStore:updateCardIsFavorite] ⚠️ Card ID: ${cardId} not found for update.`);
+            }
+            return null;
+
+        } catch (error) {
+            console.error(`[CardStore:updateCardIsFavorite] ❌ Failed to update favorite state for ${cardId}:`, error);
+            throw error;
+        }
+    },
+
+    bulkUpdateCardIsFavorite: async (cardIds: string[], isFavorite: boolean): Promise<number> => {
+        console.log(`[CardStore:bulkUpdateCardIsFavorite] Updating favorite state for ${cardIds.length} cards to ${isFavorite}`);
+
+        try {
+            // サービス層のバルク更新関数を呼び出す
+            const numUpdated = await cardService.updateCardsSingleField(
+                cardIds,
+                'isFavorite',
+                isFavorite
+            );
+
+            if (numUpdated > 0) {
+                // 更新されたカードのストア状態を同期
+                set(state => ({
+                    cards: state.cards.map(card =>
+                        cardIds.includes(card.cardId)
+                            ? { ...card, isFavorite }
+                            : card
+                    )
+                }));
+
+                console.log(`[CardStore:bulkUpdateCardIsFavorite] ✅ Updated ${numUpdated} cards in DB and Store.`);
+            } else {
+                console.warn(`[CardStore:bulkUpdateCardIsFavorite] ⚠️ No cards were updated.`);
+            }
+
+            return numUpdated;
+        } catch (error) {
+            console.error(`[CardStore:bulkUpdateCardIsFavorite] ❌ Failed to bulk update favorite state:`, error);
+            throw error;
+        }
+    },
+
+    /**
+     * 複数のCardに対して、同じフィールドを一括更新します。
+     * @param cardIds 更新する Card の ID 配列
+     * @param fields 更新するフィールド（Partial<Card>）
+     * @returns 更新されたレコードの総数
+     */
+    bulkUpdateCardsFields: async (cardIds: string[], fields: Partial<Card>): Promise<number> => {
+        console.log(`[CardStore:bulkUpdateCardsFields] Updating multiple fields for ${cardIds.length} cards`);
+
+        try {
+            // updatedAt を追加
+            const fieldsWithTimestamp = {
+                ...fields,
+                updatedAt: new Date().toISOString()
+            };
+
+            // cardService の updateCardsMultipleFields を呼び出す
+            const numUpdated = await cardService.updateCardsMultipleFields(cardIds, fieldsWithTimestamp);
+
+            if (numUpdated > 0) {
+                // 更新されたパックをストアに反映
+                set((state) => ({
+                    cards: state.cards.map(card =>
+                        cardIds.includes(card.cardId)
+                            ? { ...card, ...fieldsWithTimestamp }
+                            : card
+                    )
+                }));
+
+                console.log(`[CardStore:bulkUpdateCardsFields] ✅ Updated ${numUpdated} cards in DB and Store.`);
+            } else {
+                console.warn(`[CardStore:bulkUpdateCardsFields] ⚠️ No cards were updated.`);
+            }
+
+            return numUpdated;
+        } catch (error) {
+            console.error(`[CardStore:bulkUpdateCardsFields] ❌ Failed to bulk update cards:`, error);
+            throw error;
+        }
+    },
 
     // ----------------------------------------------------------------------
     // --- 4. メモリ/ストア操作 ---
     // ----------------------------------------------------------------------
-
     syncCardToStore: (updatedCard) => {
         set(state => {
             const index = state.cards.findIndex(card => card.cardId === updatedCard.cardId);

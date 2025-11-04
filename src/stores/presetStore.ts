@@ -13,7 +13,7 @@
  */
 
 import { create } from 'zustand';
-import type { PackPreset, Preset } from '../models/preset';
+import type { PackPreset, Preset } from '../models/models';
 import { generateId } from '../utils/dataUtils';
 import { presetService } from '../services/user-data/presetService';
 

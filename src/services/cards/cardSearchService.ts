@@ -9,7 +9,7 @@
  * 4. キャッシュ層（cardService）を介さず、DBから最新のデータを取得する手段を提供する。
  */
 
-import type { Card } from '../../models/card';
+import type { Card } from '../../models/models';
 import { db } from '../database/db';
 
 export const cardSearchService = {

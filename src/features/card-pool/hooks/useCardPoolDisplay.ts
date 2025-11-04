@@ -5,7 +5,7 @@
  * * 責務:
  * 1. 複数のZustandストア（CardPoolStore, UserDataStore, CardStore, PackStore）から必要な状態とアクションを取得する。
  * 2. 取得した生データを、UI表示に適した複合データ型（OwnedCardDisplay）のリストに変換する。
- * 3. フィルタリング、ソート、ページネーションの状態管理およびロジック（useSortAndFilter）を提供する。
+ * 3. フィルタリング、ソート、ページネーションの状態管理およびロジック（useSortFilter）を提供する。
  * 4. リスト表示とコレクション表示のView設定を管理し、動的に切り替えるインターフェースを提供する。
  * 5. カードプール全体のリセット機能を提供する。
  */
@@ -17,14 +17,11 @@ import { useUserDataStore } from '../../../stores/userDataStore';
 import { useCardStore } from '../../../stores/cardStore';
 import { usePackStore } from '../../../stores/packStore';
 
-import { useSortAndFilter } from '../../../hooks/useSortAndFilter';
-import type { SortField } from '../../../utils/sortingUtils';
-
-import type { Card as CardType } from '../../../models/card';
-import type { Pack } from '../../../models/pack';
+import { useSortFilter } from '../../../hooks/useSortFilter';
+import type { SortField, Card as CardType, Pack } from '../../../models/models';
 
 import { cardPoolFieldAccessor } from '../cardPoolUtils';
-import { CARD_POOL_DEFAULT_SORT } from '../../../configs/sortAndFilterDefaults';
+import { CARD_POOL_DEFAULT_SORT } from '../../../configs/configs';
 
 export const CARD_GRID_COLUMNS = 6;
 export const CARDS_PER_PAGE = 50;
@@ -163,7 +160,7 @@ export const useCardPoolDisplay = () => {
         toggleSortOrder,
         setSearchTerm,
         setFilters,
-    } = useSortAndFilter<OwnedCardDisplay>(
+    } = useSortFilter<OwnedCardDisplay>(
         ownedCardDisplayList,
         cardPoolFieldAccessor,
         CARD_POOL_DEFAULT_SORT

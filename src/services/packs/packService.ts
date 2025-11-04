@@ -8,20 +8,21 @@
  * 3. Packの物理削除時、関連するCardデータも物理削除する処理を **cardService** に委譲することで、責務の分離とカスケード処理を行う。
  * 4. DB操作のロギングとエラーハンドリングを行う。
  */
-import type { Pack } from "../../models/pack";
+import type { Pack } from "../../models/models";
 import {
     fetchAllItemsFromCollection,
     bulkPutItemsToCollection,
     bulkDeleteItemsFromCollection,
     bulkFetchItemsByIdsFromCollection,
-    bulkUpdateItemFieldToCollection,
+    bulkUpdateItemsSingleFieldToCollection,
+    bulkUpdateItemsMultipleFieldsToCollection,
 } from '../database/dbCore';
 import { cardService } from '../cards/cardService';
 import {
     packToDBPack,
     dbPackToPack,
 } from '../database/dbMappers';
-import type { DBPack } from "../../models/db-types";
+import type { DBPack } from "../../models/models";
 
 let _packCache: Map<string, Pack> | null = null;
 
@@ -207,17 +208,17 @@ export const packService = {
      * @param value 設定する新しい値 (全IDに適用)
      * @returns 更新されたレコードの総数
      */
-    async updatePacksField(
+    async updatePacksSingleField(
         ids: string[],
         field: string,
         value: any
     ): Promise<number> {
         const collectionKey: CollectionKey = 'packs';
-        console.log(`[PackService:updatePacksField] ⚡️ Bulk updating field '${field}' on ${collectionKey} for ${ids.length} items.`);
+        console.log(`[PackService:updatePacksSingleField] ⚡️ Bulk updating field '${field}' on ${collectionKey} for ${ids.length} items.`);
         
         try {
             // dbCoreの汎用バルク更新関数をコレクション名 'packs' 固定で呼び出す
-            const numUpdated = await bulkUpdateItemFieldToCollection(
+            const numUpdated = await bulkUpdateItemsSingleFieldToCollection(
                 ids,
                 collectionKey,
                 field,
@@ -239,7 +240,7 @@ export const packService = {
                         } as Pack;
                         // キャッシュに上書き保存
                         cache.set(id, updatedPack); // ローカル変数 'cache' を使用
-                        console.log(`[PackService:updatePacksField] ✅ Cache updated for Pack ID: ${id}.`);
+                        console.log(`[PackService:updatePacksSingleField] ✅ Cache updated for Pack ID: ${id}.`);
                     }
                 });
             }
@@ -247,7 +248,55 @@ export const packService = {
             return numUpdated;
 
         } catch (error) {
-            console.error(`[PackService:updatePacksField] ❌ Failed to update field ${field}:`, error);
+            console.error(`[PackService:updatePacksSingleField] ❌ Failed to update field ${field}:`, error);
+            throw error;
+        }
+    },
+
+    /**
+     * 複数のPackアイテムに対して、同じフィールドを一括更新します。
+     * @param ids 更新する Pack の ID 配列
+     * @param fields 更新するフィールド（Partial<Pack>）。updatedAt はストア層で追加される前提
+     * @returns 更新されたレコードの総数
+     */
+    async updatePacksMultipleFields(
+        ids: string[],
+        fields: Partial<Pack>
+    ): Promise<number> {
+        const collectionKey: CollectionKey = 'packs';
+        console.log(`[PackService:updatePacksMultipleFields] ⚡️ Bulk updating multiple fields on ${collectionKey} for ${ids.length} items.`);
+        
+        try {
+            // dbCoreの汎用バルク更新関数を呼び出す
+            const updates = ids.map(id => ({ id, ...fields }));
+            const numUpdated = await bulkUpdateItemsMultipleFieldsToCollection(
+                ids,
+                collectionKey,
+                updates
+            );
+            
+            // キャッシュ更新ロジック
+            if (numUpdated > 0 && _packCache) {
+                const cache = _packCache;
+
+                ids.forEach(id => {
+                    const cachedPack = cache.get(id);
+                    if (cachedPack) {
+                        // 更新内容をマージして新しいオブジェクトを作成
+                        const updatedPack: Pack = { 
+                            ...cachedPack,
+                            ...fields
+                        } as Pack;
+                        cache.set(id, updatedPack);
+                        console.log(`[PackService:updatePacksMultipleFields] ✅ Cache updated for Pack ID: ${id}.`);
+                    }
+                });
+            }
+            
+            return numUpdated;
+
+        } catch (error) {
+            console.error(`[PackService:updatePacksMultipleFields] ❌ Failed to update multiple fields:`, error);
             throw error;
         }
     },

@@ -14,7 +14,6 @@
  */
 import React from 'react';
 import { useParams } from '@tanstack/react-router';
-import { Box, Typography } from '@mui/material';
 import PackOpener from '../features/pack-opener/PackOpener';
 
 interface PackOpenerParams {
@@ -24,13 +23,8 @@ interface PackOpenerParams {
 const PackOpenerPage: React.FC = () => {
     const { packId } = useParams({ strict: false }) as PackOpenerParams;
 
-    return (
-        <Box sx={{ p: 3, flexGrow: 1 }}>
-            <Typography variant="h4" gutterBottom>パック開封シミュレータ</Typography>
+    return <PackOpener preselectedPackId={packId} />;
 
-            <PackOpener preselectedPackId={packId} />
-        </Box>
-    );
 };
 
 export default PackOpenerPage;

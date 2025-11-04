@@ -15,13 +15,13 @@ import {
     dbArchiveToArchiveItemData,
     deckToDBDeck
 } from '../../services/database/dbMappers';
-import type { Deck } from '../../models/deck';
 import type {
+    Deck,
     ArchiveDeck,
     ArchiveItemType,
-    ArchiveItemToSave
-} from '../../models/archive';
-import type { DBDeck } from '../../models/db-types';
+    ArchiveItemToSave,
+    DBDeck
+} from '../../models/models';
 import type { DeckStore } from '../deckStore';
 
 import { checkHasUnownedCards } from '../utils/deckStoreUtils';
@@ -72,7 +72,9 @@ export interface DeckArchive {
     bulkRestoreDecksFromTrash: (archiveIds: string[]) => Promise<void>;
 
     updateArchiveDeckIsFavoriteToHistory: (archiveId: string, isFavorite: boolean) => Promise<void>;
+    bulkUpdateArchiveDecksIsFavoriteToHistory: (archiveIds: string[], isFavorite: boolean) => Promise<number>;
     updateArchiveDeckIsFavoriteToTrash: (archiveId: string, isFavorite: boolean) => Promise<void>;
+    bulkUpdateArchiveDecksIsFavoriteToTrash: (archiveIds: string[], isFavorite: boolean) => Promise<number>;
 }
 
 
@@ -211,6 +213,10 @@ export const createDeckArchive = (dependencies: DeckArchiveDependencies): DeckAr
         return commonActions.updateItemIsFavoriteToArchive(archiveId, 'history', isFavorite).then(() => {});
     };
 
+    const bulkUpdateArchiveDecksIsFavoriteToHistory = (archiveIds: string[], isFavorite: boolean) => {
+        return commonActions.bulkUpdateItemsIsFavoriteToArchive(archiveIds, 'history', isFavorite);
+    };
+
     // ゴミ箱移動 
     const moveDeckToTrash = (deckId: string) => bulkMoveDecksToTrash([deckId]);
 
@@ -258,6 +264,10 @@ export const createDeckArchive = (dependencies: DeckArchiveDependencies): DeckAr
     const updateArchiveDeckIsFavoriteToTrash = (archiveId: string, isFavorite: boolean) => {
         return commonActions.updateItemIsFavoriteToArchive(archiveId, 'trash', isFavorite).then(() => {});
     };
+
+    const bulkUpdateArchiveDecksIsFavoriteToTrash = (archiveIds: string[], isFavorite: boolean) => {
+        return commonActions.bulkUpdateItemsIsFavoriteToArchive(archiveIds, 'trash', isFavorite);
+    };
     
     // GCアクション 
     const runDeckGarbageCollection = async () => {
@@ -285,6 +295,7 @@ export const createDeckArchive = (dependencies: DeckArchiveDependencies): DeckAr
         deleteDeckFromHistory,
         bulkDeleteDecksFromHistory,
         updateArchiveDeckIsFavoriteToHistory,
+        bulkUpdateArchiveDecksIsFavoriteToHistory,
 
         fetchAllArchiveDecksFromTrash,
         fetchArchiveDeckFromTrash,
@@ -295,6 +306,7 @@ export const createDeckArchive = (dependencies: DeckArchiveDependencies): DeckAr
         deleteDeckFromTrash,
         bulkDeleteDecksFromTrash,
         updateArchiveDeckIsFavoriteToTrash,
+        bulkUpdateArchiveDecksIsFavoriteToTrash,
 
         runDeckGarbageCollection,
     };

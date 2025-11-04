@@ -15,7 +15,7 @@ import {
     Dialog, DialogTitle, DialogContent, DialogActions,
     Button, Box, Typography, Alert,
 } from '@mui/material';
-import type { CurrentGameMode } from '../../models/userData';
+import type { CurrentGameMode } from '../../models/models';
 import type { DialogContentData, ModeSwitcher } from '../../hooks/useModeSwitcher';
 
 

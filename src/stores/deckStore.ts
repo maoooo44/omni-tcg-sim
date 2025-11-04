@@ -15,7 +15,7 @@
  */
 
 import { create } from 'zustand';
-import type { Deck } from '../models/deck';
+import type { Deck } from '../models/models';
 import { deckService } from '../services/decks/deckService';
 import { checkHasUnownedCards } from './utils/deckStoreUtils';
 import { exportDecksToJson, importDecksFromJson } from '../services/data-io/deckJsonIO';
@@ -25,7 +25,7 @@ import {
     type DeckArchive,
     type DeckArchiveDependencies
 } from './utils/createDeckArchive';
-import type { ArchiveDeck } from '../models/archive';
+import type { ArchiveDeck } from '../models/models';
 
 
 // --- DeckStore インターフェース定義 ---
@@ -40,6 +40,10 @@ export interface DeckStore {
     // --- 2. CRUD/永続化 ---
     saveDeck: (deckToSave: Deck) => Promise<Deck>;
     updateDeckIsFavorite: (deckId: string, isFavorite: boolean) => Promise<Deck | null>;
+    bulkUpdateDeckIsFavorite: (deckIds: string[], isFavorite: boolean) => Promise<number>;
+    bulkUpdateDecksFields: (deckIds: string[], fields: Partial<Deck>) => Promise<number>;
+
+
 
     // --- 4. メモリ/ストア操作 ---
     syncDeckToStore: (deck: Deck) => void;
@@ -61,6 +65,7 @@ export interface DeckStore {
     deleteDeckFromHistory: (archiveId: string) => Promise<void>;
     bulkDeleteDecksFromHistory: (archiveIds: string[]) => Promise<void>;
     updateArchiveDeckIsFavoriteToHistory: (archiveId: string, isFavorite: boolean) => Promise<void>;
+    bulkUpdateArchiveDecksIsFavoriteToHistory: (archiveIds: string[], isFavorite: boolean) => Promise<number>;
 
     fetchAllArchiveDecksFromTrash: () => Promise<ArchiveDeck[]>;
     fetchArchiveDeckFromTrash: (archiveId: string) => Promise<ArchiveDeck | null>;
@@ -71,6 +76,7 @@ export interface DeckStore {
     deleteDeckFromTrash: (archiveId: string) => Promise<void>;
     bulkDeleteDecksFromTrash: (archiveIds: string[]) => Promise<void>;
     updateArchiveDeckIsFavoriteToTrash: (archiveId: string, isFavorite: boolean) => Promise<void>;
+    bulkUpdateArchiveDecksIsFavoriteToTrash: (archiveIds: string[], isFavorite: boolean) => Promise<number>;
 
     runDeckGarbageCollection: () => Promise<void>;
 }
@@ -156,7 +162,7 @@ export const useDeckStore = create<DeckStore>((set, get) => {
 
             try {
                 // サービス層の汎用バルク関数を、単一のID配列で呼び出す
-                const numUpdated = await deckService.updateDecksField(
+                const numUpdated = await deckService.updateDecksSingleField(
                     [deckId], // 1つだけのIDを配列として渡す
                     'isFavorite', // 更新フィールド名
                     isFavorite
@@ -178,9 +184,83 @@ export const useDeckStore = create<DeckStore>((set, get) => {
                 }
 
                 return null;
-            
+
             } catch (error) {
                 console.error(`[DeckStore:updateDeckIsFavorite] ❌ Failed to update favorite state for ${deckId}:`, error);
+                throw error;
+            }
+        },
+
+        bulkUpdateDeckIsFavorite: async (deckIds: string[], isFavorite: boolean): Promise<number> => {
+            console.log(`[DeckStore:bulkUpdateDeckIsFavorite] Updating favorite state for ${deckIds.length} decks to ${isFavorite}`);
+
+            try {
+                // サービス層のバルク更新関数を呼び出す
+                const numUpdated = await deckService.updateDecksSingleField(
+                    deckIds,
+                    'isFavorite',
+                    isFavorite
+                );
+
+                if (numUpdated > 0) {
+                    // 更新されたデッキのストア状態を同期
+                    set(state => ({
+                        decks: state.decks.map(deck =>
+                            deckIds.includes(deck.deckId)
+                                ? { ...deck, isFavorite }
+                                : deck
+                        )
+                    }));
+
+                    console.log(`[DeckStore:bulkUpdateDeckIsFavorite] ✅ Updated ${numUpdated} decks in DB and Store.`);
+                } else {
+                    console.warn(`[DeckStore:bulkUpdateDeckIsFavorite] ⚠️ No decks were updated.`);
+                }
+
+                return numUpdated;
+            } catch (error) {
+                console.error(`[DeckStore:bulkUpdateDeckIsFavorite] ❌ Failed to bulk update favorite state:`, error);
+                throw error;
+            }
+        },
+
+        /**
+         * 複数のDeckに対して、同じフィールドを一括更新します。
+         * @param deckIds 更新する Deck の ID 配列
+         * @param fields 更新するフィールド（Partial<Deck>）
+         * @returns 更新されたレコードの総数
+         */
+        bulkUpdateDecksFields: async (deckIds: string[], fields: Partial<Deck>): Promise<number> => {
+            console.log(`[DeckStore:bulkUpdateDecksFields] Updating multiple fields for ${deckIds.length} decks`);
+
+            try {
+                // updatedAt を追加
+                const fieldsWithTimestamp = {
+                    ...fields,
+                    updatedAt: new Date().toISOString()
+                };
+
+                // deckService の updateDecksMultipleFields を呼び出す
+                const numUpdated = await deckService.updateDecksMultipleFields(deckIds, fieldsWithTimestamp);
+
+                if (numUpdated > 0) {
+                    // 更新されたパックをストアに反映
+                    set((state) => ({
+                        decks: state.decks.map(deck =>
+                            deckIds.includes(deck.deckId)
+                                ? { ...deck, ...fieldsWithTimestamp }
+                                : deck
+                        )
+                    }));
+
+                    console.log(`[DeckStore:bulkUpdateDecksFields] ✅ Updated ${numUpdated} decks in DB and Store.`);
+                } else {
+                    console.warn(`[DeckStore:bulkUpdateDecksFields] ⚠️ No decks were updated.`);
+                }
+
+                return numUpdated;
+            } catch (error) {
+                console.error(`[DeckStore:bulkUpdateDecksFields] ❌ Failed to bulk update decks:`, error);
                 throw error;
             }
         },
@@ -291,6 +371,7 @@ export const useDeckStore = create<DeckStore>((set, get) => {
         deleteDeckFromHistory: deckArchiveActions.deleteDeckFromHistory,
         bulkDeleteDecksFromHistory: deckArchiveActions.bulkDeleteDecksFromHistory,
         updateArchiveDeckIsFavoriteToHistory: deckArchiveActions.updateArchiveDeckIsFavoriteToHistory,
+        bulkUpdateArchiveDecksIsFavoriteToHistory: deckArchiveActions.bulkUpdateArchiveDecksIsFavoriteToHistory,
 
         // 🗑️ ゴミ箱アクション
         fetchAllArchiveDecksFromTrash: deckArchiveActions.fetchAllArchiveDecksFromTrash,
@@ -302,6 +383,7 @@ export const useDeckStore = create<DeckStore>((set, get) => {
         deleteDeckFromTrash: deckArchiveActions.deleteDeckFromTrash,
         bulkDeleteDecksFromTrash: deckArchiveActions.bulkDeleteDecksFromTrash,
         updateArchiveDeckIsFavoriteToTrash: deckArchiveActions.updateArchiveDeckIsFavoriteToTrash,
+        bulkUpdateArchiveDecksIsFavoriteToTrash: deckArchiveActions.bulkUpdateArchiveDecksIsFavoriteToTrash,
 
         // 🛠️ メンテナンスアクション
         runDeckGarbageCollection: deckArchiveActions.runDeckGarbageCollection,

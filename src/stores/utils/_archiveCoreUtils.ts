@@ -9,16 +9,16 @@
  */
 
 import { archiveService } from '../../services/archive/archiveService';
-import type { Deck } from '../../models/deck';
-import type { Pack } from '../../models/pack';
-import type { Card } from '../../models/card';
-import type { DBArchive } from '../../models/db-types';
 import type {
+    Deck,
+    Pack,
+    Card,
+    DBArchive,
     ArchiveCollectionKey,
     ArchiveItemType,
     ArchiveDisplayData,
     ArchiveItemData
-} from '../../models/archive';
+} from '../../models/models';
 
 
 // --- 共通型定義 ---
@@ -77,6 +77,7 @@ export interface CommonArchiveActions<TEntity extends Deck | Pack> {
     fetchAllArchiveMetadata: (collection: ArchiveCollectionKey) => Promise<ArchiveDisplayData[]>;
     fetchArchiveItemData: (archiveId: string, collection: ArchiveCollectionKey) => Promise<ArchiveItemData | null>;
     updateItemIsFavoriteToArchive: (archiveId: string, collection: ArchiveCollectionKey, isFavorite: boolean) => Promise<number>;
+    bulkUpdateItemsIsFavoriteToArchive: (archiveIds: string[], collection: ArchiveCollectionKey, isFavorite: boolean) => Promise<number>;
 }
 
 
@@ -224,10 +225,10 @@ export const createCommonArchiveActions = <TEntity extends Deck | Pack, TArchive
         try {
             // archiveService の isFavorite フィールド更新に特化した関数があればそれを使うべきだが、
             // 汎用 updateItemsFieldToArchive を利用し、フィールド名を固定する
-            const numUpdated = await archiveService.updateItemsFieldToArchive(
+            const numUpdated = await archiveService.updateItemsSingleFieldToArchive(
                 [archiveId],
                 collection,
-                'isFavorite', // フィールド名を固定
+                'meta.isFavorite', // フィールド名を固定
                 isFavorite
             );
 
@@ -245,6 +246,38 @@ export const createCommonArchiveActions = <TEntity extends Deck | Pack, TArchive
         }
     };
 
+    /**
+     * 複数のアーカイブアイテムのお気に入りフラグを一括更新します。
+     */
+    const bulkUpdateItemsIsFavoriteToArchive = async (
+        archiveIds: string[],
+        collection: ArchiveCollectionKey,
+        isFavorite: boolean
+    ): Promise<number> => {
+        console.log(`[ArchiveCore:bulkUpdateItemsIsFavoriteToArchive] ⚡️ Bulk updating favorite for ${archiveIds.length} items in ${collection}.`);
+
+        try {
+            const numUpdated = await archiveService.updateItemsSingleFieldToArchive(
+                archiveIds,
+                collection,
+                'meta.isFavorite',
+                isFavorite
+            );
+
+            if (numUpdated > 0) {
+                console.log(`[ArchiveCore:bulkUpdateItemsIsFavoriteToArchive] ✅ Updated ${numUpdated} record(s).`);
+            } else {
+                console.warn(`[ArchiveCore:bulkUpdateItemsIsFavoriteToArchive] ⚠️ No records updated.`);
+            }
+            
+            return numUpdated;
+
+        } catch (error) {
+            console.error(`[ArchiveCore:bulkUpdateItemsIsFavoriteToArchive] ❌ Failed to bulk update favorite state:`, error);
+            throw error;
+        }
+    };
+
     return {
         bulkRestoreItemsFromArchive,
         bulkDeleteItemsFromArchive,
@@ -252,5 +285,6 @@ export const createCommonArchiveActions = <TEntity extends Deck | Pack, TArchive
         fetchAllArchiveMetadata,
         fetchArchiveItemData,
         updateItemIsFavoriteToArchive,
+        bulkUpdateItemsIsFavoriteToArchive,
     } as CommonArchiveActions<TEntity>;
 };

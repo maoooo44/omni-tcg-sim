@@ -8,9 +8,7 @@
  * 3. PackBundleをアーカイブレコード形式（DBArchive）にラップする変換（packBundleToDBArchive）。
  * 4. DBArchiveからPack、PackBundle、ArchivePack、ArchivePackBundleモデルへの抽出・復元。
  */
-import type { Pack, PackBundle } from '../../../models/pack';
-import type { ArchivePack, ArchivePackBundle } from '../../../models/archive';
-import type { DBPack, DBPackBundle, DBArchive } from '../../../models/db-types';
+import type { Pack, PackBundle, ArchivePack, ArchivePackBundle, DBPack, DBPackBundle, DBArchive } from '../../../models/models';
 import { cardToDBCard, dbCardToCard } from '../dbMappers';
 
 // =========================================================================
@@ -43,6 +41,7 @@ export const packToDBPack = (pack: Pack): DBPack => {
         specialProbabilitySlots: pack.specialProbabilitySlots,
         isAdvancedRulesEnabled: pack.isAdvancedRulesEnabled,
         // その他のフィールド
+        uniqueCards: pack.uniqueCards,
         totalCards: pack.totalCards,
         series: pack.series,
         description: pack.description,
@@ -83,6 +82,7 @@ export const dbPackToPack = (dbPack: DBPack): Pack => {
         price: dbPack.price,
         packType: dbPack.packType,
         cardsPerPack: dbPack.cardsPerPack,
+        uniqueCards: dbPack.uniqueCards,
         totalCards: dbPack.totalCards,
         series: dbPack.series,
         description: dbPack.description,

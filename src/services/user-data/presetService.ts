@@ -11,7 +11,7 @@
  */
 
 import { db } from '../database/db'; // DexieのDBインスタンスを参照
-import type { Preset } from '../../models/preset';
+import type { Preset } from '../../models/models';
 
 // DBテーブル名 (db.tsで定義されている前提)
 const PRESET_TABLE = 'presets';
